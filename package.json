@@ -16,8 +16,11 @@
   "type": "module",
   "dependencies": {
     "axios": "^1.7.9",
+    "bittorrent-dht": "^11.0.9",
     "body-parser": "^1.20.3",
+    "cors": "^2.8.5",
     "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
     "sha256": "^0.2.0",
     "uuid": "^11.0.5"
   },

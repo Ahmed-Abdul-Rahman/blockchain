@@ -2,7 +2,7 @@ import sha256 from 'sha256';
 import { v1 as uuidV1 } from 'uuid';
 const currentNodeUrl = process.argv[3];
 
-export class BlockChain {
+class BlockChain {
   constructor() {
     this.chain = [];
     this.pendingTransactions = [];
@@ -110,3 +110,7 @@ export class BlockChain {
     this.pendingTransactions = blockchain.pendingTransactions;
   }
 }
+
+const bitcoin = new BlockChain();
+
+export default bitcoin;
