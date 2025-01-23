@@ -1,6 +1,7 @@
 import axios from 'axios';
 import bitcoin from './blockchain.js';
 import { getMiningRewardTransaction } from './utils.js';
+import { initiateChallenge, signMessage } from './cryptoUtils.js';
 
 export const getBlockChain = (req, res) => {
   res.send(bitcoin);
@@ -18,10 +19,10 @@ export const postTransactionBroadcast = (req, res) => {
   bitcoin.addTransactionToPendingTransactions(newTransaction);
 
   const transactionRequestPromises = [];
-  bitcoin.networkNodes.forEach((networkNodeUrl) => {
+  bitcoin.networkNodes.forEach(({ nodeAddress }) => {
     const transactionRequest = {
       method: 'post',
-      url: networkNodeUrl + '/transaction',
+      url: nodeAddress + '/transaction',
       data: { newTransaction },
     };
     transactionRequestPromises.push(axios(transactionRequest));
@@ -32,7 +33,7 @@ export const postTransactionBroadcast = (req, res) => {
   });
 };
 
-export const getMineBlock = (nodeAddress, req, res) => {
+export const getMineBlock = (req, res) => {
   const lastBlock = bitcoin.getLastBlock();
   const previousBlockHash = lastBlock['hash'];
   const currentBlockData = bitcoin.getPendingBlockData();
@@ -42,10 +43,10 @@ export const getMineBlock = (nodeAddress, req, res) => {
   const newBlock = bitcoin.createNewBlock(nonce, previousBlockHash, blockHash);
 
   const blocksPromises = [];
-  bitcoin.networkNodes.forEach((networkNodeUrl) => {
+  bitcoin.networkNodes.forEach(({ nodeAddress }) => {
     const receiveBlockRequest = {
       method: 'post',
-      url: networkNodeUrl + '/receive-new-block',
+      url: nodeAddress + '/receive-new-block',
       data: { newBlock },
     };
     blocksPromises.push(axios(receiveBlockRequest));
@@ -55,8 +56,8 @@ export const getMineBlock = (nodeAddress, req, res) => {
     .then(() => {
       const broadcastTransactionRequest = {
         method: 'post',
-        url: bitcoin.currentNode + '/transaction/broadcast',
-        data: { ...getMiningRewardTransaction(nodeAddress) },
+        url: bitcoin.currentNode.nodeAddress + '/transaction/broadcast',
+        data: { ...getMiningRewardTransaction(bitcoin.currentNode.nodeUUID) },
       };
       return axios(broadcastTransactionRequest);
     })
@@ -75,16 +76,21 @@ export const postRecieveNewBlock = (req, res) => {
   }
 };
 
-export const postRegisterAndBroadcastNode = (req, res) => {
+export const postRegisterAndBroadcastNode = async (publicKey, req, res) => {
   const { newNodeUrl } = req.body;
-  if (bitcoin.networkNodes.indexOf(newNodeUrl) === -1) bitcoin.networkNodes.push(newNodeUrl);
+  const { isValid, publicKey: newNodePublicKey } = await initiateChallenge(newNodeUrl, publicKey);
+
+  if (!isValid) return res.json({ note: `The Node is inValid, hence cannot be added to the network` });
+
+  if (bitcoin.networkNodes.findIndex(({ nodeAddress }) => nodeAddress === newNodeUrl) === -1)
+    bitcoin.networkNodes.push({ nodeAddress: newNodeUrl, publicKey: newNodePublicKey });
 
   const registerNodePromises = [];
-  bitcoin.networkNodes.forEach((networkNode) => {
+  bitcoin.networkNodes.forEach(({ nodeAddress }) => {
     const registerNodeRequest = {
       method: 'post',
-      url: networkNode + '/register-node',
-      data: { newNodeUrl },
+      url: nodeAddress + '/register-node',
+      data: { newNodeUrl, publicKey: newNodePublicKey },
     };
     registerNodePromises.push(axios(registerNodeRequest));
   });
@@ -94,7 +100,7 @@ export const postRegisterAndBroadcastNode = (req, res) => {
       const bulkRegisterRequest = {
         method: 'post',
         url: newNodeUrl + '/register-nodes-bulk',
-        data: { allNetworkNodes: [...bitcoin.networkNodes, bitcoin.currentNode] },
+        data: { allNetworkNodes: [...bitcoin.networkNodes, bitcoin.getCurrentNode()] },
       };
       return axios(bulkRegisterRequest);
     })
@@ -104,24 +110,25 @@ export const postRegisterAndBroadcastNode = (req, res) => {
 };
 
 export const postRegisterNode = (req, res) => {
-  const { newNodeUrl } = req.body;
-  const isNodeAlreadyPresent = bitcoin.networkNodes.indexOf(newNodeUrl) !== -1;
-  const isCurrentNode = bitcoin.currentNode === newNodeUrl;
+  const { newNodeUrl, publicKey } = req.body;
+  const isNodeAlreadyPresent = bitcoin.networkNodes.findIndex(({ nodeAddress }) => nodeAddress === newNodeUrl) !== -1;
+  const isCurrentNode = bitcoin.currentNode.nodeAddress === newNodeUrl;
 
   if (isNodeAlreadyPresent || isCurrentNode) return res.json({ note: `Node already registered.` });
 
-  bitcoin.networkNodes.push(newNodeUrl);
+  bitcoin.networkNodes.push({ nodeAddress: newNodeUrl, publicKey });
   res.json({ note: `New node registered successfully with network.` });
 };
 
 export const postRegisterNodesBulk = (req, res) => {
   const { allNetworkNodes } = req.body;
 
-  allNetworkNodes.forEach((networkNodeUrl) => {
-    const isNodeAlreadyPresent = bitcoin.networkNodes.indexOf(networkNodeUrl) !== -1;
-    const isCurrentNode = bitcoin.currentNode === networkNodeUrl;
+  allNetworkNodes.forEach(({ nodeAddress, publicKey }) => {
+    const isNodeAlreadyPresent =
+      bitcoin.networkNodes.findIndex(({ nodeAddress: address }) => address === nodeAddress) !== -1;
+    const isCurrentNode = bitcoin.currentNode.nodeAddress === nodeAddress;
     if (isNodeAlreadyPresent || isCurrentNode) return;
-    bitcoin.networkNodes.push(networkNodeUrl);
+    bitcoin.networkNodes.push({ nodeAddress, publicKey });
   });
 
   res.json({ note: `Bulk nodes registration successfull.` });
@@ -129,10 +136,10 @@ export const postRegisterNodesBulk = (req, res) => {
 
 export const getConsensus = (req, res) => {
   const requestPromises = [];
-  bitcoin.networkNodes.forEach((networkNodeUrl) => {
+  bitcoin.networkNodes.forEach(({ nodeAddress }) => {
     const request = {
       method: 'get',
-      url: networkNodeUrl + '/blockchain',
+      url: nodeAddress + '/blockchain',
     };
     requestPromises.push(axios(request));
   });
@@ -156,4 +163,11 @@ export const getConsensus = (req, res) => {
       res.json({ note: `This chain has been replaced.`, chain: bitcoin.chain });
     }
   });
+};
+
+export const postChallenge = (privateKey, req, res) => {
+  const { challenge, publicKey: nodePublickey } = req.body;
+  if (!challenge || !nodePublickey) return res.status(400).json({ error: 'Invalid challenge request' });
+  const response = signMessage(challenge, privateKey); // Sign the challenge with the private key
+  res.status(200).json({ response, publicKey: bitcoin.getCurrentNodePublicKey() });
 };

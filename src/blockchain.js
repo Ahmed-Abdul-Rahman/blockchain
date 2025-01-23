@@ -1,14 +1,26 @@
 import sha256 from 'sha256';
 import { v1 as uuidV1 } from 'uuid';
-const currentNodeUrl = process.argv[3];
 
 class BlockChain {
   constructor() {
     this.chain = [];
     this.pendingTransactions = [];
     this.createNewBlock(1000, '0', '0000'); // genesis block creation
-    this.currentNode = currentNodeUrl;
+    this.currentNode = { nodeAddress: null, nodeUUID: null, publicKey: null };
     this.networkNodes = [];
+  }
+
+  setCurrentNode(nodeAddress, nodeUUID, publicKey) {
+    this.currentNode = { nodeAddress, nodeUUID, publicKey };
+  }
+
+  getCurrentNode() {
+    const { nodeAddress, publicKey } = this.currentNode;
+    return { nodeAddress, publicKey: publicKey.export({ type: 'spki', format: 'pem' }) };
+  }
+
+  getCurrentNodePublicKey() {
+    return this.currentNode.publicKey.export({ type: 'spki', format: 'pem' });
   }
 
   createNewBlock(nonce, previousBlockHash, hash) {

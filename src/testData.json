@@ -2,96 +2,23 @@
     "chain": [
         {
             "index": 1,
-            "timestamp": 1737367293223,
+            "timestamp": 1737659834787,
             "transactions": [],
             "nonce": 1000,
             "previousBlockHash": "0",
             "hash": "0000"
-        },
-        {
-            "index": 2,
-            "timestamp": 1737367357084,
-            "transactions": [],
-            "nonce": 31707,
-            "previousBlockHash": "00",
-            "hash": "0000d236902cf1cb0c28217eadc007a226a1379d46f61fe27434bf9eb83fd865"
-        },
-        {
-            "index": 3,
-            "timestamp": 1737367470845,
-            "transactions": [
-                {
-                    "amount": 12.5,
-                    "data": {
-                        "message": "You have been given 12.5 coin as a mining reward!"
-                    },
-                    "sender": "0000",
-                    "recipient": "8712dc60d71511efaa956900f7245487",
-                    "timestamp": 1737367357095,
-                    "transactionId": "ad251b70d71511efaa956900f7245487"
-                },
-                {
-                    "amount": 500,
-                    "data": {
-                        "message": "Got Money"
-                    },
-                    "sender": "0000as32434rsdf345345",
-                    "recipient": "230ierewfjklsdnfsfdfdsf",
-                    "timestamp": 1737367396527,
-                    "transactionId": "c4a5f3f0d71511efa74327ce2a34c161"
-                },
-                {
-                    "amount": 100,
-                    "data": {
-                        "message": "Sent Money"
-                    },
-                    "sender": "4353lkjasd02342ksad",
-                    "recipient": "dsfwer34534543dfg",
-                    "timestamp": 1737367440439,
-                    "transactionId": "ded26470d71511efaa956900f7245487"
-                }
-            ],
-            "nonce": 29533,
-            "previousBlockHash": "0000d236902cf1cb0c28217eadc007a226a1379d46f61fe27434bf9eb83fd865",
-            "hash": "00005670b10e646f58f99e0ad59c8126f214401e4f22329cb6fd726420bbb248"
-        },
-        {
-            "index": 4,
-            "timestamp": 1737367661452,
-            "transactions": [
-                {
-                    "amount": 12.5,
-                    "data": {
-                        "message": "You have been given 12.5 coin as a mining reward!"
-                    },
-                    "sender": "0000",
-                    "recipient": "8712dc60d71511efb7104dffc1472ef8",
-                    "timestamp": 1737367470855,
-                    "transactionId": "f0f38170d71511efb7104dffc1472ef8"
-                }
-            ],
-            "nonce": 18220,
-            "previousBlockHash": "00005670b10e646f58f99e0ad59c8126f214401e4f22329cb6fd726420bbb248",
-            "hash": "00007ec38352c1a13ce93bc1b423498fefcbdaa4eebb50f677861c1c90771a54"
         }
     ],
-    "pendingTransactions": [
-        {
-            "amount": 12.5,
-            "data": {
-                "message": "You have been given 12.5 coin as a mining reward!"
-            },
-            "sender": "0000",
-            "recipient": "87130370d71511efa9c8957dfce1b215",
-            "timestamp": 1737367661461,
-            "transactionId": "628fac50d71611efa9c8957dfce1b215"
-        }
-    ],
-    "currentNode": "http://localhost:3001",
+    "pendingTransactions": [],
+    "currentNode": {
+        "nodeAddress": "http://localhost:3002",
+        "nodeUUID": "a7a448f0d9be11efa09915fd2bf38fda",
+        "publicKey": {}
+    },
     "networkNodes": [
-        "http://localhost:3005",
-        "http://localhost:3002",
-        "http://localhost:3003",
-        "http://localhost:3004"
+        {
+            "nodeAddress": "http://localhost:3001",
+            "publicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAn54Bm7Bme5an9MeX8uT3\n5D+HFN5FSm5spuP6DC7XEf6NaKHpiVvyyEiyAEDKJWRkCZIYhMC0XbYz+/7VQXTz\nswqxMNOa3teFZkiOw5khXO0DnX5s8EDRyaoQfjCtIP1U6ISWqokJBtXZ8c5aet4L\n7YVSjvO8iI4NgLMBh8JwqOE73S/SVMmgPQCoUEFC3qDYyP1eIz/PR2tPTy9V9yKn\n4jf9OVPUnFo1bbYheSnjLFurX8eAek3hbSDKzlN5BRqUmtAoIiHyPKdnjN7VWhrn\ns7TtspWQ+ozgKnIUx5/MTtcs0bRIPUrXtqKlyMbwadv7ADASrdfmP2nBDoWZLyfJ\n8wIDAQAB\n-----END PUBLIC KEY-----\n"
+        }
     ]
 }
