@@ -27,16 +27,23 @@ import {
 } from './constants.js';
 import crypto from 'crypto';
 import bitcoin from './blockchain.js';
+import rateLimit from 'express-rate-limit';
 
 const port = process.argv[2];
 const nodeUUID = uuidV1().split('-').join('');
 const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
 const app = express();
+const limiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 30, // Limit each IP to 30 requests per minute
+  message: { note: 'Too many requests, please try again later.' },
+});
 
 bitcoin.setCurrentNode(process.argv[3], nodeUUID, publicKey);
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
+app.use(limiter);
 
 //get entire blockchain
 app.get(BLOCKCHAIN, getBlockChain);

@@ -141,7 +141,7 @@ function startDHT() {
   dht.lookup(infoHash);
 
   // Handle discovered peers
-  dht.on('peer', (peer, infoHash) => {
+  dht.on('peer', (peer) => {
     const address = `https://${peer.host}:${peer.port}`;
     if (!peers.has(address)) {
       console.log(`Discovered peer: ${address}`);
