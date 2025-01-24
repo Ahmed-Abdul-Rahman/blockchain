@@ -1,4 +1,5 @@
 import dgram from 'dgram';
+import os from 'os';
 import { encryptMessage, decryptMessage, generateHMAC } from './security.js';
 import { addPeer, updatePeerTimestamp, cleanInactivePeers } from './peerManager.js';
 import {
@@ -12,7 +13,20 @@ import {
   PEER_TIMEOUT,
 } from './config.js';
 
+const getLocalIP = () => {
+  const interfaces = os.networkInterfaces();
+  for (const name in interfaces) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  throw new Error('No active network interface found');
+};
+
 export const startDiscovery = () => {
+  const localIP = getLocalIP();
   const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
 
   // Broadcast presence
@@ -20,7 +34,7 @@ export const startDiscovery = () => {
     const payload = JSON.stringify({
       peerName: PEER_NAME,
       timestamp: Date.now(),
-      infoHash: INFO_HASH, // Include the infoHash in the payload
+      infoHash: INFO_HASH,
     });
 
     const encryptedPayload = encryptMessage(payload, AES_KEY);
@@ -36,7 +50,7 @@ export const startDiscovery = () => {
     // Validate HMAC
     const expectedHMAC = generateHMAC(encryptedPayload, SECRET_KEY);
     if (receivedHMAC !== expectedHMAC) {
-      // console.warn(`Invalid HMAC from ${rinfo.address}:${rinfo.port}`);
+      console.warn(`Invalid HMAC from ${rinfo.address}:${rinfo.port}`);
       return;
     }
 
@@ -45,7 +59,7 @@ export const startDiscovery = () => {
     try {
       payload = JSON.parse(decryptMessage(encryptedPayload, AES_KEY));
     } catch (err) {
-      console.error(`Failed to decrypt message from ${rinfo.address}:${rinfo.port} ${err}`);
+      console.error(`Failed to decrypt message from ${rinfo.address}:${rinfo.port}`, err);
       return;
     }
 
@@ -53,7 +67,7 @@ export const startDiscovery = () => {
 
     // Filter peers by infoHash
     if (infoHash !== INFO_HASH) {
-      // console.log(`Ignoring peer with mismatched infoHash from ${rinfo.address}:${rinfo.port}`);
+      console.log(`Ignoring peer with mismatched infoHash from ${rinfo.address}:${rinfo.port}`);
       return;
     }
 
@@ -67,10 +81,12 @@ export const startDiscovery = () => {
 
   // Start the socket
   socket.on('listening', () => {
-    socket.addMembership(MULTICAST_ADDRESS);
     console.log(`Discovery started on ${MULTICAST_PORT}`);
+    socket.addMembership(MULTICAST_ADDRESS, localIP);
+    socket.setMulticastTTL(128); // Ensure packets can propagate
+    console.log(`Bound to local IP: ${localIP}`);
   });
 
-  socket.bind(MULTICAST_PORT);
+  socket.bind(MULTICAST_PORT, localIP);
   setInterval(broadcastPresence, BROADCAST_INTERVAL);
 };
