@@ -26,7 +26,7 @@ import {
   TRANSACTION_BROADCAST,
 } from './constants.js';
 import crypto from 'crypto';
-import bitcoin from './blockchain.js';
+import bitcoin from '../packages/blockchain/blockchain.js';
 import rateLimit from 'express-rate-limit';
 
 const port = process.argv[2];

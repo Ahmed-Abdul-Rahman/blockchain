@@ -1,6 +1,6 @@
 import axios from 'axios';
-import bitcoin from './blockchain.js';
-import { getMiningRewardTransaction } from './utils.js';
+import bitcoin from '../packages/blockchain/blockchain.js';
+import { getMiningRewardTransaction } from '../packages/blockchain/utils.js';
 import { initiateChallenge, signMessage } from './cryptoUtils.js';
 
 export const getBlockChain = (req, res) => {
