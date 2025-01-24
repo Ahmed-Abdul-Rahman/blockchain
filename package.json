@@ -18,6 +18,7 @@
     "axios": "^1.7.9",
     "body-parser": "^1.20.3",
     "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
     "sha256": "^0.2.0",
     "uuid": "^11.0.5"
   },
