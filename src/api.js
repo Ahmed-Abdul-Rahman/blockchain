@@ -1,6 +1,5 @@
 import axios from 'axios';
 import bitcoin from '../packages/blockchain/blockchain.js';
-import { getMiningRewardTransaction } from '../packages/blockchain/utils.js';
 import { initiateChallenge, signMessage } from './cryptoUtils.js';
 
 export const getBlockChain = (req, res) => {
@@ -57,7 +56,7 @@ export const getMineBlock = (req, res) => {
       const broadcastTransactionRequest = {
         method: 'post',
         url: bitcoin.currentNode.nodeAddress + '/transaction/broadcast',
-        data: { ...getMiningRewardTransaction(bitcoin.currentNode.nodeUUID) },
+        data: { ...bitcoin.getMiningRewardTransaction() },
       };
       return axios(broadcastTransactionRequest);
     })

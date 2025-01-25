@@ -1,19 +1,7 @@
-export const TRANSACTION = '/transaction';
+import sha256 from 'sha256';
 
-export const BLOCKCHAIN = '/blockchain';
+export const handshakeSeed = 'Discovere New Node And Establish Connection Create Decentralized Blockchain';
 
-export const TRANSACTION_BROADCAST = '/transaction/broadcast';
+export const infoHash = sha256(handshakeSeed);
 
-export const MINE = '/mine';
-
-export const RECEIVE_NEW_BLOCK = '/receive-new-block';
-
-export const REGISTER_AND_BROADCAST_NODE = '/register-and-broadcast-node';
-
-export const REGISTER_NODE = '/register-node';
-
-export const REGISTER_NODES_BULK = '/register-nodes-bulk';
-
-export const CONSENSUS = '/consensus';
-
-export const CHALLENGE = '/challenge';
+export const ESTABLISH_CONNECTION = 'Establish Connection';

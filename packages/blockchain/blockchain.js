@@ -121,6 +121,15 @@ class BlockChain {
     this.chain = blockchain.chain;
     this.pendingTransactions = blockchain.pendingTransactions;
   }
+
+  getMiningRewardTransaction() {
+    return {
+      amount: 12.5,
+      data: { message: `You have been given ${12.5} coin as a mining reward!` },
+      senderAddress: '0000',
+      recipientAddress: this.currentNode.nodeUUID,
+    };
+  }
 }
 
 const bitcoin = new BlockChain();

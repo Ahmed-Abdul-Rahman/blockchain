@@ -1,6 +1,5 @@
 import express from 'express';
 import bodyParser from 'body-parser';
-import { v1 as uuidV1 } from 'uuid';
 import {
   getBlockChain,
   getConsensus,
@@ -24,13 +23,21 @@ import {
   REGISTER_NODES_BULK,
   TRANSACTION,
   TRANSACTION_BROADCAST,
-} from './constants.js';
+} from './apiPaths.js';
 import crypto from 'crypto';
 import bitcoin from '../packages/blockchain/blockchain.js';
 import rateLimit from 'express-rate-limit';
+import { createNode, dialNode, recieveNodeMessages, registerNodeDiscovery } from '../packages/nodeP2P/mdns.js';
+import { getMessageToDial, isValidInfoHash } from './helper.js';
+// import { ESTABLISH_CONNECTION } from './constants.js';
+// import { initiateChallenge } from './cryptoUtils.js';
+// import sha256 from 'sha256';
+
+// let isPartOfNetwork = true;
+// const genesisTimestamp = Date.now();
+// const networkId = sha256(genesisTimestamp);
 
 const port = process.argv[2];
-const nodeUUID = uuidV1().split('-').join('');
 const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
 const app = express();
 const limiter = rateLimit({
@@ -38,8 +45,6 @@ const limiter = rateLimit({
   max: 30, // Limit each IP to 30 requests per minute
   message: { note: 'Too many requests, please try again later.' },
 });
-
-bitcoin.setCurrentNode(process.argv[3], nodeUUID, publicKey);
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
@@ -71,8 +76,25 @@ app.get(CONSENSUS, getConsensus);
 
 app.post(CHALLENGE, postChallenge.bind(null, privateKey));
 
-app.listen(port, () => {
-  console.log(`Node ${nodeUUID} Listening on Port ${port}...`);
-});
+const handleNodeMessage = (data) => {
+  console.log('In handleNodeMessage ', data);
+  const { nodeId, infoHash } = data;
+  if (!isValidInfoHash(infoHash)) {
+    console.log('In valid node cannot process further instructions', nodeId);
+    return;
+  }
+  // if (instruction === ESTABLISH_CONNECTION) {
+  //   initiateChallenge()
+  // }
+};
 
-// startDHT(dht, port, 'decentralized-node-discovery', publicKey, initiateChallenge);
+app.listen(port, async () => {
+  const node = await createNode();
+
+  registerNodeDiscovery(node, dialNode, getMessageToDial(node));
+  recieveNodeMessages(node, handleNodeMessage);
+
+  await node.start();
+  bitcoin.setCurrentNode(process.argv[3], node.peerId.toString(), publicKey);
+  console.log(`Node - ${node.peerId.toString()} - Listening on Port ${port}...`);
+});
