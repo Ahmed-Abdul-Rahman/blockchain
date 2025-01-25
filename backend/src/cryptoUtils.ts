@@ -44,7 +44,7 @@ export const initiateChallenge = async (nodeAddress, publicKey) => {
       console.error(`Invalid response from node: ${nodeAddress}`);
       return { isValid: false, publicKey: null };
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Failed to verify node: ${nodeAddress} - ${error.message}`);
     return { isValid: false, publicKey: null };
   }

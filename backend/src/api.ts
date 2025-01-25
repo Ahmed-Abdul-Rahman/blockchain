@@ -1,5 +1,5 @@
-import axios from 'axios';
-import bitcoin from '../packages/blockchain/blockchain.js';
+import axios, { AxiosResponse } from 'axios';
+import bitcoin from '@blockchain/Blockchain';
 import { initiateChallenge, signMessage } from './cryptoUtils.js';
 
 export const getBlockChain = (req, res) => {
@@ -17,7 +17,7 @@ export const postTransactionBroadcast = (req, res) => {
   const newTransaction = bitcoin.createNewTransaction(amount, data, senderAddress, recipientAddress);
   bitcoin.addTransactionToPendingTransactions(newTransaction);
 
-  const transactionRequestPromises = [];
+  const transactionRequestPromises: Promise<AxiosResponse>[] = [];
   bitcoin.networkNodes.forEach(({ nodeAddress }) => {
     const transactionRequest = {
       method: 'post',
@@ -41,7 +41,7 @@ export const getMineBlock = (req, res) => {
   const blockHash = bitcoin.hashBlock(previousBlockHash, currentBlockData, nonce);
   const newBlock = bitcoin.createNewBlock(nonce, previousBlockHash, blockHash);
 
-  const blocksPromises = [];
+  const blocksPromises: Promise<AxiosResponse>[] = [];
   bitcoin.networkNodes.forEach(({ nodeAddress }) => {
     const receiveBlockRequest = {
       method: 'post',
@@ -76,15 +76,15 @@ export const postRecieveNewBlock = (req, res) => {
 };
 
 export const postRegisterAndBroadcastNode = async (publicKey, req, res) => {
-  const { newNodeUrl } = req.body;
+  const { newNodeUrl, nodeUUID } = req.body;
   const { isValid, publicKey: newNodePublicKey } = await initiateChallenge(newNodeUrl, publicKey);
 
   if (!isValid) return res.json({ note: `The Node is inValid, hence cannot be added to the network` });
 
   if (bitcoin.networkNodes.findIndex(({ nodeAddress }) => nodeAddress === newNodeUrl) === -1)
-    bitcoin.networkNodes.push({ nodeAddress: newNodeUrl, publicKey: newNodePublicKey });
+    bitcoin.networkNodes.push({ nodeAddress: newNodeUrl, nodeUUID, publicKey: newNodePublicKey });
 
-  const registerNodePromises = [];
+  const registerNodePromises: Promise<AxiosResponse>[] = [];
   bitcoin.networkNodes.forEach(({ nodeAddress }) => {
     const registerNodeRequest = {
       method: 'post',
@@ -109,32 +109,32 @@ export const postRegisterAndBroadcastNode = async (publicKey, req, res) => {
 };
 
 export const postRegisterNode = (req, res) => {
-  const { newNodeUrl, publicKey } = req.body;
+  const { newNodeUrl, nodeUUID, publicKey } = req.body;
   const isNodeAlreadyPresent = bitcoin.networkNodes.findIndex(({ nodeAddress }) => nodeAddress === newNodeUrl) !== -1;
   const isCurrentNode = bitcoin.currentNode.nodeAddress === newNodeUrl;
 
   if (isNodeAlreadyPresent || isCurrentNode) return res.json({ note: `Node already registered.` });
 
-  bitcoin.networkNodes.push({ nodeAddress: newNodeUrl, publicKey });
+  bitcoin.networkNodes.push({ nodeAddress: newNodeUrl, nodeUUID, publicKey });
   res.json({ note: `New node registered successfully with network.` });
 };
 
 export const postRegisterNodesBulk = (req, res) => {
   const { allNetworkNodes } = req.body;
 
-  allNetworkNodes.forEach(({ nodeAddress, publicKey }) => {
+  allNetworkNodes.forEach(({ nodeAddress, nodeUUID, publicKey }) => {
     const isNodeAlreadyPresent =
       bitcoin.networkNodes.findIndex(({ nodeAddress: address }) => address === nodeAddress) !== -1;
     const isCurrentNode = bitcoin.currentNode.nodeAddress === nodeAddress;
     if (isNodeAlreadyPresent || isCurrentNode) return;
-    bitcoin.networkNodes.push({ nodeAddress, publicKey });
+    bitcoin.networkNodes.push({ nodeAddress, nodeUUID, publicKey });
   });
 
   res.json({ note: `Bulk nodes registration successfull.` });
 };
 
 export const getConsensus = (req, res) => {
-  const requestPromises = [];
+  const requestPromises: Promise<AxiosResponse>[] = [];
   bitcoin.networkNodes.forEach(({ nodeAddress }) => {
     const request = {
       method: 'get',

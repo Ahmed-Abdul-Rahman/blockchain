@@ -25,17 +25,19 @@ import {
   TRANSACTION_BROADCAST,
 } from './apiPaths.js';
 import crypto from 'crypto';
-import bitcoin from '../packages/blockchain/blockchain.js';
 import rateLimit from 'express-rate-limit';
-import { createNode, dialNode, recieveNodeMessages, registerNodeDiscovery } from '../packages/nodeP2P/mdns.js';
-import { getMessageToDial, isValidInfoHash } from './helper.js';
-// import { ESTABLISH_CONNECTION } from './constants.js';
-// import { initiateChallenge } from './cryptoUtils.js';
-// import sha256 from 'sha256';
+import { getMessageToDial, handleNodeMessage } from './helper.js';
+import { sha256 } from '@common/crypto';
+import { NetworkNode } from '@nodeP2P/NetworkNode';
+import bitcoin from '@blockchain/Blockchain';
 
-// let isPartOfNetwork = true;
-// const genesisTimestamp = Date.now();
-// const networkId = sha256(genesisTimestamp);
+const networkNodeConfig = {
+  genesisTimestamp: Date.now(),
+  get networkId() {
+    return sha256(this.genesisTimestamp.toString());
+  },
+  protocol: '/hanshake/1.0.0',
+};
 
 const port = process.argv[2];
 const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -76,25 +78,14 @@ app.get(CONSENSUS, getConsensus);
 
 app.post(CHALLENGE, postChallenge.bind(null, privateKey));
 
-const handleNodeMessage = (data) => {
-  console.log('In handleNodeMessage ', data);
-  const { nodeId, infoHash } = data;
-  if (!isValidInfoHash(infoHash)) {
-    console.log('In valid node cannot process further instructions', nodeId);
-    return;
-  }
-  // if (instruction === ESTABLISH_CONNECTION) {
-  //   initiateChallenge()
-  // }
-};
-
 app.listen(port, async () => {
-  const node = await createNode();
+  const networkNode = new NetworkNode(networkNodeConfig);
+  await networkNode.init();
 
-  registerNodeDiscovery(node, dialNode, getMessageToDial(node));
-  recieveNodeMessages(node, handleNodeMessage);
+  networkNode.registerNodeDiscovery(getMessageToDial(), null);
+  networkNode.receiveNodeMessages(handleNodeMessage);
 
-  await node.start();
-  bitcoin.setCurrentNode(process.argv[3], node.peerId.toString(), publicKey);
-  console.log(`Node - ${node.peerId.toString()} - Listening on Port ${port}...`);
+  await networkNode.start();
+  bitcoin.setCurrentNode(process.argv[3], networkNode.nodeId, publicKey);
+  console.log(`Node - ${networkNode.nodeId} - Listening on Port ${port}...`);
 });

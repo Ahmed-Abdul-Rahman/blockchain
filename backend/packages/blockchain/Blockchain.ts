@@ -1,7 +1,37 @@
-import sha256 from 'sha256';
 import { v1 as uuidV1 } from 'uuid';
+import { KeyObject } from 'crypto';
+import { sha256 } from '@common/crypto';
+
+interface Transaction {
+  amount: number;
+  data: object;
+  sender: string;
+  recipient: string;
+  timestamp: number;
+  transactionId: string;
+}
+
+interface Block {
+  index: number;
+  timestamp: number;
+  transactions: Transaction[];
+  nonce: number;
+  previousBlockHash: string;
+  hash: string;
+}
+
+interface Node {
+  nodeAddress: string | null;
+  nodeUUID: string | null;
+  publicKey: KeyObject | null;
+}
 
 class BlockChain {
+  chain: Block[];
+  pendingTransactions: Transaction[];
+  currentNode: Node;
+  networkNodes: Node[];
+
   constructor() {
     this.chain = [];
     this.pendingTransactions = [];
@@ -16,11 +46,11 @@ class BlockChain {
 
   getCurrentNode() {
     const { nodeAddress, publicKey } = this.currentNode;
-    return { nodeAddress, publicKey: publicKey.export({ type: 'spki', format: 'pem' }) };
+    return { nodeAddress, publicKey: publicKey?.export({ type: 'spki', format: 'pem' }) };
   }
 
   getCurrentNodePublicKey() {
-    return this.currentNode.publicKey.export({ type: 'spki', format: 'pem' });
+    return this.currentNode.publicKey?.export({ type: 'spki', format: 'pem' });
   }
 
   createNewBlock(nonce, previousBlockHash, hash) {
@@ -82,7 +112,7 @@ class BlockChain {
 
   proofOfWork(previousBlockHash, currentBlockData) {
     let nonce = 0;
-    let hash = sha256(previousBlockHash, currentBlockData, nonce);
+    let hash = sha256(`${previousBlockHash}${currentBlockData}${nonce}`);
     while (!this.isValidHash(hash)) {
       nonce += 1;
       hash = this.hashBlock(previousBlockHash, currentBlockData, nonce);
