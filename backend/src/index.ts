@@ -1,16 +1,22 @@
-import express from 'express';
+import bytecoin from '@blockchain/Blockchain';
+import { sha256 } from '@common/crypto';
+import { NetworkNode } from '@nodeP2P/NetworkNode';
 import bodyParser from 'body-parser';
+import crypto from 'crypto';
+import express from 'express';
+import rateLimit from 'express-rate-limit';
+
 import {
   getBlockChain,
   getConsensus,
   getMineBlock,
-  postTransactionBroadcast,
+  postChallenge,
   postRecieveNewBlock,
   postRegisterAndBroadcastNode,
   postRegisterNode,
   postRegisterNodesBulk,
   postTransaction,
-  postChallenge,
+  postTransactionBroadcast,
 } from './api.js';
 import {
   BLOCKCHAIN,
@@ -24,12 +30,7 @@ import {
   TRANSACTION,
   TRANSACTION_BROADCAST,
 } from './apiPaths.js';
-import crypto from 'crypto';
-import rateLimit from 'express-rate-limit';
 import { getMessageToDial, handleNodeMessage } from './helper.js';
-import { sha256 } from '@common/crypto';
-import { NetworkNode } from '@nodeP2P/NetworkNode';
-import bitcoin from '@blockchain/Blockchain';
 
 const networkNodeConfig = {
   genesisTimestamp: Date.now(),
@@ -40,7 +41,9 @@ const networkNodeConfig = {
 };
 
 const port = process.argv[2];
-const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
+  modulusLength: 2048,
+});
 const app = express();
 const limiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
@@ -86,6 +89,6 @@ app.listen(port, async () => {
   networkNode.receiveNodeMessages(handleNodeMessage);
 
   await networkNode.start();
-  bitcoin.setCurrentNode(process.argv[3], networkNode.nodeId, publicKey);
+  bytecoin.setCurrentNode(process.argv[3], networkNode.nodeId, publicKey);
   console.log(`Node - ${networkNode.nodeId} - Listening on Port ${port}...`);
 });

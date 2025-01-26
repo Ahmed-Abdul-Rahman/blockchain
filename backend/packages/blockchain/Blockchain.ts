@@ -1,6 +1,6 @@
-import { v1 as uuidV1 } from 'uuid';
-import { KeyObject } from 'crypto';
 import { sha256 } from '@common/crypto';
+import { KeyObject } from 'crypto';
+import { v1 as uuidV1 } from 'uuid';
 
 interface Transaction {
   amount: number;
@@ -32,7 +32,9 @@ class BlockChain {
   currentNode: Node;
   networkNodes: Node[];
 
-  constructor() {
+  private static _instance: BlockChain;
+
+  private constructor() {
     this.chain = [];
     this.pendingTransactions = [];
     this.createNewBlock(1000, '0', '0000'); // genesis block creation
@@ -40,20 +42,27 @@ class BlockChain {
     this.networkNodes = [];
   }
 
-  setCurrentNode(nodeAddress, nodeUUID, publicKey) {
+  public static get Instance(): BlockChain {
+    return this._instance || (this._instance = new this());
+  }
+
+  setCurrentNode(nodeAddress: string, nodeUUID: string | null, publicKey: KeyObject): void {
     this.currentNode = { nodeAddress, nodeUUID, publicKey };
   }
 
-  getCurrentNode() {
+  getCurrentNode(): object {
     const { nodeAddress, publicKey } = this.currentNode;
-    return { nodeAddress, publicKey: publicKey?.export({ type: 'spki', format: 'pem' }) };
+    return {
+      nodeAddress,
+      publicKey: publicKey?.export({ type: 'spki', format: 'pem' }),
+    };
   }
 
-  getCurrentNodePublicKey() {
-    return this.currentNode.publicKey?.export({ type: 'spki', format: 'pem' });
+  getCurrentNodePublicKey(): string | Buffer<ArrayBufferLike> | null {
+    return this.currentNode.publicKey?.export({ type: 'spki', format: 'pem' }) || null;
   }
 
-  createNewBlock(nonce, previousBlockHash, hash) {
+  createNewBlock(nonce: number, previousBlockHash: string, hash: string): Block {
     const newBlock = {
       index: this.chain.length + 1,
       timestamp: Date.now(),
@@ -67,11 +76,11 @@ class BlockChain {
     return newBlock;
   }
 
-  getLastBlock() {
+  getLastBlock(): Block {
     return this.chain[this.chain.length - 1];
   }
 
-  createNewTransaction(amount, data, senderAddress, recipientAddress) {
+  createNewTransaction(amount: number, data: object, senderAddress: string, recipientAddress: string): Transaction {
     return {
       amount,
       data,
@@ -82,35 +91,35 @@ class BlockChain {
     };
   }
 
-  addTransactionToPendingTransactions(newTransaction) {
+  addTransactionToPendingTransactions(newTransaction: Transaction): number {
     this.pendingTransactions.push(newTransaction);
-    return this.getLastBlock()['index'] + 1; // return the block number in which this newTransaction will reside
+    return this.getLastBlock().index + 1; // return the block number in which this newTransaction will reside
   }
 
-  getBlockData(block) {
+  getBlockData(block: Block) {
     return {
-      index: block['index'],
-      transactions: block['transactions'],
+      index: block.index,
+      transactions: block.transactions,
     };
   }
 
-  getPendingBlockData() {
+  getPendingBlockData(): Partial<Block> {
     return {
-      index: this.getLastBlock()['index'] + 1,
+      index: this.getLastBlock().index + 1,
       transactions: this.pendingTransactions,
     };
   }
 
-  hashBlock(previousBlockHash, currentBlockData, nonce) {
+  hashBlock(previousBlockHash: string, currentBlockData: Partial<Block>, nonce: number): string {
     const dataString = previousBlockHash + nonce + JSON.stringify(currentBlockData);
     return sha256(dataString);
   }
 
-  isValidHash(hash, criteria = '0000') {
+  isValidHash(hash: string, criteria: string = '0000'): boolean {
     return hash.substring(0, 4) === criteria;
   }
 
-  proofOfWork(previousBlockHash, currentBlockData) {
+  proofOfWork(previousBlockHash: string, currentBlockData: Partial<Block>): number {
     let nonce = 0;
     let hash = sha256(`${previousBlockHash}${currentBlockData}${nonce}`);
     while (!this.isValidHash(hash)) {
@@ -120,24 +129,24 @@ class BlockChain {
     return nonce;
   }
 
-  isValidBlock(newBlock) {
+  isValidBlock(newBlock: Block): boolean {
     const lastBlock = this.getLastBlock();
-    const isValidHash = lastBlock['hash'] === newBlock['previousBlockHash'];
-    const isIndexValid = lastBlock['index'] + 1 === newBlock['index'];
+    const isValidHash = lastBlock.hash === newBlock.previousBlockHash;
+    const isIndexValid = lastBlock.index + 1 === newBlock.index;
     return isValidHash && isIndexValid;
   }
 
-  addNewBlock(newBlock) {
+  addNewBlock(newBlock: Block): void {
     this.chain.push(newBlock);
     this.pendingTransactions = [];
   }
 
-  isChainValid(blockchain) {
+  isChainValid(blockchain: Block[]): boolean {
     for (let i = 1; i < blockchain.length; i++) {
       const currentBlock = blockchain[i];
       const previousBlock = blockchain[i - 1];
-      const isValidPreviousHash = previousBlock['hash'] === currentBlock['previousBlockHash'];
-      const hash = this.hashBlock(previousBlock['hash'], this.getBlockData(currentBlock), currentBlock['nonce']);
+      const isValidPreviousHash = previousBlock.hash === currentBlock.previousBlockHash;
+      const hash = this.hashBlock(previousBlock.hash, this.getBlockData(currentBlock), currentBlock.nonce);
       if (!this.isValidHash(hash) || !isValidPreviousHash) return false;
     }
     const genesisBlock = blockchain[0];
@@ -147,12 +156,12 @@ class BlockChain {
     return true;
   }
 
-  updateChain(blockchain) {
+  updateChain(blockchain: { chain: Block[]; pendingTransactions: Transaction[] }): void {
     this.chain = blockchain.chain;
     this.pendingTransactions = blockchain.pendingTransactions;
   }
 
-  getMiningRewardTransaction() {
+  getMiningRewardTransaction(): object {
     return {
       amount: 12.5,
       data: { message: `You have been given ${12.5} coin as a mining reward!` },
@@ -162,6 +171,6 @@ class BlockChain {
   }
 }
 
-const bitcoin = new BlockChain();
+const bytecoin = BlockChain.Instance;
 
-export default bitcoin;
+export default bytecoin;

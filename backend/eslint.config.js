@@ -1,32 +1,45 @@
-// @ts-check
+// eslint.config.js
 
-import typescript from '@typescript-eslint/eslint-plugin';
-import prettier from 'eslint-plugin-prettier';
-import simpleImportSort from 'eslint-plugin-simple-import-sort';
-import { flatConfigs } from 'eslint-plugin-import';
+import typescriptPlugin from '@typescript-eslint/eslint-plugin';
+import typescriptParser from '@typescript-eslint/parser';
+import prettierPlugin from 'eslint-plugin-prettier';
+import simpleImportSortPlugin from 'eslint-plugin-simple-import-sort';
+import importPlugin from 'eslint-plugin-import';
+import prettierConfig from 'eslint-config-prettier';
 
 export default [
   {
-    files: ['**/*.ts'],
+    files: ['src/**/*.ts', 'packages/**/*.ts', '**/*.ts'],
     languageOptions: {
-      parser: '@typescript-eslint/parser',
+      parser: typescriptParser,
       parserOptions: {
         ecmaVersion: 2020,
         sourceType: 'module',
       },
     },
     plugins: {
-      '@typescript-eslint': typescript,
-      prettier: prettier,
-      import: flatConfigs.recommended,
-      'simple-import-sort': simpleImportSort,
+      '@typescript-eslint': typescriptPlugin,
+      prettier: prettierPlugin,
+      'simple-import-sort': simpleImportSortPlugin,
+      import: importPlugin,
     },
     rules: {
       // Prettier integration
-      'prettier/prettier': 'error',
+      'prettier/prettier': [
+        'error',
+        {
+          singleQuote: true,
+          trailingComma: 'all',
+          useTabs: false,
+          tabWidth: 2,
+          bracketSpacing: true,
+          printWidth: 120,
+          endOfLine: 'auto',
+        },
+      ],
 
       // TypeScript rules
-      '@typescript-eslint/no-unused-vars': 'warn',
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/explicit-module-boundary-types': 'warn',
 
@@ -37,7 +50,8 @@ export default [
         'error',
         'ignorePackages',
         {
-          ts: 'always',
+          ts: 'never',
+          tsx: 'never',
         },
       ],
 
@@ -49,17 +63,21 @@ export default [
       'no-console': 'warn',
       'no-var': 'error',
       'prefer-const': 'error',
+      'no-console': 'off',
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "CallExpression[callee.object.name='console'][callee.property.name!=/^(log|warn|error|info|trace)$/]",
+          message: 'Unexpected property on console object was called',
+        },
+      ],
     },
-    extends: [
-      'eslint:recommended',
-      'plugin:@typescript-eslint/recommended',
-      'airbnb-base',
-      'plugin:prettier/recommended',
-    ],
     settings: {
       'import/resolver': {
         typescript: {},
       },
     },
   },
+  prettierConfig,
 ];
