@@ -1,8 +1,9 @@
 import bytecoin from '@blockchain/Blockchain';
-import { sha256 } from '@common/crypto';
-import { NetworkNode } from '@nodeP2P/NetworkNode';
+import { sha256 } from '@common/utils.js';
+import { NetworkNode, NetworkNodeConfig } from '@nodeP2P/NetworkNode';
 import bodyParser from 'body-parser';
 import crypto from 'crypto';
+import { EventId } from 'eventid';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 
@@ -30,14 +31,18 @@ import {
   TRANSACTION,
   TRANSACTION_BROADCAST,
 } from './apiPaths.js';
-import { getMessageToDial, handleNodeMessage } from './helper.js';
+import { infoHash } from './constants.js';
 
-const networkNodeConfig = {
-  genesisTimestamp: Date.now(),
+const nodeEventId = new EventId();
+
+const networkNodeConfig: NetworkNodeConfig = {
+  nodeEventId: nodeEventId.new(),
   get networkId() {
-    return sha256(this.genesisTimestamp.toString());
+    return sha256(this.nodeEventId);
   },
   protocol: '/hanshake/1.0.0',
+  infoHash: infoHash,
+  getConnectNodeCount: () => bytecoin.getNetworkNodeCount(),
 };
 
 const port = process.argv[2];
@@ -85,8 +90,8 @@ app.listen(port, async () => {
   const networkNode = new NetworkNode(networkNodeConfig);
   await networkNode.init();
 
-  networkNode.registerNodeDiscovery(getMessageToDial(), null);
-  networkNode.receiveNodeMessages(handleNodeMessage);
+  networkNode.registerNodeDiscovery();
+  networkNode.receiveNodeMessages();
 
   await networkNode.start();
   bytecoin.setCurrentNode(process.argv[3], networkNode.nodeId, publicKey);

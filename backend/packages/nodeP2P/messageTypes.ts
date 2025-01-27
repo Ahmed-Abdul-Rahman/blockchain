@@ -1,0 +1,3 @@
+export const NETWORK_DATA_EXG = 'NETWORK_DATA_EXG';
+
+export const INFO_HASH_EXG = 'INFO_HASH_EXG';

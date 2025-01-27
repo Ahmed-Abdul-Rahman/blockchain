@@ -1,4 +1,4 @@
-import { sha256 } from '@common/crypto';
+import { sha256 } from '@common/utils';
 import { KeyObject } from 'crypto';
 import { v1 as uuidV1 } from 'uuid';
 
@@ -56,6 +56,10 @@ class BlockChain {
       nodeAddress,
       publicKey: publicKey?.export({ type: 'spki', format: 'pem' }),
     };
+  }
+
+  getNetworkNodeCount(): number {
+    return this.networkNodes.length;
   }
 
   getCurrentNodePublicKey(): string | Buffer<ArrayBufferLike> | null {
