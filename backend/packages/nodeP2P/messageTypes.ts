@@ -7,3 +7,9 @@ export const HSK_IN_PRGS = 'HSK_IN_PRGS';
 export const ACTIVE = 'ACTIVE';
 
 export const LOCKED = 'LOCKED';
+
+export const PING = 'PING';
+
+export const REQUEST = 'REQUEST';
+
+export const REPLY = 'REPLY';

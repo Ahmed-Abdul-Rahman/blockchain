@@ -8,10 +8,11 @@ export interface NetworkNodeConfig {
 }
 
 export interface Ping {
+  type: string;
   targetNode: string;
   status: string;
-  byPeer: string | null;
-  timestamp: string;
+  byPeer: string;
+  timestamp: number;
 }
 
 export interface StreamMessage {
@@ -26,14 +27,16 @@ export interface StreamMessage {
 }
 
 export interface NodeObject {
-  nodePeerId?: PeerId;
+  nodePeerId: PeerId;
   nodeAddress: string;
   port?: number;
   timeline: string[];
   status: string;
-  isHandler?: string | null;
+  isDialer?: string | null;
   handlerProtocol?: string;
   lastUpdated: number;
+  requestStatus: string;
+  requestTimestamp: number | null;
 }
 
 export interface NodesStore extends Map<string, NodeObject> {}
@@ -53,3 +56,11 @@ export const isNodeObjectType = (obj: unknown | NodeObject): boolean => {
     (obj as NodeObject).timeline.every((item) => typeof item === 'string')
   );
 };
+
+export interface genericFunc {
+  (...args: unknown[]): void;
+}
+
+export interface pingFunc {
+  (targetNode: string, type?: string, status?: string): Ping;
+}

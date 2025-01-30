@@ -22,7 +22,7 @@ interface Block {
 
 interface Node {
   nodeAddress: string | null;
-  nodeUUID: string | null;
+  nodeUUID: string | null | undefined;
   publicKey: KeyObject | null;
 }
 
@@ -46,7 +46,7 @@ class BlockChain {
     return this._instance || (this._instance = new this());
   }
 
-  setCurrentNode(nodeAddress: string, nodeUUID: string | null, publicKey: KeyObject): void {
+  setCurrentNode(nodeAddress: string, nodeUUID: string | undefined, publicKey: KeyObject): void {
     this.currentNode = { nodeAddress, nodeUUID, publicKey };
   }
 

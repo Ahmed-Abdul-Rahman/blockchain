@@ -1,5 +1,3 @@
-import { PeerId } from '@libp2p/interface';
-
 import { isNodeObjectType, NodeObject, NodesStore } from './dataTypes';
 import { ACTIVE, HSK_IN_PRGS, LOCKED } from './messageTypes';
 
@@ -8,6 +6,7 @@ export class NodeStore {
 
   constructor() {
     this.nodeStore = new Map<string, NodeObject>();
+    this.pruneInActiveNodes();
   }
 
   getSize(): number {
@@ -18,28 +17,21 @@ export class NodeStore {
     return this.nodeStore.get(nodeId);
   }
 
-  getNodeDataProp(nodeId: string, property: string): PeerId | string | string[] | number | undefined | null {
+  getNodeDataProp<K extends keyof NodeObject>(nodeId: string, property: K): NodeObject[K] | undefined {
     const nodeData = this.nodeStore.get(nodeId);
     if (!nodeData) return undefined;
     return nodeData[property];
   }
 
-  updateNodeData(nodeId: string, data: NodeObject | object): void {
-    const targetNodeData = this.nodeStore.get(nodeId);
-    if (targetNodeData) this.nodeStore.set(nodeId, { ...targetNodeData, ...data, lastUpdated: Date.now() });
-    else if (typeof data === 'object' || isNodeObjectType(data))
-      this.nodeStore.set(nodeId, { ...data, lastUpdated: Date.now() } as NodeObject);
-  }
-
-  deleteNode(nodeId: string): boolean {
-    return this.nodeStore.delete(nodeId);
+  getNodeEntries(): NodeObject[] {
+    return Array.from(this.nodeStore.values());
   }
 
   getNodeURL(nodeId: string, port: string | number | null): string | null {
     const nodeData = this.nodeStore.get(nodeId);
     if (!nodeData) return null;
     if (port) this.updateNodeData(nodeId, { port });
-    return `http://${nodeData.nodeAddress}:${port}`;
+    return `http://${nodeData?.nodeAddress}:${port}`;
   }
 
   getNodeCurrentTimeline(nodeId: string): string | null {
@@ -51,16 +43,29 @@ export class NodeStore {
     return nodeData.timeline[nodeData.timeline.length - 1];
   }
 
+  updateNodeData(nodeId: string, data: NodeObject | object): void {
+    const targetNodeData = this.nodeStore.get(nodeId);
+    if (targetNodeData) this.nodeStore.set(nodeId, { ...targetNodeData, ...data, lastUpdated: Date.now() });
+    else if (typeof data === 'object' || isNodeObjectType(data))
+      this.nodeStore.set(nodeId, { ...data, lastUpdated: Date.now() } as NodeObject);
+  }
+
   updateNodeCurrentTimeline(nodeId: string, currentStage: string): void {
     const nodeData = this.nodeStore.get(nodeId);
     if (!nodeData) return;
     nodeData.timeline.push(currentStage);
   }
 
+  deleteNode(nodeId: string): boolean {
+    return this.nodeStore.delete(nodeId);
+  }
+
+  hasNode(peerId: string): boolean {
+    return this.nodeStore.has(peerId);
+  }
+
   isAnyConnectionInProgress(): boolean {
-    const nodes = this.nodeStore.values();
-    for (const { status } of nodes) if (status === HSK_IN_PRGS) return true;
-    return false;
+    return Array.from(this.nodeStore.values()).some(({ status }) => status === HSK_IN_PRGS);
   }
 
   isNodeStatusLocked(nodeId: string): boolean {
@@ -69,17 +74,21 @@ export class NodeStore {
     return false;
   }
 
+  isEveryNodeAcknowledged(value: string): boolean {
+    return this.getNodeEntries().every(({ requestStatus }) => requestStatus === value);
+  }
+
   // prune nodes that are still in the initial stages (ex: status is still INFO_HASH_EXG or NETWORK_DATA_EXG)
   pruneInActiveNodes(): void {
     setInterval(() => {
       let inActiveNodesPruned = 0;
-      this.nodeStore.forEach(({ nodePeerId, status, lastUpdated }) => {
-        if (status !== ACTIVE || Date.now() - lastUpdated > 300000) {
+      Array.from(this.nodeStore.values()).forEach(({ nodePeerId, status, lastUpdated }) => {
+        if (status !== ACTIVE && Date.now() - lastUpdated > 900000) {
           this.nodeStore.delete(nodePeerId?.toString() as string);
           inActiveNodesPruned += 1;
         }
       });
       console.log(`Pruned ${inActiveNodesPruned} in active nodes from store`);
-    }, 300000);
+    }, 900000);
   }
 }

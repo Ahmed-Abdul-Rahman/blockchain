@@ -15,3 +15,7 @@ export const generateIdProtocolPrefix = (hash: string): string => {
 };
 
 export const generateTimestamp = (): string => new Date().toISOString();
+
+export const wait = (time: number): Promise<null> => {
+  return new Promise((resolve) => setTimeout(() => resolve(null), time));
+};
