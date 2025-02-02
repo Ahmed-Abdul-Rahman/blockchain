@@ -44,7 +44,7 @@ const networkNodeConfig = {
       return sha256(this.nodeEventId);
     },
     infoHash: infoHash,
-    getNodesCount: () => bytecoin.getNetworkNodeCount(),
+    genesisTimestamp: Date.now(),
   },
   protocol: '/hanshake/1.0.0',
 };

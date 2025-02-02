@@ -10,6 +10,14 @@ export const LOCKED = 'LOCKED';
 
 export const PING = 'PING';
 
-export const REQUEST = 'REQUEST';
+export const REQ_NODE_META_DATA = 'REQ_NODE_META_DATA';
+
+export const RES_NODE_META_DATA = 'RES_NODE_META_DATA';
+
+export const REQ_NODE_DATA = 'REQ_NODE_DATA';
+
+export const RES_NODE_DATA = 'RES_NODE_DATA';
 
 export const REPLY = 'REPLY';
+
+export const RETRY_EVENT = 'retry:handshake';

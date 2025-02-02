@@ -1,23 +1,32 @@
-import { buildNodeURL, generateTimestamp, sha256, wait } from '@common/utils';
-import { PeerId } from '@libp2p/interface';
+import { buildNodeURL, pickRandom, sha256, wait } from '@common/utils';
+import { Peer, PeerId } from '@libp2p/interface';
 import { peerIdFromString } from '@libp2p/peer-id';
+import { EventEmitter } from 'events';
 import * as lp from 'it-length-prefixed';
 import { pipe } from 'it-pipe';
 import { debounce, DebouncedFunc } from 'lodash-es';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 
-import { NetworkNodeConfig, Ping, StreamMessage } from './dataTypes';
-import { ACTIVE, HSK_IN_PRGS, INFO_HASH_EXG, NTWK_DATA_EXG, REPLY, REQUEST } from './messageTypes';
+import { ACTIVE, HSK_IN_PRGS, INFO_HASH_EXG, NTWK_DATA_EXG, RETRY_EVENT } from './messageTypes';
 import { NetworkNode } from './NetworkNode';
+import { NetworkNodeConfig, StreamMessage } from './types';
+import { getInfoHashMesg, getNetworkExgMesg, readFromStream, writeToStream } from './utils';
 
 export class HandshakeProtocol extends NetworkNode {
   protocol: string;
-  debounceCoordinateNodeDiscovery: DebouncedFunc<(peerId: PeerId, nodeAddress: string) => void>;
+  retryEvent: EventEmitter;
+  coordinateNodeDiscoveryDe: DebouncedFunc<(peerId: PeerId, nodeAddress: string) => void>;
+  getInfoHashMesg: Function;
+  getNetworkExgMesg: Function;
 
   constructor({ nodeConfig, protocol }: { nodeConfig: NetworkNodeConfig; protocol: string }) {
     super(nodeConfig);
     this.protocol = protocol;
-    this.debounceCoordinateNodeDiscovery = debounce(this.coordinateNodeDiscovery.bind(this), 300, { leading: true });
+    this.retryEvent = new EventEmitter();
+    this.coordinateNodeDiscoveryDe = debounce(this.coordinateNodeDiscovery.bind(this), 1000, { trailing: true });
+    this.getInfoHashMesg = getInfoHashMesg.bind(this);
+    this.getNetworkExgMesg = getNetworkExgMesg.bind(this);
+    this.registerRetryHandshake();
   }
 
   async init(): Promise<void> {
@@ -25,56 +34,28 @@ export class HandshakeProtocol extends NetworkNode {
     await this.start();
   }
 
-  getInfoHashMessage(): object {
-    return {
-      infoHash: this.infoHash,
-      nodeEventId: this.nodeEventId,
-      nodeId: this.nodeId,
-      stage: INFO_HASH_EXG,
-      timestamp: generateTimestamp(),
-    };
-  }
-
-  getNetworkExgMesg(): object {
-    return {
-      connectedNodesCount: this.getNodesCount(),
-      nodeAddress: this.nodeAddress,
-      port: process.env.SERVER_PORT,
-      nodeId: this.nodeId,
-      stage: NTWK_DATA_EXG,
-      timestamp: generateTimestamp(),
-    };
-  }
-
   coordinateNodeDiscovery(peerId: PeerId, nodeAddress: string): void {
-    const requestMessage = this.getPingMsg(peerId.toString(), REQUEST) as Ping;
-    const isPublished = this.publishPingMsg(JSON.stringify(requestMessage));
-    if (!isPublished) {
-      this.initiateHandshakeProtocol(peerId, nodeAddress, requestMessage.timestamp);
-    } else {
-      if (this.nodeStore.isEveryNodeAcknowledged(REPLY)) {
-        this.initiateHandshakeProtocol(peerId, nodeAddress, requestMessage.timestamp);
-      }
+    if (this.isNewNode()) {
+      this.initiateHandshakeProtocol(peerId, nodeAddress);
     }
   }
 
-  /**
-   * Critical Function Should be accessed by a new node or only one node in a network based on consensus
-   */
-  async initiateHandshakeProtocol(peerId: PeerId, nodeAddress: string, pingRequestTimestamp: number): Promise<void> {
-    // if (this.isPingRegistered) this.publishPingMsg(JSON.stringify(this.getPingMsg(peerId.toString())));
+  async initiateHandshakeProtocol(peerId: PeerId, nodeAddress: string): Promise<void> {
     const stream = await this.dialNode(peerId, this.protocol);
     if (stream) {
-      await this.writeToStream(stream, JSON.stringify(this.getInfoHashMessage()));
+      await writeToStream(stream, JSON.stringify(this.getInfoHashMesg()));
       this.nodeStore.updateNodeData(peerId.toString(), {
-        nodePeerId: peerId,
+        nodePeerId: peerId.toString(),
         nodeAddress,
         timeline: [INFO_HASH_EXG],
         status: INFO_HASH_EXG,
         isDialer: null,
-        requestTimestamp: this.isPingRegistered ? pingRequestTimestamp : null,
       });
     }
+  }
+  retryHandshake(): void {
+    this.retryEvent.emit(RETRY_EVENT);
+    console.log('Retrying with a different peer node');
   }
 
   registerNodeDiscovery(): void {
@@ -83,7 +64,19 @@ export class HandshakeProtocol extends NetworkNode {
       const peerId = event.detail.id;
       const { address } = event.detail.multiaddrs[1].nodeAddress();
       console.log(`Discovered Node: ${peerId.toString()} with address: ${address}`);
-      this.debounceCoordinateNodeDiscovery(peerId, address);
+      this.coordinateNodeDiscoveryDe(peerId, address);
+    });
+  }
+
+  registerRetryHandshake(): void {
+    this.retryEvent.addListener(RETRY_EVENT, async () => {
+      const peers = (await this.node?.peerStore.all()) as Peer[];
+      if (this.isNewNode() && peers.length) {
+        const randomPeer = pickRandom(peers) as Peer;
+        const peerId = randomPeer.id;
+        const nodeAddress = randomPeer.addresses[0].multiaddr.nodeAddress().address;
+        this.initiateHandshakeProtocol(peerId, nodeAddress);
+      }
     });
   }
 
@@ -102,6 +95,7 @@ export class HandshakeProtocol extends NetworkNode {
             }
           } catch (error) {
             console.log(`Expected a JSON parseable message`, error);
+            this.retryHandshake();
           }
         },
       );
@@ -112,19 +106,20 @@ export class HandshakeProtocol extends NetworkNode {
     infoHash: string;
     nodeEventId: string;
     nodeId: string;
+    nodeAddress: string;
   }): Promise<void> {
     if (!this.node) return;
-    const { infoHash, nodeEventId, nodeId } = infoMessageMessage;
+    const { infoHash, nodeEventId, nodeId, nodeAddress } = infoMessageMessage;
 
     if (!infoHash || infoHash !== this.infoHash || !nodeEventId || !nodeId) {
       console.log('Ignoring node with invalid data');
       nodeId && this.nodeStore.deleteNode(nodeId);
+      this.retryHandshake();
       return;
     }
     if (this.nodeStore.hasNode(nodeId)) this.nodeStore.updateNodeData(nodeId, { status: HSK_IN_PRGS });
     else {
-      console.log(`Ignoring Node ${nodeId} as it is not present in the store`);
-      return;
+      this.initiateHandshakeProtocol(peerIdFromString(nodeId), nodeAddress);
     }
     // commonSessionHash is the unqiue session identifier between these two peers
     if ((this.nodeEventId as string) >= (nodeEventId as string)) {
@@ -145,10 +140,10 @@ export class HandshakeProtocol extends NetworkNode {
     if (this.nodeStore.getNodeCurrentTimeline(nodeId) === INFO_HASH_EXG) {
       this.nodeStore.updateNodeData(nodeId, { isDialer: false });
       const stream = await this.dialNode(peerIdToDial, `${this.protocol}/${sessionHash}`);
-      await this.writeToStream(stream, JSON.stringify(this.getNetworkExgMesg()));
+      await writeToStream(stream, JSON.stringify(this.getNetworkExgMesg()));
       this.nodeStore.updateNodeCurrentTimeline(nodeId, NTWK_DATA_EXG);
 
-      const [response] = await this.readFromStream(stream);
+      const [response] = await readFromStream(stream);
       console.log('Received message from handler: ', response);
       this.initiateNodeRegistration(response as StreamMessage, (x, y) => x >= y);
     } else
@@ -159,13 +154,13 @@ export class HandshakeProtocol extends NetworkNode {
     if (!this.node) return;
 
     this.node.handle(`${this.protocol}/${sessionHash}`, async ({ stream }) => {
-      const [response] = await this.readFromStream(stream);
+      const [response] = await readFromStream(stream);
       const { stage, nodeId } = response as StreamMessage;
       console.log('Received message from dialer: ', response);
       this.nodeStore.updateNodeData(nodeId, { isDialer: true, handlerProtocol: `${this.protocol}/${sessionHash}` });
       if (this.nodeStore.getNodeCurrentTimeline(nodeId) === INFO_HASH_EXG) {
         if (stage === NTWK_DATA_EXG) {
-          this.writeToStream(stream, JSON.stringify(this.getNetworkExgMesg()));
+          writeToStream(stream, JSON.stringify(this.getNetworkExgMesg()));
           this.nodeStore.updateNodeCurrentTimeline(nodeId, NTWK_DATA_EXG);
         }
         this.initiateNodeRegistration(response as StreamMessage, (x, y) => x > y);
@@ -173,16 +168,17 @@ export class HandshakeProtocol extends NetworkNode {
     });
   }
 
-  initiateNodeRegistration(response: StreamMessage, evaluator: (x: number, y: number) => boolean): void {
+  async initiateNodeRegistration(response: StreamMessage, evaluator: (x: number, y: number) => boolean): Promise<void> {
     if (!response) return;
     const { connectedNodesCount, nodeAddress, port, nodeId } = response;
     if (connectedNodesCount == null || nodeId == null) return;
 
     // will need to move the below line somewhere else where you know you have successfully registered the node
-    this.nodeStore.updateNodeData(nodeId, { status: ACTIVE, timeline: [] });
-    this.handlePings();
+    this.nodeStore.updateNodeData(nodeId, { status: ACTIVE, timeline: [], port });
+    this.registerCommChannels();
+    await wait(100);
 
-    if (evaluator(this.getNodesCount(), connectedNodesCount) && nodeAddress != null && port != null) {
+    if (evaluator(this.nodeStore.getSize(), connectedNodesCount) && nodeAddress != null && port != null) {
       const registerNodeRequest = {
         method: 'post',
         url: this.nodeStore.getNodeURL(nodeId, port) + '/register-and-broadcast-node',
@@ -190,7 +186,11 @@ export class HandshakeProtocol extends NetworkNode {
       };
       console.log('Node: ', this.nodeId?.toString(), 'Should send API request ', registerNodeRequest);
     }
-    if (this.nodeStore.getNodeDataProp(nodeId, 'isDialer'))
-      this.unhandleProtocol(this.nodeStore.getNodeDataProp(nodeId, 'handlerProtocol') as string);
+    if (this.nodeStore.getNodeDataProp(nodeId, 'isDialer')) {
+      const handlerProtocol = this.nodeStore.getNodeDataProp(nodeId, 'handlerProtocol') as string;
+      this.unhandleProtocol(handlerProtocol);
+      this.nodeStore.updateNodeData(nodeId, { handlerProtocol: null });
+    }
+    this.registerNodeStoreUpdates();
   }
 }

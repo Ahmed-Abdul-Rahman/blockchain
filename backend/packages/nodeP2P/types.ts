@@ -1,17 +1,14 @@
-import { PeerId } from '@libp2p/interface';
-
 export interface NetworkNodeConfig {
   nodeEventId: string;
   networkId: string;
   infoHash: string;
-  getNodesCount: Function;
+  genesisTimestamp: number;
 }
 
 export interface Ping {
   type: string;
-  targetNode: string;
   status: string;
-  byPeer: string;
+  fromNode: string;
   timestamp: number;
 }
 
@@ -27,7 +24,7 @@ export interface StreamMessage {
 }
 
 export interface NodeObject {
-  nodePeerId: PeerId;
+  nodePeerId: string;
   nodeAddress: string;
   port?: number;
   timeline: string[];
@@ -56,11 +53,3 @@ export const isNodeObjectType = (obj: unknown | NodeObject): boolean => {
     (obj as NodeObject).timeline.every((item) => typeof item === 'string')
   );
 };
-
-export interface genericFunc {
-  (...args: unknown[]): void;
-}
-
-export interface pingFunc {
-  (targetNode: string, type?: string, status?: string): Ping;
-}

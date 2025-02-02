@@ -1,5 +1,7 @@
-import { isNodeObjectType, NodeObject, NodesStore } from './dataTypes';
-import { ACTIVE, HSK_IN_PRGS, LOCKED } from './messageTypes';
+import { isEqual, set, unionWith } from 'lodash-es';
+
+import { ACTIVE } from './messageTypes';
+import { isNodeObjectType, NodeObject, NodesStore } from './types';
 
 export class NodeStore {
   private nodeStore: NodesStore;
@@ -54,6 +56,21 @@ export class NodeStore {
     const nodeData = this.nodeStore.get(nodeId);
     if (!nodeData) return;
     nodeData.timeline.push(currentStage);
+    set(nodeData, 'lastUpdated', Date.now());
+  }
+
+  updateNodeStore(nodes: NodeObject[]): void {
+    const isNodeEqual = (sourceVal, otherVal) => {
+      if (isEqual(sourceVal, otherVal)) return true;
+      if (sourceVal.nodePeerId === otherVal.nodePeerId) return true;
+      return false;
+    };
+    this.nodeStore = new Map<string, NodeObject>(
+      unionWith(Array.from(this.nodeStore.values()), nodes, isNodeEqual).map((node) => [
+        node.nodePeerId,
+        set(node, 'lastUpdated', Date.now()),
+      ]),
+    );
   }
 
   deleteNode(nodeId: string): boolean {
@@ -64,31 +81,20 @@ export class NodeStore {
     return this.nodeStore.has(peerId);
   }
 
-  isAnyConnectionInProgress(): boolean {
-    return Array.from(this.nodeStore.values()).some(({ status }) => status === HSK_IN_PRGS);
-  }
-
-  isNodeStatusLocked(nodeId: string): boolean {
-    const targetNodeData = this.nodeStore.get(nodeId);
-    if (targetNodeData) return targetNodeData.status === LOCKED;
-    return false;
-  }
-
-  isEveryNodeAcknowledged(value: string): boolean {
-    return this.getNodeEntries().every(({ requestStatus }) => requestStatus === value);
-  }
-
   // prune nodes that are still in the initial stages (ex: status is still INFO_HASH_EXG or NETWORK_DATA_EXG)
-  pruneInActiveNodes(): void {
-    setInterval(() => {
+  pruneInActiveNodes(): NodeJS.Timeout {
+    const intervalId = setInterval(() => {
       let inActiveNodesPruned = 0;
-      Array.from(this.nodeStore.values()).forEach(({ nodePeerId, status, lastUpdated }) => {
+      Array.from(this.nodeStore.values()).forEach((node) => {
+        const { nodePeerId, status, lastUpdated } = node;
         if (status !== ACTIVE && Date.now() - lastUpdated > 900000) {
-          this.nodeStore.delete(nodePeerId?.toString() as string);
+          this.nodeStore.delete(nodePeerId);
           inActiveNodesPruned += 1;
         }
+        console.log(node);
       });
       console.log(`Pruned ${inActiveNodesPruned} in active nodes from store`);
-    }, 900000);
+    }, 60000);
+    return intervalId;
   }
 }
