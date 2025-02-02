@@ -7,12 +7,14 @@
   "scripts": {
     "build": "tsc && tsc-alias --resolve-full-paths",
     "start": "node build/src/index.js",
-    "dev": "nodemon --watch src --ext ts --exec tsx -r tsconfig-paths/register src/index.ts",
-    "node_1": "nodemon --watch src --ext ts --exec tsx -r tsconfig-paths/register src/index.ts 3001 http://localhost:3001",
-    "node_2": "nodemon --watch src --ext ts --exec tsx -r tsconfig-paths/register src/index.ts 3002 http://localhost:3002",
-    "node_3": "nodemon --watch src --ext ts --exec tsx -r tsconfig-paths/register src/index.ts 3003 http://localhost:3003",
-    "node_4": "nodemon --watch src --ext ts --exec tsx -r tsconfig-paths/register src/index.ts 3004 http://localhost:3004",
-    "node_5": "nodemon --watch src --ext ts --exec tsx -r tsconfig-paths/register src/index.ts 3005 http://localhost:3005",
+    "dev": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts",
+    "node": "tsx -r tsconfig-paths/register src/index.ts",
+    "testing": "tsx -r tsconfig-paths/register packages/nodeP2P/utils.ts",
+    "node_1": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts 3001 http://localhost:3001",
+    "node_2": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts 3002 http://localhost:3002",
+    "node_3": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts 3003 http://localhost:3003",
+    "node_4": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts 3004 http://localhost:3004",
+    "node_5": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts 3005 http://localhost:3005",
     "test": "echo \"Error: no test specified\" && exit 1",
     "lint": "eslint . ",
     "lint:fix": "eslint . --fix",
@@ -20,17 +22,38 @@
   },
   "author": "Ahmed Abdul Rahman",
   "license": "ISC",
+  "nodemonConfig": {
+    "ignore": [
+      "**/test/**",
+      "**/docs/**",
+      "node_modules/**/node_modules"
+    ],
+    "watch": [
+      "src",
+      "packages"
+    ],
+    "ext": "ts"
+  },
   "dependencies": {
+    "@chainsafe/libp2p-gossipsub": "^14.1.0",
     "@chainsafe/libp2p-noise": "^16.0.1",
     "@chainsafe/libp2p-yamux": "^7.0.1",
+    "@libp2p/identify": "^3.0.15",
     "@libp2p/mdns": "^11.0.17",
+    "@libp2p/peer-id": "^5.0.10",
     "@libp2p/tcp": "^10.0.15",
+    "@types/lodash-es": "^4.17.12",
     "axios": "^1.7.9",
     "body-parser": "^1.20.3",
+    "crc-32": "^1.2.2",
+    "eventid": "^2.0.1",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
+    "it-length-prefixed": "^9.1.1",
+    "it-map": "^3.1.1",
     "it-pipe": "^3.0.1",
     "libp2p": "^2.5.0",
+    "lodash-es": "^4.17.21",
     "uuid": "^11.0.5"
   },
   "devDependencies": {
@@ -49,7 +72,6 @@
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "nodemon": "^3.1.9",
     "prettier": "^3.1.0",
-    "ts-node": "^10.9.2",
     "tsc-alias": "^1.8.10",
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.19.2",
