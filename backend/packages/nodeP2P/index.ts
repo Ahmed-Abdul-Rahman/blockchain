@@ -1,5 +1,5 @@
-import { NetworkNodeConfig } from './dataTypes';
 import { HandshakeProtocol } from './HandshakeProtocol';
+import { NetworkNodeConfig } from './types';
 
 const createNetworkNode = async (configuration: {
   nodeConfig: NetworkNodeConfig;

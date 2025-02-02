@@ -10,9 +10,9 @@ export interface NetworkNodeConfig {
 export interface Ping {
   type: string;
   targetNode: string;
-  status: string;
   byPeer: string;
-  timestamp: number;
+  nodeEventId: string;
+  logicalTime: number;
 }
 
 export interface StreamMessage {
@@ -26,6 +26,15 @@ export interface StreamMessage {
   timestamp: string;
 }
 
+export interface PingDetails {
+  type: string | null;
+  logicalTime: number;
+  replyCounter: number;
+  deferCounter: number;
+  stopExec: boolean;
+  waitingForAck: boolean;
+}
+
 export interface NodeObject {
   nodePeerId: PeerId;
   nodeAddress: string;
@@ -35,8 +44,7 @@ export interface NodeObject {
   isDialer?: string | null;
   handlerProtocol?: string;
   lastUpdated: number;
-  requestStatus: string;
-  requestTimestamp: number | null;
+  pingDetails: PingDetails;
 }
 
 export interface NodesStore extends Map<string, NodeObject> {}
@@ -62,5 +70,19 @@ export interface genericFunc {
 }
 
 export interface pingFunc {
-  (targetNode: string, type?: string, status?: string): Ping;
+  (targetNode: string, type: string, logicalTime: number): Ping;
 }
+
+export interface customRejectError {
+  reason: string;
+  isMajorityAcknowledged: Function;
+}
+
+export const isCustomRejectError = (error: unknown): error is customRejectError => {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'reason' in error &&
+    typeof (error as customRejectError).isMajorityAcknowledged === 'function'
+  );
+};

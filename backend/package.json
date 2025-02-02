@@ -9,6 +9,7 @@
     "start": "node build/src/index.js",
     "dev": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts",
     "node": "tsx -r tsconfig-paths/register src/index.ts",
+    "testing": "tsx -r tsconfig-paths/register packages/nodeP2P/utils.ts",
     "node_1": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts 3001 http://localhost:3001",
     "node_2": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts 3002 http://localhost:3002",
     "node_3": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts 3003 http://localhost:3003",

@@ -1,19 +1,17 @@
 import { GossipSub, gossipsub } from '@chainsafe/libp2p-gossipsub';
 import { noise } from '@chainsafe/libp2p-noise';
 import { yamux } from '@chainsafe/libp2p-yamux';
+import { identify } from '@libp2p/identify';
 import { PeerId, Stream } from '@libp2p/interface';
 import { mdns } from '@libp2p/mdns';
 import { tcp } from '@libp2p/tcp';
-import * as lp from 'it-length-prefixed';
-import map from 'it-map';
-import { pipe } from 'it-pipe';
 import { createLibp2p, Libp2p } from 'libp2p';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 
-import { NetworkNodeConfig, Ping, pingFunc } from './dataTypes';
-import { REPLY, REQUEST } from './messageTypes';
+import { DEFERRED, REPLY, REQUEST } from './messageTypes';
 import { NodeStore } from './NodeStore';
+import { NetworkNodeConfig, Ping, PingDetails, pingFunc } from './types';
 import { getPingMesg } from './utils';
 
 export class NetworkNode {
@@ -59,6 +57,7 @@ export class NetworkNode {
         }),
       ],
       services: {
+        identify: identify(),
         pubsub: gossipsub({ emitSelf: false }),
       },
     });
@@ -73,40 +72,10 @@ export class NetworkNode {
     process.env.NODE_ADDRESS = this.node.getMultiaddrs()[1].nodeAddress().address;
   }
 
-  async writeToStream(stream: Stream | null, message: string): Promise<void> {
-    if (!stream) {
-      console.log('Cannot write to stream as it is null');
-      return;
-    }
-    await pipe(
-      [message],
-      (source) => map(source, (string) => uint8ArrayFromString(string)),
-      (source) => lp.encode(source), // Encode with length prefix (so receiving side knows how much data is coming)
-      stream,
-    );
-  }
-
-  async readFromStream(stream: Stream | null): Promise<Partial<object>[]> {
-    if (!stream) {
-      console.log('Cannot read from stream as it is null');
-      return [];
-    }
-    return await pipe(
-      stream,
-      (source) => lp.decode(source),
-      (source) => map(source, (buffer) => uint8ArrayToString(buffer.subarray())),
-      async (source) => {
-        const messages: Array<Partial<object>> = [];
-        for await (const message of source) messages.push(JSON.parse(message));
-        return messages;
-      },
-    );
-  }
-
-  async dialNode(nodeToDial: PeerId, protocol: string): Promise<Stream | null> {
+  async dialNode(nodeToDial: PeerId, protocol: string, instance: number): Promise<Stream | null> {
     if (!this.node) return null;
     try {
-      console.log(`Dialing Protocol: ${protocol} to node: ${nodeToDial}`);
+      console.log(`${instance} Dialing Protocol: ${protocol} to node: ${nodeToDial}`);
       const stream = (await this.node.dialProtocol(nodeToDial, protocol)) || null;
       return stream;
     } catch (err) {
@@ -119,62 +88,77 @@ export class NetworkNode {
     await this.node?.unhandle(protocol);
   }
 
-  publishPingMsg(message: string | object): boolean {
-    // this.nodeStore.getNodeEntries().forEach(async ({ nodePeerId }) => {
-    //   const stream = await this.dialNode(nodePeerId, this.pingProtocol);
-    //   if (stream) this.writeToStream(stream, message);
-    // });
+  isNewNode(): boolean {
+    return !this.isPingRegistered && this.nodeStore.getSize() === 0;
+  }
+
+  publishPingMsg(message: string | object): object | string | null {
+    if (!this.pubsub) return null;
     const data = typeof message === 'string' ? message : JSON.stringify(message);
-    if (this.isPingRegistered) this.pubsub?.publish(this.pingProtocol, uint8ArrayFromString(data));
+    this.pubsub?.publish(this.pingProtocol, uint8ArrayFromString(data));
+    return message;
+  }
+
+  publishPingReply(protocol: string, message: string | object): boolean {
+    if (!this.pubsub) return false;
+    const data = typeof message === 'string' ? message : JSON.stringify(message);
+    if (this.isPingRegistered) this.pubsub.publish(protocol, uint8ArrayFromString(data));
     return this.isPingRegistered;
   }
 
   handlePings(): void {
-    if (this.isPingRegistered) return;
-    this.pubsub?.addEventListener('message', (message) => {
+    if (this.isPingRegistered || !this.pubsub || !this.nodeId) return;
+
+    this.pubsub.addEventListener('message', (message) => {
       // console.log(`${message.detail.topic}:`, new TextDecoder().decode(message.detail.data));
       if (message.detail.topic === this.pingProtocol) {
         const data = uint8ArrayToString(message.detail.data);
         console.log('Received ping: ', data);
-        const { type, timestamp, targetNode, byPeer } = JSON.parse(data) as Ping;
+        const { type, logicalTime: reqLogicalTime, targetNode, byPeer, nodeEventId } = JSON.parse(data) as Ping;
         if (type === REQUEST) {
-          const targetNodeData = this.nodeStore.getNodeData(targetNode);
+          const targetNodeData = this.nodeStore.getNodeDataProp(targetNode, 'pingDetails') as PingDetails;
           if (targetNodeData) {
-            const { requestTimestamp } = targetNodeData; // TODO compare this requestTimestamp with timestamp whichever is less will be given access to critical function
+            const { logicalTime } = targetNodeData;
+            // if (!logicalClock) {
+            //   console.log('Returning as logical clock is undefined for node: ', targetNode);
+            //   return;
+            // }
+            // const currentTime = logicalClock.update(requestLogicalTime);
+            // console.log(currentTime, requestLogicalTime, this.nodeEventId < nodeEventId);
+            if (logicalTime < reqLogicalTime || (logicalTime === reqLogicalTime && this.nodeEventId < nodeEventId)) {
+              console.log('Send Deferred the request');
+              this.publishPingReply(byPeer, this.getPingMsg(targetNode, DEFERRED, 0));
+            } else {
+              // stop your execution of critical section
+              this.publishPingReply(byPeer, this.getPingMsg(targetNode, REPLY, 0));
+              this.nodeStore.updateNodeData(targetNode, { stopExec: true });
+              console.log('I should stop executing critical section');
+            }
           } else {
-            this.publishPingMsg(this.getPingMsg(REPLY, targetNode));
+            this.publishPingReply(byPeer, this.getPingMsg(targetNode, REPLY, 0));
           }
-        } else if (type === REPLY) {
-          // this might be a wrong place to update
-          // We need to maintain a list of all the replies for a given targetNode
-          // not directly update a peer who sent this reply
-          // Think about this more!
-          this.nodeStore.updateNodeData(byPeer, { requestStatus: REPLY });
         }
-        // what if some node does not have this tragetNode present yet
-        // if (status === LOCKED) this.nodeStore.updateNodeData(targetNode, { status: LOCKED });
+      } else if (message.detail.topic === this.nodeId?.toString()) {
+        const data = uint8ArrayToString(message.detail.data);
+        console.log('Received reply of ping: ', data);
+        const { type, targetNode } = JSON.parse(data) as Ping;
+        // We are maintaining the reply counter and deferred counter for the targetNode
+        // if sum of both matches the number of nodes in nodeStore-1(-1 exclude the new node which is added before calling initiateHandshakeProtocol) t
+        // is sum matches with nodeStore-1 that means all replies and defers were received.
+        // if all are replies proceed to critical section
+        // if any one of them if deferred then dont proceed to critical section
+        if (type === REPLY) {
+          const { replyCounter } = this.nodeStore.getNodeDataProp(targetNode, 'pingDetails') as PingDetails;
+          this.nodeStore.updateNodeProp(targetNode, 'pingDetails.replyCounter', replyCounter + 1);
+        } else if (type === DEFERRED) {
+          const { deferCounter } = this.nodeStore.getNodeDataProp(targetNode, 'pingDetails') as PingDetails;
+          this.nodeStore.updateNodeProp(targetNode, 'pingDetails.deferCounter', deferCounter + 1);
+          // dont proceed to the critical section some other node has already taken access
+        }
       }
     });
-    this.pubsub?.subscribe(this.pingProtocol);
+    this.pubsub.subscribe(this.pingProtocol);
+    this.pubsub.subscribe(this.nodeId.toString());
     this.isPingRegistered = true;
-    // this.node?.handle(this.pingProtocol, async ({ stream }) => {
-    //   pipe(
-    //     stream,
-    //     (source) => lp.decode(source),
-    //     async (source) => {
-    //       try {
-    //         for await (const msg of source) {
-    //           const message = uint8ArrayToString(msg.subarray());
-    //           console.log('Received ping: ', message);
-    //           const { status, targetNode } = JSON.parse(message) as Ping;
-    //           // what if some node does not have this tragetNode present yet
-    //           if (status === LOCKED) this.nodeStore.updateNodeData(targetNode, { status: LOCKED });
-    //         }
-    //       } catch (error) {
-    //         console.log(`Expected a JSON parseable ping message`, error);
-    //       }
-    //     },
-    //   );
-    // });
   }
 }
