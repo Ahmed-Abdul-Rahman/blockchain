@@ -174,7 +174,7 @@ export class HandshakeProtocol extends NetworkNode {
     if (connectedNodesCount == null || nodeId == null) return;
 
     // will need to move the below line somewhere else where you know you have successfully registered the node
-    this.nodeStore.updateNodeData(nodeId, { status: ACTIVE, timeline: [], port });
+    this.nodeStore.updateNodeData(nodeId, { status: ACTIVE, timeline: [], nodeAddress, port });
     this.registerCommChannels();
     await wait(100);
 
@@ -182,7 +182,10 @@ export class HandshakeProtocol extends NetworkNode {
       const registerNodeRequest = {
         method: 'post',
         url: this.nodeStore.getNodeURL(nodeId, port) + '/register-and-broadcast-node',
-        data: { newNodeUrl: buildNodeURL(this.nodeAddress, process.env.SERVER_PORT), nodeUUID: this.nodeId },
+        data: {
+          newNodeUrl: buildNodeURL(this.nodeAddress, process.env.SERVER_PORT),
+          nodeUUID: this.nodeId?.toString(),
+        },
       };
       console.log('Node: ', this.nodeId?.toString(), 'Should send API request ', registerNodeRequest);
     }

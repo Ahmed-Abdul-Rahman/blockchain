@@ -25,7 +25,14 @@ export class NodeStore {
     return nodeData[property];
   }
 
-  getNodeEntries(): NodeObject[] {
+  getNodeEntries(sparse?: boolean): NodeObject[] | Partial<NodeObject>[] {
+    if (sparse)
+      return Array.from(this.nodeStore.values()).map(({ nodeAddress, nodePeerId, port, status }) => ({
+        nodeAddress,
+        nodePeerId,
+        port,
+        status,
+      }));
     return Array.from(this.nodeStore.values());
   }
 
@@ -55,7 +62,7 @@ export class NodeStore {
   updateNodeCurrentTimeline(nodeId: string, currentStage: string): void {
     const nodeData = this.nodeStore.get(nodeId);
     if (!nodeData) return;
-    nodeData.timeline.push(currentStage);
+    nodeData.timeline?.push(currentStage);
     set(nodeData, 'lastUpdated', Date.now());
   }
 
@@ -93,8 +100,8 @@ export class NodeStore {
         }
         console.log(node);
       });
-      console.log(`Pruned ${inActiveNodesPruned} in active nodes from store`);
-    }, 60000);
+      console.log(`Pruned ${inActiveNodesPruned} inactive nodes from store`);
+    }, 10000);
     return intervalId;
   }
 }

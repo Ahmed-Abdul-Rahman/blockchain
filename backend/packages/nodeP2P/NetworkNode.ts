@@ -10,9 +10,9 @@ import { createLibp2p, Libp2p } from 'libp2p';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 
-import { REQ_NODE_DATA, REQ_NODE_META_DATA, RES_NODE_DATA, RES_NODE_META_DATA } from './messageTypes';
+import { ACTIVE, ANNOUNCE_PRESENCE, ANNOUNCE_PRESENCE_RES } from './messageTypes';
 import { NodeStore } from './NodeStore';
-import { NetworkNodeConfig, Ping } from './types';
+import { NetworkNodeConfig } from './types';
 
 export class NetworkNode {
   nodeEventId: string; // unique monotonically incresing unique id to compare with peers to establish handshake
@@ -59,7 +59,7 @@ export class NetworkNode {
           protocolPrefix: generateIdProtocolPrefix(this.infoHash),
           agentVersion: 'NodeAgent-1.0.0',
         }),
-        pubsub: gossipsub({ emitSelf: false, allowPublishToZeroTopicPeers: true }),
+        pubsub: gossipsub({ emitSelf: false, allowPublishToZeroTopicPeers: false }),
       },
     });
     this.pubsub = this.node.services.pubsub as GossipSub;
@@ -108,65 +108,54 @@ export class NetworkNode {
   registerCommChannels(): void {
     if (this.isPingRegistered) return;
     this.pubsub?.addEventListener('message', (message) => {
-      switch (message.detail.topic) {
-        case this.pingProtocol:
-          this.handlePingMessages(message);
-          break;
-        case `${this.pingProtocol}/${this.nodeId?.toString()}`:
-          this.handleSelfNodePings(message);
-          break;
-        default:
-          break;
-      }
+      console.log(message.detail.topic, message.detail.data);
+      if (message.detail.topic === this.pingProtocol) this.handlePingMessages(message);
     });
     this.pubsub?.subscribe(this.pingProtocol);
-    this.pubsub?.subscribe(`${this.pingProtocol}/${this.nodeId?.toString()}`);
+    // this.pubsub?.subscribe(`${this.pingProtocol}/${this.nodeId?.toString()}`); not working !
     this.isPingRegistered = true;
   }
 
   // We need to handle the nodes store synchrnoization problem - at present nodes have different copies of nodes
   registerNodeStoreUpdates(): NodeJS.Timeout {
-    const intervalId = setInterval(() => {
-      this.publishPingMsg(this.pingProtocol, { type: REQ_NODE_META_DATA, fromNode: this.nodeId?.toString() });
-    }, 30000);
-    return intervalId;
+    const timeoutId = setTimeout(() => {
+      this.publishPingMsg(this.pingProtocol, {
+        type: ANNOUNCE_PRESENCE,
+        fromNode: this.nodeId?.toString(),
+        nodeData: {
+          nodePeerId: this.nodeId?.toString(),
+          nodeAddress: this.nodeAddress,
+          port: process.env.SERVER_PORT,
+          status: ACTIVE,
+        },
+      });
+    }, 10000);
+    return timeoutId;
   }
 
   handlePingMessages(message: CustomEvent<Message>): void {
     const data = uint8ArrayToString(message.detail.data);
     console.log('Received ping: ', data);
-    const { type, fromNode } = JSON.parse(data) as Ping;
-    if (type === REQ_NODE_META_DATA) {
-      this.publishPingMsg(`${this.pingProtocol}/${fromNode}`, {
-        type: RES_NODE_META_DATA,
-        fromNode: this.nodeId?.toString(),
-        nodeCount: this.nodeStore.getSize(),
-      });
-    } else if (type === REQ_NODE_DATA) {
-      this.publishPingMsg(`${this.pingProtocol}/${fromNode}`, {
-        type: RES_NODE_DATA,
-        fromNode: this.nodeId?.toString(),
-        nodeEntries: this.nodeStore.getNodeEntries(),
-      });
+    const { type, fromNode, nodeData } = JSON.parse(data);
+    if (type === ANNOUNCE_PRESENCE) {
+      if (!this.nodeStore.hasNode(fromNode)) this.nodeStore.updateNodeData(fromNode, nodeData);
+      setTimeout(
+        () =>
+          this.publishPingMsg(this.pingProtocol, {
+            type: ANNOUNCE_PRESENCE_RES,
+            fromNode: this.nodeId?.toString(),
+            nodeData: {
+              nodePeerId: this.nodeId?.toString(),
+              nodeAddress: this.nodeAddress,
+              port: process.env.SERVER_PORT,
+              status: ACTIVE,
+            },
+          }),
+        10000,
+      ); // Delay of 10sec so the network is not flooded with these messages all at once
     }
-  }
-
-  handleSelfNodePings(message: CustomEvent<Message>): void {
-    const data = uint8ArrayToString(message.detail.data);
-    const { type, nodeEntries, nodeCount, fromNode } = JSON.parse(data);
-    console.log('Received node info');
-    if (type === RES_NODE_META_DATA) {
-      if (nodeCount !== 0 && this.nodeStore.getSize() != nodeCount) {
-        this.publishPingMsg(`${this.pingProtocol}/${fromNode}`, {
-          type: REQ_NODE_DATA,
-          fromNode: this.nodeId?.toString(),
-        });
-      } else console.log('Nodes already upto date.');
-    } else if (type === RES_NODE_DATA) {
-      if (nodeEntries && nodeEntries.length != 0 && nodeEntries.length != this.nodeStore.getSize()) {
-        this.nodeStore.updateNodeStore(nodeEntries);
-        this.nodeStore.deleteNode(this.nodeId?.toString() as string);
-      }
+    if (type === ANNOUNCE_PRESENCE_RES) {
+      if (!this.nodeStore.hasNode(fromNode)) this.nodeStore.updateNodeData(fromNode, nodeData);
     }
   }
 }

@@ -26,19 +26,17 @@ export interface StreamMessage {
 export interface NodeObject {
   nodePeerId: string;
   nodeAddress: string;
-  port?: number;
-  timeline: string[];
+  port: number;
   status: string;
+  timeline?: string[];
   isDialer?: string | null;
   handlerProtocol?: string;
   lastUpdated: number;
-  requestStatus: string;
-  requestTimestamp: number | null;
 }
 
 export interface NodesStore extends Map<string, NodeObject> {}
 
-export const isNodeObjectType = (obj: unknown | NodeObject): boolean => {
+export const isNodeObjectType = (obj: unknown | NodeObject): boolean | undefined => {
   return (
     typeof obj === 'object' &&
     obj !== null &&
@@ -50,6 +48,6 @@ export const isNodeObjectType = (obj: unknown | NodeObject): boolean => {
     typeof (obj as NodeObject).nodeAddress === 'string' &&
     typeof (obj as NodeObject).port === 'number' &&
     typeof (obj as NodeObject).status === 'string' &&
-    (obj as NodeObject).timeline.every((item) => typeof item === 'string')
+    (obj as NodeObject).timeline?.every((item) => typeof item === 'string')
   );
 };

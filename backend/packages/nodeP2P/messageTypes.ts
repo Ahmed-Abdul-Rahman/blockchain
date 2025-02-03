@@ -20,4 +20,8 @@ export const RES_NODE_DATA = 'RES_NODE_DATA';
 
 export const REPLY = 'REPLY';
 
+export const ANNOUNCE_PRESENCE = 'ANNOUNCE_PRESENCE';
+
+export const ANNOUNCE_PRESENCE_RES = 'ANNOUNCE_PRESENCE_RES';
+
 export const RETRY_EVENT = 'retry:handshake';
