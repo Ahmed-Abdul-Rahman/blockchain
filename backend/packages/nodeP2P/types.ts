@@ -5,7 +5,7 @@ export interface NetworkNodeConfig {
   genesisTimestamp: number;
 }
 
-export interface Ping {
+export interface Ping extends Record<string, unknown> {
   type: string;
   status: string;
   fromNode: string;

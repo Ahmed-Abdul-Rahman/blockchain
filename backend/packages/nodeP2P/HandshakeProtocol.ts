@@ -10,22 +10,19 @@ import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { ACTIVE, HSK_IN_PRGS, INFO_HASH_EXG, NTWK_DATA_EXG, RETRY_EVENT } from './messageTypes';
 import { NetworkNode } from './NetworkNode';
 import { NetworkNodeConfig, StreamMessage } from './types';
-import { getInfoHashMesg, getNetworkExgMesg, readFromStream, writeToStream } from './utils';
+import { readFromStream, writeToStream } from './utils';
 
 export class HandshakeProtocol extends NetworkNode {
   protocol: string;
   retryEvent: EventEmitter;
   coordinateNodeDiscoveryDe: DebouncedFunc<(peerId: PeerId, nodeAddress: string) => void>;
-  getInfoHashMesg: Function;
-  getNetworkExgMesg: Function;
 
   constructor({ nodeConfig, protocol }: { nodeConfig: NetworkNodeConfig; protocol: string }) {
     super(nodeConfig);
     this.protocol = protocol;
     this.retryEvent = new EventEmitter();
     this.coordinateNodeDiscoveryDe = debounce(this.coordinateNodeDiscovery.bind(this), 1000, { trailing: true });
-    this.getInfoHashMesg = getInfoHashMesg.bind(this);
-    this.getNetworkExgMesg = getNetworkExgMesg.bind(this);
+
     this.registerRetryHandshake();
   }
 
@@ -41,16 +38,20 @@ export class HandshakeProtocol extends NetworkNode {
   }
 
   async initiateHandshakeProtocol(peerId: PeerId, nodeAddress: string): Promise<void> {
-    const stream = await this.dialNode(peerId, this.protocol);
-    if (stream) {
-      await writeToStream(stream, JSON.stringify(this.getInfoHashMesg()));
-      this.nodeStore.updateNodeData(peerId.toString(), {
-        nodePeerId: peerId.toString(),
-        nodeAddress,
-        timeline: [INFO_HASH_EXG],
-        status: INFO_HASH_EXG,
-        isDialer: null,
-      });
+    try {
+      const stream = await this.dialNode(peerId, this.protocol);
+      if (stream) {
+        await writeToStream(stream, JSON.stringify(this.utils.getInfoHashMesg()));
+        this.nodeStore.updateNodeData(peerId.toString(), {
+          nodePeerId: peerId.toString(),
+          nodeAddress,
+          timeline: [INFO_HASH_EXG],
+          status: INFO_HASH_EXG,
+          isDialer: null,
+        });
+      }
+    } catch (error) {
+      console.log('Error occured while initiating handshake with node: ', peerId.toString(), error);
     }
   }
   retryHandshake(): void {
@@ -109,27 +110,31 @@ export class HandshakeProtocol extends NetworkNode {
     nodeAddress: string;
   }): Promise<void> {
     if (!this.node) return;
-    const { infoHash, nodeEventId, nodeId, nodeAddress } = infoMessageMessage;
+    try {
+      const { infoHash, nodeEventId, nodeId, nodeAddress } = infoMessageMessage;
 
-    if (!infoHash || infoHash !== this.infoHash || !nodeEventId || !nodeId) {
-      console.log('Ignoring node with invalid data');
-      nodeId && this.nodeStore.deleteNode(nodeId);
-      this.retryHandshake();
-      return;
-    }
-    if (this.nodeStore.hasNode(nodeId)) this.nodeStore.updateNodeData(nodeId, { status: HSK_IN_PRGS });
-    else {
-      this.initiateHandshakeProtocol(peerIdFromString(nodeId), nodeAddress);
-    }
-    // commonSessionHash is the unqiue session identifier between these two peers
-    if ((this.nodeEventId as string) >= (nodeEventId as string)) {
-      // if the host node's eventId is greater then host will dial protocol to the peer node
-      const commonSessionHash = sha256(`${this.nodeEventId}${nodeEventId}`);
-      this.dialer(commonSessionHash, nodeId);
-    } else {
-      // Otherwise the host is the protocol handler and peer node is dialer
-      const commonSessionHash = sha256(`${nodeEventId}${this.nodeEventId}`);
-      this.handler(commonSessionHash);
+      if (!infoHash || infoHash !== this.infoHash || !nodeEventId || !nodeId) {
+        console.log('Ignoring node with invalid data');
+        nodeId && this.nodeStore.deleteNode(nodeId);
+        this.retryHandshake();
+        return;
+      }
+      if (this.nodeStore.hasNode(nodeId)) this.nodeStore.updateNodeData(nodeId, HSK_IN_PRGS, 'status');
+      else {
+        this.initiateHandshakeProtocol(peerIdFromString(nodeId), nodeAddress);
+      }
+      // commonSessionHash is the unqiue session identifier between these two peers
+      if ((this.nodeEventId as string) >= (nodeEventId as string)) {
+        // if the host node's eventId is greater then host will dial protocol to the peer node
+        const commonSessionHash = sha256(`${this.nodeEventId}${nodeEventId}`);
+        this.dialer(commonSessionHash, nodeId);
+      } else {
+        // Otherwise the host is the protocol handler and peer node is dialer
+        const commonSessionHash = sha256(`${nodeEventId}${this.nodeEventId}`);
+        this.handler(commonSessionHash);
+      }
+    } catch (error) {
+      console.log('Error encountered while processing info message', error);
     }
   }
 
@@ -140,12 +145,12 @@ export class HandshakeProtocol extends NetworkNode {
     if (this.nodeStore.getNodeCurrentTimeline(nodeId) === INFO_HASH_EXG) {
       this.nodeStore.updateNodeData(nodeId, { isDialer: false });
       const stream = await this.dialNode(peerIdToDial, `${this.protocol}/${sessionHash}`);
-      await writeToStream(stream, JSON.stringify(this.getNetworkExgMesg()));
+      await writeToStream(stream, JSON.stringify(this.utils.getNetworkExgMesg()));
       this.nodeStore.updateNodeCurrentTimeline(nodeId, NTWK_DATA_EXG);
 
       const [response] = await readFromStream(stream);
       console.log('Received message from handler: ', response);
-      this.initiateNodeRegistration(response as StreamMessage, (x, y) => x >= y);
+      this.initiateNodeRegistration(response as StreamMessage, (x, y) => x <= y);
     } else
       console.log('Dialer Ignoring current message as peer node has not exchanged INFO yet or peer does not exist');
   }
@@ -160,10 +165,10 @@ export class HandshakeProtocol extends NetworkNode {
       this.nodeStore.updateNodeData(nodeId, { isDialer: true, handlerProtocol: `${this.protocol}/${sessionHash}` });
       if (this.nodeStore.getNodeCurrentTimeline(nodeId) === INFO_HASH_EXG) {
         if (stage === NTWK_DATA_EXG) {
-          writeToStream(stream, JSON.stringify(this.getNetworkExgMesg()));
+          writeToStream(stream, JSON.stringify(this.utils.getNetworkExgMesg()));
           this.nodeStore.updateNodeCurrentTimeline(nodeId, NTWK_DATA_EXG);
         }
-        this.initiateNodeRegistration(response as StreamMessage, (x, y) => x > y);
+        this.initiateNodeRegistration(response as StreamMessage, (x, y) => x < y);
       } else console.log('Handler Ignoring current message as peer node has not exchanged INFO yet');
     });
   }
@@ -194,6 +199,6 @@ export class HandshakeProtocol extends NetworkNode {
       this.unhandleProtocol(handlerProtocol);
       this.nodeStore.updateNodeData(nodeId, { handlerProtocol: null });
     }
-    this.registerNodeStoreUpdates();
+    this.announceNodePresence();
   }
 }

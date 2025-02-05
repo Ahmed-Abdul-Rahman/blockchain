@@ -10,7 +10,8 @@ import { createLibp2p, Libp2p } from 'libp2p';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 
-import { ACTIVE, ANNOUNCE_PRESENCE, ANNOUNCE_PRESENCE_RES } from './messageTypes';
+import { ACTIVE, ANNOUNCE_PRESENCE, ANNOUNCE_PRESENCE_RES, HEARTBEAT } from './messageTypes';
+import { MessageUtility, setupMessageUtility } from './messageUtils';
 import { NodeStore } from './NodeStore';
 import { NetworkNodeConfig } from './types';
 
@@ -24,8 +25,11 @@ export class NetworkNode {
   nodeAddress: string | null; // address of the this node
   nodeStore: NodeStore; // store all the connected nodes
   isPingRegistered: boolean; // indicates if ping protocol is handled and is this node part of the network
+  isHeartbeatRegistered: boolean; // indicates if heartbeat protocol is handled and is this node ready send out heartbeat signals to other nodes
   pingProtocol: string;
+  heartbeatProtocol: string;
   pubsub: GossipSub | null;
+  utils: MessageUtility;
 
   constructor({ nodeEventId, networkId, infoHash, genesisTimestamp }: NetworkNodeConfig) {
     this.nodeEventId = nodeEventId;
@@ -36,9 +40,13 @@ export class NetworkNode {
     this.nodeId = null;
     this.nodeAddress = null;
     this.nodeStore = new NodeStore();
-    this.isPingRegistered = false;
     this.pingProtocol = '/ping/1.0.0';
+    this.isPingRegistered = false;
+    this.heartbeatProtocol = '/heartbeat/node/1.0.0';
+    this.isHeartbeatRegistered = false;
     this.pubsub = null;
+
+    this.utils = setupMessageUtility(this);
   }
 
   async init(): Promise<void> {
@@ -93,10 +101,9 @@ export class NetworkNode {
     await this.node?.unhandle(protocol);
   }
 
-  publishPingMsg(protocol: string, message: string | object): boolean {
+  publishMsg(protocol: string, message: string | object): boolean {
     try {
       const data = typeof message === 'string' ? message : JSON.stringify(message);
-      console.log('Pinging protocol ', protocol);
       if (this.isPingRegistered) this.pubsub?.publish(protocol, uint8ArrayFromString(data));
       return this.isPingRegistered;
     } catch (error) {
@@ -108,54 +115,64 @@ export class NetworkNode {
   registerCommChannels(): void {
     if (this.isPingRegistered) return;
     this.pubsub?.addEventListener('message', (message) => {
-      console.log(message.detail.topic, message.detail.data);
       if (message.detail.topic === this.pingProtocol) this.handlePingMessages(message);
+      if (message.detail.topic === this.heartbeatProtocol) this.handleHeartbeatMessages(message);
     });
     this.pubsub?.subscribe(this.pingProtocol);
     // this.pubsub?.subscribe(`${this.pingProtocol}/${this.nodeId?.toString()}`); not working !
-    this.isPingRegistered = true;
-  }
 
-  // We need to handle the nodes store synchrnoization problem - at present nodes have different copies of nodes
-  registerNodeStoreUpdates(): NodeJS.Timeout {
-    const timeoutId = setTimeout(() => {
-      this.publishPingMsg(this.pingProtocol, {
-        type: ANNOUNCE_PRESENCE,
-        fromNode: this.nodeId?.toString(),
-        nodeData: {
-          nodePeerId: this.nodeId?.toString(),
-          nodeAddress: this.nodeAddress,
-          port: process.env.SERVER_PORT,
-          status: ACTIVE,
-        },
-      });
-    }, 10000);
-    return timeoutId;
+    this.registerHeartbeat();
+    this.isPingRegistered = true;
   }
 
   handlePingMessages(message: CustomEvent<Message>): void {
     const data = uint8ArrayToString(message.detail.data);
-    console.log('Received ping: ', data);
-    const { type, fromNode, nodeData } = JSON.parse(data);
-    if (type === ANNOUNCE_PRESENCE) {
-      if (!this.nodeStore.hasNode(fromNode)) this.nodeStore.updateNodeData(fromNode, nodeData);
-      setTimeout(
-        () =>
-          this.publishPingMsg(this.pingProtocol, {
-            type: ANNOUNCE_PRESENCE_RES,
-            fromNode: this.nodeId?.toString(),
-            nodeData: {
-              nodePeerId: this.nodeId?.toString(),
-              nodeAddress: this.nodeAddress,
-              port: process.env.SERVER_PORT,
-              status: ACTIVE,
-            },
-          }),
-        10000,
-      ); // Delay of 10sec so the network is not flooded with these messages all at once
+    try {
+      const { type, fromNode, nodeData } = JSON.parse(data);
+      console.log('Received ping from node: ', fromNode);
+      if (type === ANNOUNCE_PRESENCE) {
+        if (!this.nodeStore.hasNode(fromNode)) this.nodeStore.updateNodeData(fromNode, nodeData);
+        setTimeout(() => this.publishMsg(this.pingProtocol, this.utils.getAnnounceMesgRes()), 10000); // Delay of 10sec so the network is not flooded with these messages all at once
+      }
+      if (type === ANNOUNCE_PRESENCE_RES) {
+        if (!this.nodeStore.hasNode(fromNode)) this.nodeStore.updateNodeData(fromNode, nodeData);
+      }
+    } catch (error) {
+      console.log(`Expected a JSON parseable message`, error);
     }
-    if (type === ANNOUNCE_PRESENCE_RES) {
-      if (!this.nodeStore.hasNode(fromNode)) this.nodeStore.updateNodeData(fromNode, nodeData);
+  }
+
+  handleHeartbeatMessages(message: CustomEvent<Message>): void {
+    const data = uint8ArrayToString(message.detail.data);
+    try {
+      const { type, fromNode, status } = JSON.parse(data);
+      if (type === HEARTBEAT) {
+        if (status === ACTIVE) this.nodeStore.updateNodeData(fromNode, status, 'status');
+      }
+    } catch (error) {
+      console.log(`Expected a JSON parseable message`, error);
     }
+  }
+
+  announceNodePresence(): NodeJS.Timeout {
+    const timeoutId = setTimeout(() => {
+      this.publishMsg(this.pingProtocol, this.utils.getAnnounceMesg());
+    }, 10000);
+    return timeoutId;
+  }
+
+  registerHeartbeat(): NodeJS.Timeout {
+    const intervalId = setInterval(() => {
+      if (!this.isHeartbeatRegistered) {
+        this.pubsub?.subscribe(this.heartbeatProtocol);
+        this.isHeartbeatRegistered = true;
+      } else
+        this.publishMsg(this.heartbeatProtocol, {
+          type: HEARTBEAT,
+          fromNode: this.nodeId?.toString(),
+          status: ACTIVE,
+        });
+    }, 60000);
+    return intervalId;
   }
 }
