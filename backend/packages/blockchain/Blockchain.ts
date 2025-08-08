@@ -1,4 +1,4 @@
-import { sha256 } from '@common/crypto';
+import { sha256 } from '@common/utils';
 import { KeyObject } from 'crypto';
 import { v1 as uuidV1 } from 'uuid';
 
@@ -22,7 +22,7 @@ interface Block {
 
 interface Node {
   nodeAddress: string | null;
-  nodeUUID: string | null;
+  nodeUUID: string | null | undefined;
   publicKey: KeyObject | null;
 }
 
@@ -46,7 +46,7 @@ class BlockChain {
     return this._instance || (this._instance = new this());
   }
 
-  setCurrentNode(nodeAddress: string, nodeUUID: string | null, publicKey: KeyObject): void {
+  setCurrentNode(nodeAddress: string, nodeUUID: string | undefined, publicKey: KeyObject): void {
     this.currentNode = { nodeAddress, nodeUUID, publicKey };
   }
 
@@ -56,6 +56,10 @@ class BlockChain {
       nodeAddress,
       publicKey: publicKey?.export({ type: 'spki', format: 'pem' }),
     };
+  }
+
+  getNetworkNodeCount(): number {
+    return this.networkNodes.length;
   }
 
   getCurrentNodePublicKey(): string | Buffer<ArrayBufferLike> | null {

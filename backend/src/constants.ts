@@ -1,4 +1,4 @@
-import { sha256 } from '@common/crypto';
+import { sha256 } from '@common/utils';
 
 export const handshakeSeed = 'Discovere New Node And Establish Connection Create Decentralized Blockchain';
 
