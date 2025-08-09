@@ -11,7 +11,6 @@ const createNetworkNode = async (configuration: {
   networkNode.registerNodeDiscovery();
   networkNode.receiveNodeMessages();
 
-  await networkNode.start();
   return networkNode;
 };
 

@@ -1,14 +1,14 @@
-import bytecoin from '@blockchain/Blockchain';
-import { sha256 } from '@common/utils.js';
-import createNetworkNode from '@nodeP2P/index.js';
+import http2 from 'http2';
+import { AddressInfo } from 'net';
+import path from 'path';
+import { loadOrGenerateKeypair } from '@crypto/utils.js';
 import bodyParser from 'body-parser';
-import crypto from 'crypto';
 import { EventId } from 'eventid';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
-import http2 from 'http2';
-import { AddressInfo } from 'net';
-
+import bytecoin from '@blockchain/Blockchain';
+import { sha256 } from '@common/utils.js';
+import createNetworkNode from '@nodeP2P/index.js';
 import {
   getBlockChain,
   getConsensus,
@@ -35,11 +35,16 @@ import {
 } from './apiPaths.js';
 import { infoHash } from './constants.js';
 
+const KEY_FILE = path.join(process.cwd(), 'node_identity.pem');
+
 const nodeEventId = new EventId();
+const { publicKey, privateKey } = loadOrGenerateKeypair(KEY_FILE);
 
 const networkNodeConfig = {
   nodeConfig: {
     nodeEventId: nodeEventId.new(),
+    nodePrivateKey: privateKey,
+    nodePublicKey: publicKey,
     get networkId() {
       return sha256(this.nodeEventId);
     },
@@ -50,9 +55,7 @@ const networkNodeConfig = {
 };
 
 // const port = process.argv[2];
-const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
-  modulusLength: 2048,
-});
+
 const app = express();
 const server = http2.createServer(app);
 const limiter = rateLimit({

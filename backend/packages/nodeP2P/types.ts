@@ -1,5 +1,9 @@
+import { KeyObject } from 'crypto';
+
 export interface NetworkNodeConfig {
   nodeEventId: string;
+  nodePrivateKey: KeyObject;
+  nodePublicKey: KeyObject;
   networkId: string;
   infoHash: string;
   genesisTimestamp: number;

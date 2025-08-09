@@ -1,5 +1,5 @@
-import { generateTimestamp } from '@common/utils';
 import { cloneDeep, has, isArray, isEqual, isNull, isNumber, isString, merge, set, unionWith } from 'lodash-es';
+import { generateTimestamp } from '@common/utils';
 
 import { ACTIVE } from './messageTypes';
 import { isNodeObjectType, NodeObject, NodesStore } from './types';
