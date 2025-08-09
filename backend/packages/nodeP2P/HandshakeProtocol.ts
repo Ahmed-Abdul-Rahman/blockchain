@@ -1,11 +1,11 @@
-import { buildNodeURL, pickRandom, sha256, wait } from '@common/utils';
+import { EventEmitter } from 'events';
 import { Peer, PeerId } from '@libp2p/interface';
 import { peerIdFromString } from '@libp2p/peer-id';
-import { EventEmitter } from 'events';
 import * as lp from 'it-length-prefixed';
 import { pipe } from 'it-pipe';
 import { debounce, DebouncedFunc } from 'lodash-es';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
+import { buildNodeURL, pickRandom, sha256, wait } from '@common/utils';
 
 import { ACTIVE, HSK_IN_PRGS, INFO_HASH_EXG, NTWK_DATA_EXG, RETRY_EVENT } from './messageTypes';
 import { NetworkNode } from './NetworkNode';
@@ -54,6 +54,7 @@ export class HandshakeProtocol extends NetworkNode {
       console.log('Error occured while initiating handshake with node: ', peerId.toString(), error);
     }
   }
+
   retryHandshake(): void {
     this.retryEvent.emit(RETRY_EVENT);
     console.log('Retrying with a different peer node');

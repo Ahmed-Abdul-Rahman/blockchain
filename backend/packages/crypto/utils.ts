@@ -1,5 +1,28 @@
-import axios from 'axios';
 import crypto, { KeyObject } from 'crypto';
+
+import fs from 'fs';
+import axios from 'axios';
+import { Envelope } from './types';
+
+export const signPayload = (privateKey: KeyObject, payloadString: string): string => {
+  // For ed25519 you pass null as algorithm param in crypto.sign
+  return crypto.sign(null, Buffer.from(payloadString), privateKey).toString('base64');
+};
+
+export const verifyEnvelope = (envelope: Envelope): boolean => {
+  try {
+    const pubKey = crypto.createPublicKey({ key: envelope.pubKey, format: 'pem', type: 'spki' });
+    return crypto.verify(
+      null,
+      Buffer.from(JSON.stringify(envelope.payload)),
+      pubKey,
+      Buffer.from(envelope.signature, 'base64'),
+    );
+  } catch (e: unknown) {
+    console.log('Error occured while verifying envelope: ', e);
+    return false;
+  }
+};
 
 export const encryptMessage = (message: string, nodePublicKey: KeyObject): string => {
   return crypto.publicEncrypt(nodePublicKey, Buffer.from(message)).toString('base64');
@@ -51,4 +74,20 @@ export const initiateChallenge = async (
     console.error(`Failed to verify node: ${nodeAddress} - ${error}`);
     return { isValid: false, publicKey: '' };
   }
+};
+
+export const loadOrGenerateKeypair = (
+  keyFilePath: string,
+  isLocalTest: boolean = false,
+): { privateKey: KeyObject; publicKey: KeyObject; pem: string } => {
+  if (fs.existsSync(keyFilePath) && !isLocalTest) {
+    const pem = fs.readFileSync(keyFilePath, 'utf8');
+    const privateKey = crypto.createPrivateKey({ key: pem, format: 'pem', type: 'pkcs8' });
+    const publicKey = crypto.createPublicKey(privateKey);
+    return { privateKey, publicKey, pem };
+  }
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+  const privatePem = privateKey.export({ format: 'pem', type: 'pkcs8' }).toString();
+  if (!isLocalTest) fs.writeFileSync(keyFilePath, privatePem, { mode: 0o600 });
+  return { privateKey, publicKey, pem: privatePem };
 };

@@ -1,6 +1,6 @@
-import { sha256 } from '@common/utils';
 import { KeyObject } from 'crypto';
 import { v1 as uuidV1 } from 'uuid';
+import { sha256 } from '@common/utils';
 
 interface Transaction {
   amount: number;
