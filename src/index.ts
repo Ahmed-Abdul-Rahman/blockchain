@@ -107,6 +107,7 @@ app.post(CHALLENGE, postChallengeRateLimiter, postChallenge.bind(null, privateKe
 server.listen(0, async () => {
   const { address, port } = server.address() as AddressInfo;
   const networkNode = await createNetworkNode(networkNodeConfig);
+  await networkNode.start();
   bytecoin.setCurrentNode(`http://${address}:${port}`, networkNode.nodeId?.toString(), publicKey);
   process.env.SERVER_PORT = `${port}`;
   console.log(`Node - ${networkNode.nodeId} - Listening on Port ${port}...`);
