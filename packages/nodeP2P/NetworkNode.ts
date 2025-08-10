@@ -1,7 +1,7 @@
+import { KeyObject } from 'crypto';
 import { GossipSub, gossipsub } from '@chainsafe/libp2p-gossipsub';
 import { noise } from '@chainsafe/libp2p-noise';
 import { yamux } from '@chainsafe/libp2p-yamux';
-import { generateIdProtocolPrefix } from '@common/utils';
 import { identify } from '@libp2p/identify';
 import { Message, PeerId, Stream } from '@libp2p/interface';
 import { mdns } from '@libp2p/mdns';
@@ -9,7 +9,8 @@ import { tcp } from '@libp2p/tcp';
 import { createLibp2p, Libp2p } from 'libp2p';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
-
+import { generateIdProtocolPrefix } from '@common/utils';
+import { signPayload, verifyEnvelope } from '@crypto/utils';
 import { ACTIVE, ANNOUNCE_PRESENCE, ANNOUNCE_PRESENCE_RES, HEARTBEAT } from './messageTypes';
 import { MessageUtility, setupMessageUtility } from './messageUtils';
 import { NodeStore } from './NodeStore';
@@ -17,6 +18,8 @@ import { NetworkNodeConfig } from './types';
 
 export class NetworkNode {
   nodeEventId: string; // unique monotonically incresing unique id to compare with peers to establish handshake
+  nodePrivateKey: KeyObject;
+  nodePublicKey: KeyObject;
   genesisTimestamp: number; // timestamp of when this node was initialized
   networkId: string; // unique network id of this p2p network
   infoHash: string; // unique identifier for peer discovery of similar nodes
@@ -31,8 +34,17 @@ export class NetworkNode {
   pubsub: GossipSub | null;
   utils: MessageUtility;
 
-  constructor({ nodeEventId, networkId, infoHash, genesisTimestamp }: NetworkNodeConfig) {
+  constructor({
+    nodeEventId,
+    nodePrivateKey,
+    nodePublicKey,
+    networkId,
+    infoHash,
+    genesisTimestamp,
+  }: NetworkNodeConfig) {
     this.nodeEventId = nodeEventId;
+    this.nodePrivateKey = nodePrivateKey;
+    this.nodePublicKey = nodePublicKey;
     this.genesisTimestamp = genesisTimestamp;
     this.networkId = networkId;
     this.infoHash = infoHash;
@@ -103,8 +115,14 @@ export class NetworkNode {
 
   publishMsg(protocol: string, message: string | object): boolean {
     try {
-      const data = typeof message === 'string' ? message : JSON.stringify(message);
-      if (this.isPingRegistered) this.pubsub?.publish(protocol, uint8ArrayFromString(data));
+      const payload = typeof message === 'string' ? message : JSON.stringify(message);
+      const signature = signPayload(this.nodePrivateKey, payload);
+      const envelope = JSON.stringify({
+        payload: typeof message === 'string' ? payload : JSON.parse(payload),
+        pubKey: this.nodePublicKey.export({ type: 'spki', format: 'pem' }).toString(),
+        signature,
+      });
+      if (this.isPingRegistered) this.pubsub?.publish(protocol, uint8ArrayFromString(envelope));
       return this.isPingRegistered;
     } catch (error) {
       console.log('Failed to publish message: ', error);
@@ -127,8 +145,13 @@ export class NetworkNode {
 
   handlePingMessages(message: CustomEvent<Message>): void {
     const data = uint8ArrayToString(message.detail.data);
+    const envelope = JSON.parse(data);
+    if (!verifyEnvelope(envelope)) {
+      console.warn('Dropping message with invalid signature');
+      return;
+    }
     try {
-      const { type, fromNode, nodeData } = JSON.parse(data);
+      const { type, fromNode, nodeData } = envelope.payload;
       console.log('Received ping from node: ', fromNode);
       if (type === ANNOUNCE_PRESENCE) {
         if (!this.nodeStore.hasNode(fromNode)) this.nodeStore.updateNodeData(fromNode, nodeData);

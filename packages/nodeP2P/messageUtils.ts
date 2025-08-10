@@ -1,5 +1,4 @@
 import { generateTimestamp } from '@common/utils';
-
 import { ACTIVE, ANNOUNCE_PRESENCE, ANNOUNCE_PRESENCE_RES, INFO_HASH_EXG, NTWK_DATA_EXG } from './messageTypes';
 import { NetworkNode } from './NetworkNode';
 import { Ping } from './types';

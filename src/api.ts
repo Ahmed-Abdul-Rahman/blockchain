@@ -1,9 +1,8 @@
-import bytecoin from '@blockchain/Blockchain';
-import axios, { AxiosResponse } from 'axios';
 import crypto, { KeyObject } from 'crypto';
+import axios, { AxiosResponse } from 'axios';
 import { Request, Response } from 'express';
-
-import { initiateChallenge, signMessage } from './cryptoUtils.js';
+import bytecoin from '@blockchain/Blockchain';
+import { initiateChallenge, signMessage } from '@crypto/utils';
 
 export const getBlockChain = (req: Request, res: Response): void => {
   res.send(bytecoin);
