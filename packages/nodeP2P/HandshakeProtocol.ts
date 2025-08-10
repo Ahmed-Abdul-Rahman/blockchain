@@ -28,7 +28,6 @@ export class HandshakeProtocol extends NetworkNode {
 
   async init(): Promise<void> {
     await super.init();
-    await this.start();
   }
 
   coordinateNodeDiscovery(peerId: PeerId, nodeAddress: string): void {

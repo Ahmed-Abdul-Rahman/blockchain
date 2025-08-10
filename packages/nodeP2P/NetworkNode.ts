@@ -11,6 +11,7 @@ import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { generateIdProtocolPrefix } from '@common/utils';
 
+import { signPayload, verifyEnvelope } from '@crypto/utils';
 import { ACTIVE, ANNOUNCE_PRESENCE, ANNOUNCE_PRESENCE_RES, HEARTBEAT } from './messageTypes';
 import { MessageUtility, setupMessageUtility } from './messageUtils';
 import { NodeStore } from './NodeStore';
@@ -115,8 +116,14 @@ export class NetworkNode {
 
   publishMsg(protocol: string, message: string | object): boolean {
     try {
-      const data = typeof message === 'string' ? message : JSON.stringify(message);
-      if (this.isPingRegistered) this.pubsub?.publish(protocol, uint8ArrayFromString(data));
+      const payload = typeof message === 'string' ? message : JSON.stringify(message);
+      const signature = signPayload(this.nodePrivateKey, payload);
+      const envelope = JSON.stringify({
+        payload: typeof message === 'string' ? payload : JSON.parse(payload),
+        pubKey: this.nodePublicKey.export({ type: 'spki', format: 'pem' }).toString(),
+        signature,
+      });
+      if (this.isPingRegistered) this.pubsub?.publish(protocol, uint8ArrayFromString(envelope));
       return this.isPingRegistered;
     } catch (error) {
       console.log('Failed to publish message: ', error);
@@ -139,8 +146,13 @@ export class NetworkNode {
 
   handlePingMessages(message: CustomEvent<Message>): void {
     const data = uint8ArrayToString(message.detail.data);
+    const envelope = JSON.parse(data);
+    if (!verifyEnvelope(envelope)) {
+      console.log('Dropping message with invalid signature');
+      return;
+    }
     try {
-      const { type, fromNode, nodeData } = JSON.parse(data);
+      const { type, fromNode, nodeData } = envelope.payload;
       console.log('Received ping from node: ', fromNode);
       if (type === ANNOUNCE_PRESENCE) {
         if (!this.nodeStore.hasNode(fromNode)) this.nodeStore.updateNodeData(fromNode, nodeData);
@@ -156,11 +168,14 @@ export class NetworkNode {
 
   handleHeartbeatMessages(message: CustomEvent<Message>): void {
     const data = uint8ArrayToString(message.detail.data);
+    const envelope = JSON.parse(data);
+    if (!verifyEnvelope(envelope)) {
+      console.log('Dropping message with invalid signature');
+      return;
+    }
     try {
-      const { type, fromNode, status } = JSON.parse(data);
-      if (type === HEARTBEAT) {
-        if (status === ACTIVE) this.nodeStore.updateNodeData(fromNode, status, 'status');
-      }
+      const { type, fromNode, status } = envelope.payload;
+      if (type === HEARTBEAT && status === ACTIVE) this.nodeStore.updateNodeData(fromNode, status, 'status');
     } catch (error) {
       console.log(`Expected a JSON parseable message`, error);
     }
@@ -178,6 +193,7 @@ export class NetworkNode {
       if (!this.isHeartbeatRegistered) {
         this.pubsub?.subscribe(this.heartbeatProtocol);
         this.isHeartbeatRegistered = true;
+        console.log('Heartbeat signals registered');
       } else
         this.publishMsg(this.heartbeatProtocol, {
           type: HEARTBEAT,

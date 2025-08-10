@@ -181,12 +181,13 @@ export class NodeStore {
   }
 
   /**
-   * prune nodes that are still in the initial stages (ex: status is still INFO_HASH_EXG or NETWORK_DATA_EXG)
+   * prune nodes that are still in the initial stages (ex: status is still INFO_HASH_EXG or NETWORK_DATA_EXG)  or not responding
    * @returns intervalId - {NodeJS.Timeout}
    */
   private pruneInActiveNodes(): NodeJS.Timeout {
     const intervalId = setInterval(() => {
       let inActiveNodesPruned = 0;
+      if (this.getSize() === 0) return;
       Array.from(this.nodeStore.values()).forEach((node) => {
         const { nodePeerId, status, lastUpdated } = node;
         if (status !== ACTIVE && Date.now() - lastUpdated > 900000) {
