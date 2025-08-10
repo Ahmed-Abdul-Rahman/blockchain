@@ -15,3 +15,7 @@ export const ANNOUNCE_PRESENCE_RES = 'ANNOUNCE_PRESENCE_RES';
 export const HEARTBEAT = 'HEARTBEAT';
 
 export const RETRY_EVENT = 'retry:handshake';
+
+export const CHALLENGE_OFFER = 'CHALLENGE_OFFER';
+
+export const CHALLENGE_RESPONSE = 'CHALLENGE_RESPONSE';

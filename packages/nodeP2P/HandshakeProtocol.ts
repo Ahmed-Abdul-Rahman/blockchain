@@ -7,7 +7,7 @@ import { debounce, DebouncedFunc } from 'lodash-es';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { buildNodeURL, pickRandom, sha256, wait } from '@common/utils';
 
-import { ACTIVE, HSK_IN_PRGS, INFO_HASH_EXG, NTWK_DATA_EXG, RETRY_EVENT } from './messageTypes';
+import { HSK_IN_PRGS, INFO_HASH_EXG, NTWK_DATA_EXG, RETRY_EVENT } from './messageTypes';
 import { NetworkNode } from './NetworkNode';
 import { NetworkNodeConfig, StreamMessage } from './types';
 import { readFromStream, writeToStream } from './utils';
@@ -120,10 +120,10 @@ export class HandshakeProtocol extends NetworkNode {
         this.retryHandshake();
         return;
       }
+
       if (this.nodeStore.hasNode(nodeId)) this.nodeStore.updateNodeData(nodeId, HSK_IN_PRGS, 'status');
-      else {
-        this.initiateHandshakeProtocol(peerIdFromString(nodeId), nodeAddress);
-      }
+      else this.initiateHandshakeProtocol(peerIdFromString(nodeId), nodeAddress);
+
       // commonSessionHash is the unqiue session identifier between these two peers
       if ((this.nodeEventId as string) >= (nodeEventId as string)) {
         // if the host node's eventId is greater then host will dial protocol to the peer node
@@ -180,8 +180,6 @@ export class HandshakeProtocol extends NetworkNode {
     if (connectedNodesCount == null || nodeId == null) return;
 
     // will need to move the below line somewhere else where you know you have successfully registered the node
-    this.nodeStore.updateNodeData(nodeId, { status: ACTIVE, timeline: [], nodeAddress, port });
-    this.registerCommChannels();
     await wait(100);
 
     if (evaluator(this.nodeStore.getSize(), connectedNodesCount) && nodeAddress != null && port != null) {

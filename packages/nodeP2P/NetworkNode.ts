@@ -2,7 +2,6 @@ import { KeyObject } from 'crypto';
 import { GossipSub, gossipsub } from '@chainsafe/libp2p-gossipsub';
 import { noise } from '@chainsafe/libp2p-noise';
 import { yamux } from '@chainsafe/libp2p-yamux';
-import { signPayload, verifyEnvelope } from '@crypto/utils';
 import { identify } from '@libp2p/identify';
 import { Message, PeerId, Stream } from '@libp2p/interface';
 import { mdns } from '@libp2p/mdns';
@@ -11,6 +10,7 @@ import { createLibp2p, Libp2p } from 'libp2p';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { generateIdProtocolPrefix } from '@common/utils';
+import { signPayload, verifyEnvelope } from '@crypto/utils';
 import { ACTIVE, ANNOUNCE_PRESENCE, ANNOUNCE_PRESENCE_RES, HEARTBEAT } from './messageTypes';
 import { MessageUtility, setupMessageUtility } from './messageUtils';
 import { NodeStore } from './NodeStore';
@@ -119,7 +119,7 @@ export class NetworkNode {
       const signature = signPayload(this.nodePrivateKey, payload);
       const envelope = JSON.stringify({
         payload: typeof message === 'string' ? payload : JSON.parse(payload),
-        pubKey: this.nodePublicKey.export({ type: 'spki', format: 'pem' }),
+        pubKey: this.nodePublicKey.export({ type: 'spki', format: 'pem' }).toString(),
         signature,
       });
       if (this.isPingRegistered) this.pubsub?.publish(protocol, uint8ArrayFromString(envelope));

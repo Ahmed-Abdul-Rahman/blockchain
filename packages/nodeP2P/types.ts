@@ -55,3 +55,36 @@ export const isNodeObjectType = (obj: unknown | NodeObject): boolean | undefined
     (obj as NodeObject).timeline?.every((item) => typeof item === 'string')
   );
 };
+
+export const isPropOfNodeObject = (propName: string): propName is keyof NodeObject =>
+  propName === 'nodeAddress' ||
+  propName === 'nodePeerId' ||
+  propName === 'port' ||
+  propName === 'status' ||
+  propName === 'timeline' ||
+  propName === 'isDialer' ||
+  propName === 'handlerProtocol' ||
+  propName === 'lastUpdated';
+
+export interface ChallengeEntry {
+  nonce: string;
+  expiresAt: number; // ms epoch
+  requestedAt: number;
+  remoteAddr?: string; // optional: where the HELLO came from
+}
+
+export interface ChallengeOffer {
+  type: string;
+  nonce: string;
+  nodeId: string;
+  ts: number;
+}
+
+export interface ChallengeResponse {
+  type: string;
+  nonce: string;
+  nodeId: string;
+  signature: string;
+  publicKey: string;
+  ts: number;
+}
