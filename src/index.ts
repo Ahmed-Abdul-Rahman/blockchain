@@ -1,13 +1,13 @@
-import bytecoin from '@blockchain/Blockchain';
-import { sha256 } from '@common/utils.js';
-import createNetworkNode from '@nodeP2P/index.js';
-import bodyParser from 'body-parser';
 import crypto from 'crypto';
+import http2 from 'http2';
+import { AddressInfo } from 'net';
+import bodyParser from 'body-parser';
 import { EventId } from 'eventid';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
-import http2 from 'http2';
-import { AddressInfo } from 'net';
+import bytecoin from '@blockchain/Blockchain';
+import { sha256 } from '@common/utils.js';
+import createNetworkNode from '@nodeP2P/index.js';
 
 import {
   getBlockChain,
