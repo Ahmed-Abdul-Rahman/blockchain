@@ -1,5 +1,9 @@
+import { KeyObject } from 'crypto';
+
 export interface NetworkNodeConfig {
   nodeEventId: string;
+  nodePrivateKey: KeyObject;
+  nodePublicKey: KeyObject;
   networkId: string;
   infoHash: string;
   genesisTimestamp: number;
@@ -51,3 +55,26 @@ export const isNodeObjectType = (obj: unknown | NodeObject): boolean | undefined
     (obj as NodeObject).timeline?.every((item) => typeof item === 'string')
   );
 };
+
+export interface ChallengeEntry {
+  nonce: string;
+  expiresAt: number; // ms epoch
+  requestedAt: number;
+  remoteAddr?: string; // optional: where the HELLO came from
+}
+
+export interface ChallengeOffer {
+  type: string;
+  nonce: string;
+  nodeId: string;
+  ts: number;
+}
+
+export interface ChallengeResponse {
+  type: string;
+  nonce: string;
+  nodeId: string;
+  signature: string;
+  publicKey: string;
+  ts: number;
+}

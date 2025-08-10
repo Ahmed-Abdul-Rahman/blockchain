@@ -1,12 +1,13 @@
-import crypto from 'crypto';
 import http2 from 'http2';
 import { AddressInfo } from 'net';
+import path from 'path';
 import bodyParser from 'body-parser';
 import { EventId } from 'eventid';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import bytecoin from '@blockchain/Blockchain';
 import { sha256 } from '@common/utils.js';
+import { loadOrGenerateKeypair } from '@crypto/utils.js';
 import createNetworkNode from '@nodeP2P/index.js';
 
 import {
@@ -35,11 +36,19 @@ import {
 } from './apiPaths.js';
 import { infoHash } from './constants.js';
 
+const KEY_FILE = path.join(process.cwd(), 'node_identity.pem');
+
 const nodeEventId = new EventId();
+const { publicKey, privateKey } = loadOrGenerateKeypair(KEY_FILE, true);
+
+process.env.NODE_PUBLIC_KEY = publicKey.export({ type: 'spki', format: 'pem' }).toString();
+process.env.NODE_PRIVATE_KEY = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
 
 const networkNodeConfig = {
   nodeConfig: {
     nodeEventId: nodeEventId.new(),
+    nodePrivateKey: privateKey,
+    nodePublicKey: publicKey,
     get networkId() {
       return sha256(this.nodeEventId);
     },
@@ -50,9 +59,7 @@ const networkNodeConfig = {
 };
 
 // const port = process.argv[2];
-const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
-  modulusLength: 2048,
-});
+
 const app = express();
 const server = http2.createServer(app);
 const limiter = rateLimit({
@@ -89,7 +96,13 @@ app.post(REGISTER_NODES_BULK, postRegisterNodesBulk);
 
 app.get(CONSENSUS, getConsensus);
 
-app.post(CHALLENGE, postChallenge.bind(null, privateKey));
+const postChallengeRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Limit each IP to 5 requests per windowMs
+  message: 'Too many requests from this IP, please try again after 15 minutes.',
+});
+
+app.post(CHALLENGE, postChallengeRateLimiter, postChallenge.bind(null, privateKey));
 
 server.listen(0, async () => {
   const { address, port } = server.address() as AddressInfo;

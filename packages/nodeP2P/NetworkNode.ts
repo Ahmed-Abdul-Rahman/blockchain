@@ -1,3 +1,4 @@
+import { KeyObject } from 'crypto';
 import { GossipSub, gossipsub } from '@chainsafe/libp2p-gossipsub';
 import { noise } from '@chainsafe/libp2p-noise';
 import { yamux } from '@chainsafe/libp2p-yamux';
@@ -17,6 +18,8 @@ import { NetworkNodeConfig } from './types';
 
 export class NetworkNode {
   nodeEventId: string; // unique monotonically incresing unique id to compare with peers to establish handshake
+  nodePrivateKey: KeyObject;
+  nodePublicKey: KeyObject;
   genesisTimestamp: number; // timestamp of when this node was initialized
   networkId: string; // unique network id of this p2p network
   infoHash: string; // unique identifier for peer discovery of similar nodes
@@ -31,8 +34,17 @@ export class NetworkNode {
   pubsub: GossipSub | null;
   utils: MessageUtility;
 
-  constructor({ nodeEventId, networkId, infoHash, genesisTimestamp }: NetworkNodeConfig) {
+  constructor({
+    nodeEventId,
+    networkId,
+    nodePrivateKey,
+    nodePublicKey,
+    infoHash,
+    genesisTimestamp,
+  }: NetworkNodeConfig) {
     this.nodeEventId = nodeEventId;
+    this.nodePrivateKey = nodePrivateKey;
+    this.nodePublicKey = nodePublicKey;
     this.genesisTimestamp = genesisTimestamp;
     this.networkId = networkId;
     this.infoHash = infoHash;
