@@ -12,6 +12,9 @@
             "@nodeP2P/*": [
                 "packages/nodeP2P/*"
             ],
+            "@core/*": [
+                "packages/core/*"
+            ],
             "@common/*": [
                 "packages/common/*"
             ],
