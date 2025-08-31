@@ -9,6 +9,7 @@ import { createLibp2p, Libp2p } from 'libp2p';
 import { debounce } from 'lodash-es';
 import logger from '@common/logger';
 import { generateIdProtocolPrefix } from '@common/utils';
+import { genEd25519KeyPair, installAuthServer, runAuthClient } from './auth';
 import { PeerExchangeService } from './PeerExchangeService';
 import { SimplePeerScorer } from './SimplePeerScorer';
 
@@ -72,9 +73,10 @@ export const createNode = async (
     },
   })) as Libp2p;
 
+  const nodeKey = await genEd25519KeyPair();
+
   // optional: decay every minute
   setInterval(() => scorer.decay(), 60_000);
-  setInterval(() => console.log(node.getConnections().length), 5000);
 
   // PEX service
   const pexService = new PeerExchangeService(node, {
@@ -82,6 +84,8 @@ export const createNode = async (
     penalize: (peerId, amount) => scorer.penalize(peerId, amount),
     isDialable: (peerId) => scorer.isDialable(peerId),
   });
+
+  installAuthServer(node, { pex: pexService });
 
   // seed (optional but recommended for internet-wide discovery)
   if (opts?.seeds?.length) pexService.seed(opts.seeds);
@@ -92,15 +96,17 @@ export const createNode = async (
   node.addEventListener('peer:discovery', async (event: CustomEvent<PeerInfo>) => {
     const peerId = event.detail.id.toString();
     const addresses = (event.detail.multiaddrs || []).map((ma) => ma.toString());
-    pexService.seed([{ peerId, addresses }]);
     logger.info('Peer Discovered: ', peerId);
 
-    // probabilistic pull to avoid amplification; then dial a few
     if (node.peerId.toString() < peerId.toString()) {
+      const response = await runAuthClient(node, event.detail.id, nodeKey.secret);
+
+      if (response) {
+        logger.info('Authentication succesful with peer: ', peerId);
+        pexService.seed([{ peerId, addresses }]);
+      }
+
       requestAndDialPeersDe(event.detail.id, pexService);
-      //   logger.info(`Requesting Peers from: ${peerId.toString()}`);
-      //   const got = await pexService.requestPeersFrom(event.detail.id, 24);
-      //   pexService.enqueueDial(got.slice(0, 6));
     }
   });
 

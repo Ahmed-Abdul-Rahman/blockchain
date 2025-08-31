@@ -45,7 +45,6 @@ export class DialQueue {
   private async loop(): Promise<void> {
     this.running = true;
     while (this.dialQueue.length) {
-      console.log('Dial queue length', this.dialQueue);
       const peerInfo = this.dialQueue.shift();
       try {
         if (!peerInfo) break;

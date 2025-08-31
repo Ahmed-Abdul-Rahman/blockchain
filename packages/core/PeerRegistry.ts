@@ -1,6 +1,6 @@
 import logger from '@common/logger';
 import { PeerInfoLite } from '../nodeP2P/types';
-import { now, sampleList } from '../nodeP2P/utils';
+import { now, sampleList } from './utils';
 
 const PEX_REQUEST_COOLDOWN_MS = 15_000;
 const PEER_ENTRY_TTL_MS = 30 * 60_000;

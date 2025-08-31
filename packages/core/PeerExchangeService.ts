@@ -1,16 +1,13 @@
 import { GossipSub } from '@chainsafe/libp2p-gossipsub/dist/src';
 import { Message, PeerId, Stream } from '@libp2p/interface';
-import * as lp from 'it-length-prefixed';
-import map from 'it-map';
-import { pipe } from 'it-pipe';
 import { Libp2p } from 'libp2p/dist/src';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import logger from '@common/logger';
 import { PeerInfoLite } from '../nodeP2P/types';
-import { filterAddrs, now, sampleList, sleep } from '../nodeP2P/utils';
 import { DialQueue } from './DialQueue';
 import { PeerRegistry } from './PeerRegistry';
+import { filterAddrs, now, processDataFromStream, sampleList, sleep, writeToStream } from './utils';
 
 type PexMsg =
   | { type: 'GET_PEERS'; want?: number }
@@ -89,40 +86,30 @@ export class PeerExchangeService {
    * @param fromId
    */
   private async onPexProtocolMessage(stream: Stream, fromId?: string): Promise<void> {
-    try {
-      await pipe(
-        stream.source,
-        lp.decode,
-        (source) => map(source, (buffer) => uint8ArrayToString(buffer.subarray())),
-        async (source) => {
-          for await (const msg of source) {
-            const req = JSON.parse(msg);
-            if (!req) {
-              if (fromId) this.scorer.penalize(fromId, 2);
-              continue;
-            }
-            if (req.type === 'GET_PEERS') {
-              if (fromId) this.scorer.reward(fromId, 1); // good behavior: asks, not floods
-              const share = sampleList(this.peerRegistry.getCandidates(MAX_SHARED_PEERS * 2), MAX_SHARED_PEERS).map(
-                (p) => ({
-                  peerId: p.peerId,
-                  addresses: filterAddrs(p.addresses),
-                }),
-              );
-              const res: PexMsg = { type: 'PEER_LIST', peers: share };
-              await pipe(
-                [JSON.stringify(res)],
-                (source) => map(source, (string) => uint8ArrayFromString(string)),
-                lp.encode,
-                stream.sink,
-              );
-            }
-          }
-        },
-      );
-    } catch {
-      if (fromId) this.scorer.penalize(fromId, 1);
-    }
+    await processDataFromStream(
+      stream,
+      async (message) => {
+        const req = message as PexMsg;
+        if (!req) {
+          if (fromId) this.scorer.penalize(fromId, 2);
+          return;
+        }
+        if (req.type === 'GET_PEERS') {
+          if (fromId) this.scorer.reward(fromId, 1); // good behavior: asks, not floods
+          const share = sampleList(this.peerRegistry.getCandidates(MAX_SHARED_PEERS * 2), MAX_SHARED_PEERS).map(
+            ({ peerId, addresses }) => ({
+              peerId,
+              addresses: filterAddrs(addresses),
+            }),
+          );
+          const response: PexMsg = { type: 'PEER_LIST', peers: share };
+          await writeToStream(stream, response);
+        }
+      },
+      () => {
+        if (fromId) this.scorer.penalize(fromId, 1);
+      },
+    );
   }
 
   /**
@@ -195,28 +182,14 @@ export class PeerExchangeService {
       const req: PexMsg = { type: 'GET_PEERS', want };
       let receivedPeers: PeerInfoLite[] = [];
 
-      await pipe(
-        [JSON.stringify(req)],
-        (source) => map(source, (string) => uint8ArrayFromString(string)),
-        lp.encode,
-        stream.sink,
-      );
+      await writeToStream(stream, req);
 
-      await pipe(
-        stream.source,
-        lp.decode,
-        (source) => map(source, (buffer) => uint8ArrayToString(buffer.subarray())),
-        async (source) => {
-          for await (const msg of source) {
-            const res = JSON.parse(msg);
-            if (!res) {
-              this.scorer.penalize(peerIdString, 2);
-              continue;
-            }
-            if (res.type === 'PEER_LIST') receivedPeers = res.peers ?? [];
-          }
-        },
-      );
+      await processDataFromStream(stream, (message) => {
+        const response = message as PexMsg;
+        if (!response) this.scorer.penalize(peerIdString, 2);
+        if (response.type === 'PEER_LIST') receivedPeers = response.peers ?? [];
+      });
+
       this.peerRegistry.upsertMany(receivedPeers);
       this.scorer.reward(peerIdString, Math.min(4, receivedPeers.length / 8));
       return receivedPeers;
