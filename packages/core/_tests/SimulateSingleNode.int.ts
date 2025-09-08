@@ -24,7 +24,7 @@ const percentile = (xs: number[], p: number): number => {
 
 const runNode = async () => {
   const args = workerData as Args;
-  const { idx, total, networkId, pubsubTopic, bootstrapMultiaddrs, runSeconds, msgRate } = args;
+  const { networkId, pubsubTopic, runSeconds, msgRate } = args;
 
   // Start your node factory with mdns disabled for determinism (optional)
   const { node, pexService } = await createNode(

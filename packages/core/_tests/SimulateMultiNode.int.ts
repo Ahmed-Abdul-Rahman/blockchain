@@ -1,7 +1,6 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
-import { wait } from '@common/utils';
 
 type WorkerResult = {
   me: string;
