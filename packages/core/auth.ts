@@ -20,6 +20,7 @@ type AuthSignResponse = {
 
 const AUTH_PROTOCOL = '/deChat/auth/1.0.0';
 const NETWORK_ID = 'deChat-net-v1';
+
 /**
  * Generate a new keypair (private 32 bytes, public 32 bytes)
  */
@@ -95,8 +96,9 @@ export const installAuthServer = (
         return;
       }
 
-      logger.info('Authentication succesful with peer: ', remotePeerId);
+      logger.info('Authentication handled succesfully with peer: ', remotePeerId);
       pex.seed([{ peerId: remotePeerId, addresses: [connection.remoteAddr.toString()] }]);
+      pex.initiatePeerExchange();
 
       await writeToStream(stream, { isVerified } as AuthSignResponse);
     } catch {

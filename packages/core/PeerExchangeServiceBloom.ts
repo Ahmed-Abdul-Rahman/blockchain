@@ -1,5 +1,6 @@
 import { GossipSub } from '@chainsafe/libp2p-gossipsub/dist/src';
 import { Message, PeerId, Stream } from '@libp2p/interface';
+import bloomFilters from 'bloom-filters';
 import { Libp2p } from 'libp2p/dist/src';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
@@ -7,32 +8,33 @@ import logger from '@common/logger';
 import { DialQueue } from './DialQueue';
 import { PeerRegistry } from './PeerRegistry';
 import { GET_PEERS_MSG, PeerInfoLite, PEX_GOSSIP, PEX_PEER_LIST, scorer } from './types';
-import { filterAddrs, now, processDataFromStream, sampleList, writeToStream } from './utils';
+import { filterAddrs, now, processDataFromStream, sampleList, sleep, writeToStream } from './utils';
 
-export const PEX_PROTOCOL = '/deChat/peer-exchange-protocol/1.0.0';
-export const PEX_TOPIC = '/deChat/peer-exchange-topic/1.0.0';
+export const PEX_PROTO = '/deChat/peer-exchange-p/1.0.0';
+export const PEX_TOPIC = '/deChat/pex-t/1.0.0';
 
 const MAX_SHARED_PEERS = 32;
 const MAX_PEX_MSGS_PER_MIN = 12;
-const GOSSIP_INTERVAL_MS = 30_000;
+const GOSSIP_INTERVAL_MS = 5_000;
 
 export class PeerExchangeService {
-  readonly peerRegistry: PeerRegistry;
+  private peerRegistry: PeerRegistry;
   private dialQ: DialQueue;
   private lastGossipByPeer = new Map<string, number>();
-  private isPeerExchangeStarted: boolean = false;
-  private peerExchangeIntervalId: NodeJS.Timeout | null = null;
+  private stopped = false;
   private node: Libp2p;
   private pubsub: GossipSub;
   private scorer: scorer;
+  private peersSeen: bloomFilters.ScalableBloomFilter;
 
   constructor(node: Libp2p, scorer: scorer) {
     this.peerRegistry = new PeerRegistry(node.peerId.toString());
     this.node = node;
     this.scorer = scorer;
     this.dialQ = new DialQueue(node, { isDialable: (id) => this.isScoreEnoughToDial(id) }, 256, 750);
+    this.peersSeen = new bloomFilters.ScalableBloomFilter(1000, 0.01);
 
-    node.handle(PEX_PROTOCOL, ({ stream, connection }) =>
+    node.handle(PEX_PROTO, ({ stream, connection }) =>
       this.onPexProtocolMessage(stream, connection.remotePeer?.toString?.()),
     );
 
@@ -40,6 +42,8 @@ export class PeerExchangeService {
 
     this.pubsub.subscribe(PEX_TOPIC);
     this.pubsub.addEventListener('message', (event: CustomEvent<Message>) => this.onGossip(event));
+
+    this.loopGossip().catch(() => {});
   }
 
   /**
@@ -51,21 +55,11 @@ export class PeerExchangeService {
   }
 
   /**
-   * Add peers to the dial queue
+   * Add peers to the dial queue which are new or have not been dailed for sometime
    * @param peers
    */
   enqueueDial(peers: PeerInfoLite[]): void {
-    this.dialQ.enqueue(peers);
-  }
-
-  /**
-   * Start exchanging peers on the pex topic
-   */
-  async initiatePeerExchange(): Promise<void> {
-    if (!this.isPeerExchangeStarted) {
-      this.isPeerExchangeStarted = true;
-      this.peerExchangeIntervalId = this.loopGossip();
-    }
+    this.dialQ.enqueue(peers.filter(({ peerId }) => this.shouldDial(peerId)));
   }
 
   /**
@@ -76,6 +70,20 @@ export class PeerExchangeService {
   private isScoreEnoughToDial(peerId: string): boolean {
     // tiny bonus: if a peer provided good PX/gossip recently, it likely has more value
     return this.scorer.isDialable(peerId); // dialQueue already checks shouldDial via injected scorer; keep hook if you expand
+  }
+
+  /**
+   * returns true if this peer is new or have'nt been contact for sometime otherwise
+   * @param peerId
+   * @returns
+   */
+  shouldDial(peerId: string): boolean {
+    if (this.peersSeen.has(peerId)) {
+      // already seen → skip dialing
+      return false;
+    }
+    this.peersSeen.add(peerId);
+    return true;
   }
 
   /**
@@ -113,39 +121,31 @@ export class PeerExchangeService {
   /**
    * periodically publish a pex gossip message with other peers info on pex topic
    */
-  private loopGossip(): NodeJS.Timeout | null {
-    if (this.isPeerExchangeStarted && !this.peerExchangeIntervalId) {
-      logger.info('Registered Peer Exchange Topic');
-      return setInterval(async () => {
-        try {
-          const peers = sampleList(this.peerRegistry.getCandidates(256), MAX_SHARED_PEERS).map((p) => ({
-            peerId: p.peerId,
-            addresses: filterAddrs(p.addresses),
-          }));
-          if (peers.length) {
-            const msg: PEX_GOSSIP = {
-              type: 'PEX_GOSSIP',
-              peers,
-              ts: now(),
-              originPeerInfo: {
-                peerId: this.node.peerId.toString(),
-                addresses: this.node.getMultiaddrs().map((multiAddr) => multiAddr.toString()),
-              },
-            };
-            await this.pubsub.publish(PEX_TOPIC, uint8ArrayFromString(JSON.stringify(msg)));
-            logger.trace('Published peers info on pex topic');
-          }
-        } catch (error: unknown) {
-          /* noop */
-          logger.warn('Error occured while publishing a gossip message to a peer: ', error);
-          if ((error as Error)?.message === 'PublishError.NoPeersSubscribedToTopic') {
-            logger.warn('Stopping pex gossip as there are no peers to gossip');
-            this.stopGossip();
-          }
+  private async loopGossip() {
+    while (!this.stopped) {
+      await sleep(GOSSIP_INTERVAL_MS);
+      try {
+        const peers = sampleList(this.peerRegistry.getCandidates(256), MAX_SHARED_PEERS).map((p) => ({
+          peerId: p.peerId,
+          addresses: filterAddrs(p.addresses),
+        }));
+        if (peers.length) {
+          const msg: PEX_GOSSIP = {
+            type: 'PEX_GOSSIP',
+            peers,
+            ts: now(),
+            originPeerInfo: {
+              peerId: this.node.peerId.toString(),
+              addresses: this.node.getMultiaddrs().map((multiAddr) => multiAddr.toString()),
+            },
+          };
+          await this.pubsub.publish(PEX_TOPIC, uint8ArrayFromString(JSON.stringify(msg)));
         }
-      }, GOSSIP_INTERVAL_MS);
+      } catch (error) {
+        /* noop */
+        logger.warn('Error occured while publishing a gossip message to a peer: ', error);
+      }
     }
-    return null;
   }
 
   /**
@@ -156,9 +156,9 @@ export class PeerExchangeService {
   private onGossip(event: CustomEvent<Message>) {
     const detail = event.detail;
     const data = detail.data;
-    if (!data || event.detail.topic !== PEX_TOPIC) return;
+    if (!data) return;
 
-    const { from, type, peers, originPeerInfo } = JSON.parse(uint8ArrayToString(data));
+    const { from, type, peers } = JSON.parse(uint8ArrayToString(data));
     // inbound rate-limit per peer
     const last = this.lastGossipByPeer.get(from) || 0;
     if (now() - last < 60_000 / MAX_PEX_MSGS_PER_MIN) {
@@ -172,12 +172,9 @@ export class PeerExchangeService {
       return;
     }
 
-    logger.trace('Received pex gossip message from: ', originPeerInfo?.peerId);
     // absorb and reward
     const updatedPeers = (peers || []).slice(0, MAX_SHARED_PEERS);
     this.peerRegistry.upsertMany(updatedPeers);
-    if (originPeerInfo) this.peerRegistry.upsert(originPeerInfo);
-
     this.scorer.reward(from, Math.min(3, peers.length / 8)); // tiny reward proportional to usefulness
 
     // trickle dials
@@ -195,7 +192,7 @@ export class PeerExchangeService {
     if (!this.peerRegistry.isPeerDataRequested(peerIdString)) return [];
     this.peerRegistry.markRequested(peerIdString);
     try {
-      const stream = await this.node.dialProtocol(peerId, PEX_PROTOCOL);
+      const stream = await this.node.dialProtocol(peerId, PEX_PROTO);
       const req: GET_PEERS_MSG = { type: 'GET_PEERS', want };
       let receivedPeers: PeerInfoLite[] = [];
 
@@ -219,8 +216,7 @@ export class PeerExchangeService {
   /**
    * Stop the Peer Exchange Service from gossiping
    */
-  stopGossip(): void {
-    this.isPeerExchangeStarted = false;
-    if (this.peerExchangeIntervalId) clearInterval(this.peerExchangeIntervalId);
+  stop(): void {
+    this.stopped = true;
   }
 }

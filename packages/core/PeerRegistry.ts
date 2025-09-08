@@ -1,5 +1,5 @@
 import logger from '@common/logger';
-import { PeerInfoLite } from '../nodeP2P/types';
+import { PeerInfoLite } from './types';
 import { now, sampleList } from './utils';
 
 const PEX_REQUEST_COOLDOWN_MS = 15_000;
@@ -14,11 +14,26 @@ export class PeerRegistry {
     this.selfPeerId = selfPeerId;
     this.peerRegistry = new Map();
     this.maxSize = maxSize;
-    setInterval(() => {
-      for (const [key, value] of this.peerRegistry) {
-        logger.info(key, value.lastSeen);
-      }
-    }, 30000);
+
+    if (process.env.NODE_ENV !== 'production') {
+      this.logRegistryData();
+    }
+  }
+
+  /**
+   *  returns the number of peers present in registry
+   * @returns {number}
+   */
+  getSize(): number {
+    return this.peerRegistry.size;
+  }
+
+  /**
+   *  returns all the peers present in registry
+   * @returns {string[]}
+   */
+  getPeers(): string[] {
+    return Array.from(this.peerRegistry.keys());
   }
 
   /**
@@ -86,5 +101,13 @@ export class PeerRegistry {
   markRequested(peerId: string): void {
     const value = this.peerRegistry.get(peerId);
     if (value) value.lastRequested = now();
+  }
+
+  private logRegistryData() {
+    setInterval(() => {
+      for (const [key, value] of this.peerRegistry) {
+        logger.debug('peer: ', key, ' lastRequested: ', value.lastRequested);
+      }
+    }, 30_000);
   }
 }

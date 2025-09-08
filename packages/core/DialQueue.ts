@@ -1,8 +1,7 @@
 import { peerIdFromString } from '@libp2p/peer-id';
 import { Libp2p } from 'libp2p/dist/src';
 import logger from '@common/logger';
-
-type PeerInfoLite = { peerId: string; addresses: string[] };
+import { PeerInfoLite } from './types';
 
 export class DialQueue {
   private dialQueue: Array<PeerInfoLite>;
@@ -56,11 +55,7 @@ export class DialQueue {
           await this.sleep(this.intervalMs);
           continue;
         }
-
-        // pick a usable addr if you pass multiaddrs; or dial by peerId if peerstore hydrated
-
         const connection = await this.node.dial(peerIdFromString(peerInfo.peerId));
-
         await connection.close();
       } catch (error) {
         /* swallow; optional retry policy */

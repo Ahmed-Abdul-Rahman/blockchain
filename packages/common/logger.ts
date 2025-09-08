@@ -1,24 +1,31 @@
 import path, { dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { threadId } from 'worker_threads';
 import { createStream } from 'rotating-file-stream';
 import { Logger } from 'tslog';
 
 const logLevels = {
-  silly: 0,
-  trace: 1,
-  debug: 2,
-  info: 3,
-  warn: 4,
-  error: 5,
-  fatal: 6,
+  SILLY: 0,
+  TRACE: 1,
+  DEBUG: 2,
+  INFO: 3,
+  WARN: 4,
+  ERROR: 5,
+  FATAL: 6,
 };
 // Log file directory
 const __filename = fileURLToPath(import.meta.url);
 const logDirectory = path.join(dirname(__filename), 'logs');
 
+let logLevel = 'TRACE';
+
+if (process.env.NODE_ENV === 'production') logLevel = 'INFO';
+else if (process.env.NODE_ENV === 'perf') logLevel = 'DEBUG';
+else if (process.env.LOG_LEVEL) logLevel = process.env.LOG_LEVEL;
+
 const baseLogger = new Logger({
   name: 'app',
-  minLevel: process.env.NODE_ENV === 'production' ? logLevels.info : logLevels.debug,
+  minLevel: logLevels[logLevel],
   type: process.env.NODE_ENV === 'production' ? 'json' : 'pretty',
   hideLogPositionForProduction: true,
   prettyLogTemplate: '{{yyyy}}-{{mm}}-{{dd}} {{hh}}:{{MM}}:{{ss}}.{{ms}} {{logLevelName}} {{name}}: ',
@@ -45,8 +52,11 @@ const tag = (parts, ...substitutions): string => {
   substitutions.forEach((obj, i) => {
     result += obj + parts[i + 1];
   });
+  if (process.env.NODE_ENV === 'perf') return threadId + ' ' + result;
   return result;
 };
+
+const prefixMessage = process.env.NODE_ENV === 'perf' ? threadId + ' ' : '';
 
 const isTemplateStringsArray = (x: unknown): x is TemplateStringsArray =>
   Array.isArray(x) && Object.prototype.hasOwnProperty.call(x, 'raw');
@@ -58,7 +68,7 @@ const logger = {
       baseLogger.silly(tag(message, ...args));
       return;
     }
-    baseLogger.silly(message, ...args);
+    baseLogger.silly(prefixMessage, message, ...args);
   },
 
   trace(message: TemplateStringsArray | unknown, ...args: unknown[]): void {
@@ -66,7 +76,7 @@ const logger = {
       baseLogger.trace(tag(message, ...args));
       return;
     }
-    baseLogger.trace(message, ...args);
+    baseLogger.trace(prefixMessage, message, ...args);
   },
 
   debug(message: TemplateStringsArray | unknown, ...args: unknown[]): void {
@@ -74,7 +84,7 @@ const logger = {
       baseLogger.debug(tag(message, ...args));
       return;
     }
-    baseLogger.debug(message, ...args);
+    baseLogger.debug(prefixMessage, message, ...args);
   },
 
   info(message: TemplateStringsArray | unknown, ...args: unknown[]): void {
@@ -82,7 +92,7 @@ const logger = {
       baseLogger.info(tag(message, ...args));
       return;
     }
-    baseLogger.info(message, ...args);
+    baseLogger.info(prefixMessage, message, ...args);
   },
 
   warn(message: TemplateStringsArray | unknown, ...args: unknown[]): void {
@@ -90,7 +100,7 @@ const logger = {
       baseLogger.warn(tag(message, ...args));
       return;
     }
-    baseLogger.warn(message, ...args);
+    baseLogger.warn(prefixMessage, message, ...args);
   },
 
   error(message: TemplateStringsArray | unknown, ...args: unknown[]): void {
@@ -98,7 +108,7 @@ const logger = {
       baseLogger.error(tag(message, ...args));
       return;
     }
-    baseLogger.error(message, ...args);
+    baseLogger.error(prefixMessage, message, ...args);
   },
 
   fatal(message: TemplateStringsArray | unknown, ...args: unknown[]): void {
@@ -106,7 +116,7 @@ const logger = {
       baseLogger.fatal(tag(message, ...args));
       return;
     }
-    baseLogger.fatal(message, ...args);
+    baseLogger.fatal(prefixMessage, message, ...args);
   },
   // You can add more levels (trace, fatal...) as needed
 };

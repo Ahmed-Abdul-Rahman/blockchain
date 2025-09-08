@@ -6,9 +6,10 @@ import { EventId } from 'eventid';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import bytecoin from '@blockchain/Blockchain';
-import { sha256 } from '@common/utils.js';
-import { loadOrGenerateKeypair } from '@crypto/utils.js';
-import createNetworkNode from '@nodeP2P/index.js';
+import logger from '@common/logger';
+import { sha256 } from '@common/utils';
+import { createNode } from '@core/node';
+import { loadOrGenerateKeypair } from '@crypto/utils';
 
 import {
   getBlockChain,
@@ -21,7 +22,7 @@ import {
   postRegisterNodesBulk,
   postTransaction,
   postTransactionBroadcast,
-} from './api.js';
+} from './api';
 import {
   BLOCKCHAIN,
   CHALLENGE,
@@ -33,8 +34,8 @@ import {
   REGISTER_NODES_BULK,
   TRANSACTION,
   TRANSACTION_BROADCAST,
-} from './apiPaths.js';
-import { infoHash } from './constants.js';
+} from './apiPaths';
+import { infoHash } from './constants';
 
 const KEY_FILE = path.join(process.cwd(), 'node_identity.pem');
 
@@ -106,9 +107,11 @@ app.post(CHALLENGE, postChallengeRateLimiter, postChallenge.bind(null, privateKe
 
 server.listen(0, async () => {
   const { address, port } = server.address() as AddressInfo;
-  const networkNode = await createNetworkNode(networkNodeConfig);
-  await networkNode.start();
-  bytecoin.setCurrentNode(`http://${address}:${port}`, networkNode.nodeId?.toString(), publicKey);
+  const { node } = await createNode(infoHash);
+  await node.start();
+  // const networkNode = await createNetworkNode(networkNodeConfig);
+  // await networkNode.start();
+  bytecoin.setCurrentNode(`http://${address}:${port}`, node.peerId.toString(), publicKey);
   process.env.SERVER_PORT = `${port}`;
-  console.log(`Node - ${networkNode.nodeId} - Listening on Port ${port}...`);
+  logger.info(`Node - ${node.peerId} - Listening on Port ${port}...`);
 });
