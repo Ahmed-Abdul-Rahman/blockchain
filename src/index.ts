@@ -2,12 +2,12 @@ import http2 from 'http2';
 import { AddressInfo } from 'net';
 import path from 'path';
 import bodyParser from 'body-parser';
-import { EventId } from 'eventid';
+// import { EventId } from 'eventid';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import bytecoin from '@blockchain/Blockchain';
 import logger from '@common/logger';
-import { sha256 } from '@common/utils';
+// import { sha256 } from '@common/utils';
 import { createNode } from '@core/node';
 import { loadOrGenerateKeypair } from '@crypto/utils';
 
@@ -39,25 +39,25 @@ import { infoHash } from './constants';
 
 const KEY_FILE = path.join(process.cwd(), 'node_identity.pem');
 
-const nodeEventId = new EventId();
+// const nodeEventId = new EventId();
 const { publicKey, privateKey } = loadOrGenerateKeypair(KEY_FILE, true);
 
 process.env.NODE_PUBLIC_KEY = publicKey.export({ type: 'spki', format: 'pem' }).toString();
 process.env.NODE_PRIVATE_KEY = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
 
-const networkNodeConfig = {
-  nodeConfig: {
-    nodeEventId: nodeEventId.new(),
-    nodePrivateKey: privateKey,
-    nodePublicKey: publicKey,
-    get networkId() {
-      return sha256(this.nodeEventId);
-    },
-    infoHash: infoHash,
-    genesisTimestamp: Date.now(),
-  },
-  protocol: '/hanshake/1.0.0',
-};
+// const networkNodeConfig = {
+//   nodeConfig: {
+//     nodeEventId: nodeEventId.new(),
+//     nodePrivateKey: privateKey,
+//     nodePublicKey: publicKey,
+//     get networkId() {
+//       return sha256(this.nodeEventId);
+//     },
+//     infoHash: infoHash,
+//     genesisTimestamp: Date.now(),
+//   },
+//   protocol: '/hanshake/1.0.0',
+// };
 
 // const port = process.argv[2];
 
