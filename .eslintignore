@@ -1,0 +1,10 @@
+**/node_modules/**
+**/dist/**
+**/coverage/**
+**/build/**
+**/.git/**
+**/.husky/**
+**/.yarn/**
+**/.vscode/**
+**/public/**
+!.eslintrc.js

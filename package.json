@@ -1,30 +1,34 @@
 {
   "name": "blockchain",
   "version": "1.0.0",
-  "description": "Blockchain Implementation",
-  "main": "build/src/index.js",
+  "author": "Ahmed Abdul Rahman",
+  "description": "Monorepo of Blockchain Implementation",
   "type": "module",
   "scripts": {
-    "start": "node build/src/index.js",
-    "dev": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts",
-    "node": "tsx -r tsconfig-paths/register src/index.ts",
-    "node_1": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts 3001 http://localhost:3001",
-    "node_2": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts 3002 http://localhost:3002",
-    "node_3": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts 3003 http://localhost:3003",
-    "node_4": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts 3004 http://localhost:3004",
-    "node_5": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts 3005 http://localhost:3005",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "clean": "rm -rf build",
-    "build": "npm run clean && tsc -p tsconfig.json && tsc-alias --resolve-full-paths",
-    "sim": "NODE_ENV=perf node build/packages/core/_tests/SimulateMultiNode.int.js --nodes 10 --duration 300",
-    "sim:peak": "NODE_OPTIONS='--max-old-space-size=4096' NODE_ENV=perf node build/packages/core/_tests/SimulateMultiNode.int.js --nodes 50 --duration 1500",
-    "lint": "eslint . ",
+    "foreach-workspace": "yarn workspaces foreach -Avi --exclude root",
+    "chain": "yarn workspace @dechat/chain",
+    "core": "yarn workspace @dechat/core",
+    "crypto": "yarn workspace @dechat/crypto",
+    "logger": "yarn workspace @dechat/logger",
+    "build": "yarn foreach-workspace run build",
+    "clean": "yarn cache clear && yarn foreach-workspace -p run clean",
+    "clean:deps": "yarn clean && node ./scripts/removeFolderRecursive ./node_modules",
+    "backend-node": "yarn workspace backend-node run",
+    "test": "yarn foreach-workspace run test",
+    "lint": "eslint .",
+    "lint:backend-node": "eslint apps/backend",
+    "lint:chain": "eslint packages/chain",
+    "lint:core": "eslint packages/core",
+    "lint:crypto": "eslint packages/crypto",
+    "lint:logger": "eslint packages/logger",
     "lint:fix": "eslint . --fix",
-    "format": "prettier --write \"src/**/*.{ts,js,json,md}\"",
+    "format": "prettier --write \"src/**/*.{ts,js,tsx,jsx,json,md}\"",
     "prepare": "husky"
   },
-  "author": "Ahmed Abdul Rahman",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "license": "ISC",
   "nodemonConfig": {
     "ignore": [
@@ -33,40 +37,10 @@
       "node_modules/**/node_modules"
     ],
     "watch": [
-      "src",
+      "apps",
       "packages"
     ],
     "ext": "ts"
-  },
-  "dependencies": {
-    "@chainsafe/libp2p-gossipsub": "^14.1.0",
-    "@chainsafe/libp2p-noise": "^16.0.1",
-    "@chainsafe/libp2p-yamux": "^7.0.1",
-    "@libp2p/bootstrap": "^11.0.47",
-    "@libp2p/crypto": "^5.1.8",
-    "@libp2p/identify": "^3.0.15",
-    "@libp2p/mdns": "^11.0.17",
-    "@libp2p/peer-id": "^5.0.10",
-    "@libp2p/tcp": "^10.0.15",
-    "@noble/ed25519": "^3.0.0",
-    "@types/lodash-es": "^4.17.12",
-    "axios": "^1.7.9",
-    "bloom-filters": "^3.0.4",
-    "body-parser": "^1.20.3",
-    "crc-32": "^1.2.2",
-    "eventid": "^2.0.1",
-    "express": "^4.21.2",
-    "express-rate-limit": "^7.5.0",
-    "it-length-prefixed": "^9.1.1",
-    "it-map": "^3.1.1",
-    "it-pipe": "^3.0.1",
-    "it-pushable": "^3.2.3",
-    "libp2p": "^2.5.0",
-    "lodash-es": "^4.17.21",
-    "rotating-file-stream": "^3.2.7",
-    "tslog": "^4.9.3",
-    "uuid": "^11.0.5",
-    "vite-tsconfig-paths": "^5.1.4"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -90,6 +64,8 @@
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.20.5",
     "typescript": "^5.7.3",
+    "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^3.2.4"
-  }
+  },
+  "packageManager": "yarn@4.9.4"
 }

@@ -1,0 +1,31 @@
+{
+    "name": "backend-node",
+    "type": "module",
+    "scripts": {
+        "start": "tsx -r tsconfig-paths/register src/index.ts",
+        "start:dev": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts",
+        "node": "tsx -r tsconfig-paths/register src/index.ts",
+        "node_1": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts 3001 http://localhost:3001",
+        "node_2": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts 3002 http://localhost:3002",
+        "node_3": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts 3003 http://localhost:3003",
+        "node_4": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts 3004 http://localhost:3004",
+        "node_5": "nodemon --exec tsx -r tsconfig-paths/register src/index.ts 3005 http://localhost:3005",
+        "build:dev": "tsup src/index.ts --watch --format esm",
+        "build": "tsup src/index.ts --format esm,cjs --dts",
+        "clean": "rm -rf dist",
+        "test": "vitest"
+    },
+    "dependencies": {
+        "@dechat/core": "workspace:*",
+        "@dechat/crypto": "workspace:*",
+        "@dechat/logger": "workspace:*",
+        "axios": "^1.7.9",
+        "body-parser": "^1.20.3",
+        "eventid": "^2.0.1",
+        "express": "^4.21.2",
+        "express-rate-limit": "^7.5.0"
+    },
+    "devDependencies": {
+        "tsup": "^8.0.0"
+    }
+}

@@ -1,45 +1,25 @@
 {
+    "extends": "./tsconfig.build.json",
     "compilerOptions": {
-        "module": "ESNext",
-        "target": "esnext",
-        "moduleResolution": "node",
-        "outDir": "./build",
-        "declaration": true,
-        "sourceMap": true,
-        "baseUrl": "./",
+        "baseUrl": ".",
         "paths": {
-            "@blockchain/*": [
-                "packages/blockchain/*"
+            "@dechat/logger/*": [
+                "packages/logger/src/*"
             ],
-            "@nodeP2P/*": [
-                "packages/nodeP2P/*"
+            "@dechat/core/*": [
+                "packages/core/src/*"
             ],
-            "@core/*": [
-                "packages/core/*"
+            "@dechat/crypto/*": [
+                "packages/crypto/src/*"
             ],
-            "@common/*": [
-                "packages/common/*"
-            ],
-            "@crypto/*": [
-                "packages/crypto/*"
+            "@dechat/chain/*": [
+                "packages/chain/src/*"
             ]
         },
-        "strict": true,
-        "esModuleInterop": true,
-        "forceConsistentCasingInFileNames": true,
-        "skipLibCheck": true,
-        "noImplicitAny": false,
-        "resolveJsonModule": true,
-        "allowSyntheticDefaultImports": true,
-        "allowJs": true
     },
     "include": [
-        "./src/**/*",
+        "./apps/**/*",
         "./packages/**/*",
-        "_tests"
+        "_tests",
     ],
-    "exclude": [
-        "node_modules",
-        "build"
-    ]
 }
