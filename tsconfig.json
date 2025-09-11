@@ -1,9 +1,11 @@
 {
     "compilerOptions": {
         "module": "ESNext",
-        "target": "ES6",
+        "target": "esnext",
         "moduleResolution": "node",
         "outDir": "./build",
+        "declaration": true,
+        "sourceMap": true,
         "baseUrl": "./",
         "paths": {
             "@blockchain/*": [
@@ -11,6 +13,9 @@
             ],
             "@nodeP2P/*": [
                 "packages/nodeP2P/*"
+            ],
+            "@core/*": [
+                "packages/core/*"
             ],
             "@common/*": [
                 "packages/common/*"
@@ -30,7 +35,8 @@
     },
     "include": [
         "./src/**/*",
-        "./packages/**/*"
+        "./packages/**/*",
+        "_tests"
     ],
     "exclude": [
         "node_modules",

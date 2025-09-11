@@ -2,13 +2,14 @@ import http2 from 'http2';
 import { AddressInfo } from 'net';
 import path from 'path';
 import bodyParser from 'body-parser';
-import { EventId } from 'eventid';
+// import { EventId } from 'eventid';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import bytecoin from '@blockchain/Blockchain';
-import { sha256 } from '@common/utils.js';
-import { loadOrGenerateKeypair } from '@crypto/utils.js';
-import createNetworkNode from '@nodeP2P/index.js';
+import logger from '@common/logger';
+// import { sha256 } from '@common/utils';
+import { createNode } from '@core/node';
+import { loadOrGenerateKeypair } from '@crypto/utils';
 
 import {
   getBlockChain,
@@ -21,7 +22,7 @@ import {
   postRegisterNodesBulk,
   postTransaction,
   postTransactionBroadcast,
-} from './api.js';
+} from './api';
 import {
   BLOCKCHAIN,
   CHALLENGE,
@@ -33,30 +34,30 @@ import {
   REGISTER_NODES_BULK,
   TRANSACTION,
   TRANSACTION_BROADCAST,
-} from './apiPaths.js';
-import { infoHash } from './constants.js';
+} from './apiPaths';
+import { infoHash } from './constants';
 
 const KEY_FILE = path.join(process.cwd(), 'node_identity.pem');
 
-const nodeEventId = new EventId();
+// const nodeEventId = new EventId();
 const { publicKey, privateKey } = loadOrGenerateKeypair(KEY_FILE, true);
 
 process.env.NODE_PUBLIC_KEY = publicKey.export({ type: 'spki', format: 'pem' }).toString();
 process.env.NODE_PRIVATE_KEY = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
 
-const networkNodeConfig = {
-  nodeConfig: {
-    nodeEventId: nodeEventId.new(),
-    nodePrivateKey: privateKey,
-    nodePublicKey: publicKey,
-    get networkId() {
-      return sha256(this.nodeEventId);
-    },
-    infoHash: infoHash,
-    genesisTimestamp: Date.now(),
-  },
-  protocol: '/hanshake/1.0.0',
-};
+// const networkNodeConfig = {
+//   nodeConfig: {
+//     nodeEventId: nodeEventId.new(),
+//     nodePrivateKey: privateKey,
+//     nodePublicKey: publicKey,
+//     get networkId() {
+//       return sha256(this.nodeEventId);
+//     },
+//     infoHash: infoHash,
+//     genesisTimestamp: Date.now(),
+//   },
+//   protocol: '/hanshake/1.0.0',
+// };
 
 // const port = process.argv[2];
 
@@ -106,9 +107,11 @@ app.post(CHALLENGE, postChallengeRateLimiter, postChallenge.bind(null, privateKe
 
 server.listen(0, async () => {
   const { address, port } = server.address() as AddressInfo;
-  const networkNode = await createNetworkNode(networkNodeConfig);
-  await networkNode.start();
-  bytecoin.setCurrentNode(`http://${address}:${port}`, networkNode.nodeId?.toString(), publicKey);
+  const { node } = await createNode(infoHash);
+  await node.start();
+  // const networkNode = await createNetworkNode(networkNodeConfig);
+  // await networkNode.start();
+  bytecoin.setCurrentNode(`http://${address}:${port}`, node.peerId.toString(), publicKey);
   process.env.SERVER_PORT = `${port}`;
-  console.log(`Node - ${networkNode.nodeId} - Listening on Port ${port}...`);
+  logger.info(`Node - ${node.peerId} - Listening on Port ${port}...`);
 });
