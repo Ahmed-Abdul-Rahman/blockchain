@@ -1,8 +1,8 @@
 import { KeyObject } from 'crypto';
+import { sha256 } from '@dechat/crypto';
 import { v1 as uuidV1 } from 'uuid';
-import { sha256 } from '@common/utils';
 
-interface Transaction {
+export interface Transaction {
   amount: number;
   data: object;
   sender: string;
@@ -11,7 +11,7 @@ interface Transaction {
   transactionId: string;
 }
 
-interface Block {
+export interface Block {
   index: number;
   timestamp: number;
   transactions: Transaction[];
@@ -175,6 +175,4 @@ class BlockChain {
   }
 }
 
-const bytecoin = BlockChain.Instance;
-
-export default bytecoin;
+export const bytecoin = BlockChain.Instance;

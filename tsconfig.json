@@ -3,43 +3,31 @@
         "module": "ESNext",
         "target": "esnext",
         "moduleResolution": "node",
-        "outDir": "./build",
+        "outDir": "dist",
         "declaration": true,
         "sourceMap": true,
-        "baseUrl": "./",
-        "paths": {
-            "@blockchain/*": [
-                "packages/blockchain/*"
-            ],
-            "@nodeP2P/*": [
-                "packages/nodeP2P/*"
-            ],
-            "@core/*": [
-                "packages/core/*"
-            ],
-            "@common/*": [
-                "packages/common/*"
-            ],
-            "@crypto/*": [
-                "packages/crypto/*"
-            ]
-        },
+        "declarationMap": true,
         "strict": true,
         "esModuleInterop": true,
         "forceConsistentCasingInFileNames": true,
         "skipLibCheck": true,
         "noImplicitAny": false,
-        "resolveJsonModule": true,
         "allowSyntheticDefaultImports": true,
         "allowJs": true
-    },
-    "include": [
-        "./src/**/*",
-        "./packages/**/*",
-        "_tests"
-    ],
-    "exclude": [
-        "node_modules",
-        "build"
-    ]
+        // "baseUrl": "./",
+        // "paths": {
+        //     "@blockchain/*": [
+        //         "packages/blockchain/*"
+        //     ],
+        //     "@core/*": [
+        //         "packages/core/*"
+        //     ],
+        //     "@common/*": [
+        //         "packages/common/*"
+        //     ],
+        //     "@crypto/*": [
+        //         "packages/crypto/*"
+        //     ]
+        // },
+    }
 }

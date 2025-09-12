@@ -1,3 +1,4 @@
+import { logger } from '@dechat/common';
 import { Stream } from '@libp2p/interface';
 import * as lp from 'it-length-prefixed';
 import map from 'it-map';
@@ -5,7 +6,6 @@ import { pipe } from 'it-pipe';
 import { cloneDeep } from 'lodash-es';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
-import logger from '@common/logger';
 
 export const writeToStream = async (stream: Stream, message: unknown): Promise<void> => {
   if (!stream) {

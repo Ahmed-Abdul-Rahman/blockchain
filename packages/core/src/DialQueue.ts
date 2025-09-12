@@ -1,6 +1,6 @@
+import { logger } from '@dechat/common';
 import { peerIdFromString } from '@libp2p/peer-id';
 import { Libp2p } from 'libp2p/dist/src';
-import logger from '@common/logger';
 import { PeerInfoLite } from './types';
 
 export class DialQueue {
@@ -59,6 +59,7 @@ export class DialQueue {
         await connection.close();
       } catch (error) {
         /* swallow; optional retry policy */
+        // If the dialing failed consistently maybe for twice or thrice remove this peer from registry
         logger.warn('Error occured while dialing a peer in queue');
         logger.debug(error);
       }

@@ -1,9 +1,9 @@
 import crypto, { KeyObject } from 'crypto';
+import { bytecoin } from '@dechat/blockchain';
 import axios, { AxiosResponse } from 'axios';
 import { Request, Response } from 'express';
-import bytecoin from '@blockchain/Blockchain';
 
-import { initiateChallenge, signMessage } from './cryptoUtils.js';
+import { initiateChallenge, signMessage } from './cryptoUtils';
 
 export const getBlockChain = (req: Request, res: Response): void => {
   res.send(bytecoin);

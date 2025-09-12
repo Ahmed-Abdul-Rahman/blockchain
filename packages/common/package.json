@@ -1,0 +1,22 @@
+{
+    "name": "@dechat/common",
+    "version": "1.0.0",
+    "type": "module",
+    "exports": {
+        "development": "./index.ts",
+        "default": "./dist/index.js",
+        "types": "./dist/index.d.ts"
+    },
+    "scripts": {
+        "build": "tsc -p tsconfig.json",
+        "clean": "rm -rf dist",
+        "test": "vitest"
+    },
+    "dependencies": {
+        "rotating-file-stream": "^3.2.7",
+        "tslog": "^4.9.3"
+    },
+    "devDependencies": {
+        "typescript": "^5.5.0"
+    }
+}

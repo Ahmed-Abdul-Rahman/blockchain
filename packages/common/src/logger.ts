@@ -61,7 +61,7 @@ const prefixMessage = process.env.NODE_ENV === 'perf' ? threadId + ' ' : '';
 const isTemplateStringsArray = (x: unknown): x is TemplateStringsArray =>
   Array.isArray(x) && Object.prototype.hasOwnProperty.call(x, 'raw');
 
-const logger = {
+export const logger = {
   // Tagged template support
   silly(message: TemplateStringsArray | unknown, ...args: unknown[]): void {
     if (isTemplateStringsArray(message)) {
@@ -120,5 +120,3 @@ const logger = {
   },
   // You can add more levels (trace, fatal...) as needed
 };
-
-export default logger;

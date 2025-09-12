@@ -1,6 +1,8 @@
 import { gossipsub } from '@chainsafe/libp2p-gossipsub';
 import { noise } from '@chainsafe/libp2p-noise';
 import { yamux } from '@chainsafe/libp2p-yamux';
+import { logger } from '@dechat/common';
+import { generateIdProtocolPrefix } from '@dechat/crypto';
 import { bootstrap } from '@libp2p/bootstrap';
 import { generateKeyPairFromSeed } from '@libp2p/crypto/keys';
 import { identify } from '@libp2p/identify';
@@ -9,8 +11,6 @@ import { mdns } from '@libp2p/mdns';
 import { tcp } from '@libp2p/tcp';
 import { createLibp2p, Libp2p } from 'libp2p';
 import { debounce } from 'lodash-es';
-import logger from '@common/logger';
-import { generateIdProtocolPrefix } from '@common/utils';
 import { genEd25519KeyPair, installAuthServer, runAuthClient } from './auth';
 import { PeerExchangeService } from './PeerExchangeService';
 import { shouldDialNewPeer } from './shouldDial';

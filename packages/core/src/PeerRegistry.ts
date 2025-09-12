@@ -1,4 +1,4 @@
-import logger from '@common/logger';
+import { logger } from '@dechat/common';
 import { PeerInfoLite } from './types';
 import { now, sampleList } from './utils';
 
