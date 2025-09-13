@@ -1,8 +1,7 @@
 import { logger } from '@dechat/common';
 import { sha256 } from '@dechat/crypto';
-import { PeerId } from '@libp2p/interface';
+import { PeerId, Libp2p } from '@libp2p/interface';
 import * as ed from '@noble/ed25519';
-import { Libp2p } from 'libp2p/dist/src';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { PeerExchangeService } from './PeerExchangeService';
 import { now, readFromStream, writeToStream } from './utils';

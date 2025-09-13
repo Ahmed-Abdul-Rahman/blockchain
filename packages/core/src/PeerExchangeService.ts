@@ -1,7 +1,6 @@
-import { GossipSub } from '@chainsafe/libp2p-gossipsub/dist/src';
+import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { logger } from '@dechat/common';
-import { Message, PeerId, Stream } from '@libp2p/interface';
-import { Libp2p } from 'libp2p/dist/src';
+import { Message, PeerId, Stream, Libp2p } from '@libp2p/interface';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { DialQueue } from './DialQueue';

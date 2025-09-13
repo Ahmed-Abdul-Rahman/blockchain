@@ -2,16 +2,16 @@
     "name": "backend-node",
     "type": "module",
     "scripts": {
-        "start": "node dist/index.ts",
+        "start": "node dist/index.js",
         "start:dev": "tsx --conditions=development src/index.ts",
-        "start:liveDev": "tsx --watch --conditions=development tsconfig-paths/register src/index.ts",
+        "start:liveDev": "tsx --watch --conditions=development src/index.ts",
         "node": "tsx -r tsconfig-paths/register src/index.ts",
         "node_1": "tsx -r tsconfig-paths/register src/index.ts 3001 http://localhost:3001",
         "node_2": "tsx -r tsconfig-paths/register src/index.ts 3002 http://localhost:3002",
         "node_3": "tsx -r tsconfig-paths/register src/index.ts 3003 http://localhost:3003",
         "node_4": "tsx -r tsconfig-paths/register src/index.ts 3004 http://localhost:3004",
         "node_5": "tsx -r tsconfig-paths/register src/index.ts 3005 http://localhost:3005",
-        "build": "",
+        "build": "tsc -p tsconfig.json && tsc-alias --resolve-full-paths",
         "clean": "rm -rf dist",
         "test": "vitest"
     },
@@ -24,8 +24,5 @@
         "eventid": "^2.0.1",
         "express": "^4.21.2",
         "express-rate-limit": "^7.5.0"
-    },
-    "devDependencies": {
-        "tsup": "^8.0.0"
     }
 }

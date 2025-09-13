@@ -4,11 +4,12 @@
     "type": "module",
     "exports": {
         "development": "./index.ts",
-        "default": "./dist/index.js",
-        "types": "./dist/index.d.ts"
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
     },
     "scripts": {
-        "build": "tsc -p tsconfig.json",
+        "build": "tsc -p tsconfig.json && tsc-alias --resolve-full-paths",
+        "fixBuild": "tsc-esm-fix --target dist --ext .js",
         "clean": "rm -rf dist",
         "test": "vitest run",
         "test:watch": "vitest",

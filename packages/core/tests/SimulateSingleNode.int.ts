@@ -1,7 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { parentPort, workerData } from 'node:worker_threads';
 import { GossipSub } from '@chainsafe/libp2p-gossipsub/dist/src';
-import { createNode } from '../node.js';
+import { createNode } from '../src/node';
 
 // If your node.ts already exports a start function returning { node, verifiedPeers, ... },
 // prefer that. Here I'll assume you can require it and pass config overrides.

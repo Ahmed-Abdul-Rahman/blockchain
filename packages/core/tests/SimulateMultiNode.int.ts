@@ -1,12 +1,18 @@
+import assert from 'node:assert/strict';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 
 type WorkerResult = {
-  me: string;
+  me?: string;
   verified: number;
   connections: number;
   ttfvpMs: number; // time-to-first-verified-peer
+};
+
+type expectedWorkerResult = {
+  verified: number;
+  connections: number | ((number: number) => boolean);
 };
 
 type AggregatedStats = {
@@ -49,12 +55,26 @@ const pubsubTopic: string = parseArg('topic', '/bench/1');
 const networkId: string = parseArg('net', 'benchnet-1');
 const bootstrapMultiaddrs: string[] = []; // can be filled with known seeds
 
-const __filename = fileURLToPath(import.meta.url);
-const workerPath = resolve(dirname(__filename), './SimulateSingleNode.int.js');
+const filename = fileURLToPath(import.meta.url);
+const workerPath = resolve(dirname(filename), './SimulateSingleNode.int.js');
 
-// --------------------
-// Percentile helper
-// --------------------
+const expectedResult: expectedWorkerResult = {
+  verified: totalNodes - 1,
+  connections: (value) => value < totalNodes,
+};
+
+const assertWorkerResult = (result: WorkerResult, expectations: expectedWorkerResult) => {
+  for (const [key, expected] of Object.entries(expectations)) {
+    const value = result[key];
+
+    if (typeof expected === 'function') {
+      assert.ok((expected as Function)(value), `Assertion failed for ${key}: got ${value}`);
+    } else {
+      assert.equal(value, expected, `Assertion failed for ${key}`);
+    }
+  }
+};
+
 const percentile = (values: number[], q: number): number => {
   if (values.length === 0) return -1;
   const sorted = [...values].sort((a, b) => a - b);
@@ -91,22 +111,26 @@ const aggregateResults = (results: WorkerResult[]): AggregatedStats => {
   };
 };
 
-// --------------------
-// Finish & summarize
-// --------------------
 const finish = (results: WorkerResult[]): void => {
   const summary = aggregateResults(results);
+  try {
+    results.forEach((workerResult) => {
+      assertWorkerResult(workerResult, expectedResult);
+    });
+  } catch (err) {
+    console.error('❌ Test failed:', (err as Error).message);
+    process.exit(1);
+  }
+  console.log('✅ All assertions passed!');
   console.log('\n=== Aggregate Results ===');
   console.log(JSON.stringify(summary, null, 2));
   process.exit(0);
 };
 
-const createWorker = (
-  index: number,
-  workers: Worker[],
-  results: { workerResults: WorkerResult[]; completed: number },
-) => {
-  const { workerResults, completed } = results;
+const results: { workerResults: WorkerResult[] } = { workerResults: [] };
+
+const createWorker = (index: number, workers: Worker[]) => {
+  const { workerResults } = results;
 
   const worker = new Worker(workerPath, {
     workerData: {
@@ -124,11 +148,10 @@ const createWorker = (
     if (message.type === 'done') {
       const stats = message.stats as WorkerResult;
       workerResults.push(stats);
-      results.completed = completed + 1;
       console.log(
-        `[${results.completed}/${totalNodes}] done: node=${stats.me}, verified=${stats.verified}, connections=${stats.connections}`,
+        `[${workerResults.length}/${totalNodes}] done: node=${stats.me}, verified=${stats.verified}, connections=${stats.connections}`,
       );
-      if (results.completed === totalNodes) finish(workerResults);
+      if (workerResults.length === totalNodes) finish(workerResults);
     } else if (message.type === 'error') {
       console.error('worker error:', message.error);
     }
@@ -145,11 +168,10 @@ const createWorker = (
 // --------------------
 const simulatePeers = async (): Promise<void> => {
   const workers: Worker[] = [];
-  const results: { workerResults: WorkerResult[]; completed: number } = { workerResults: [], completed: 0 };
 
   for (let i = 0; i < totalNodes; i++) {
     // await wait(Math.random() * 10000); // stagger creation of workers
-    createWorker(i, workers, results);
+    createWorker(i, workers);
   }
 };
 

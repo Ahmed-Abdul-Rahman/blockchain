@@ -1,7 +1,7 @@
 import { logger } from '@dechat/common';
+import { Libp2p } from '@libp2p/interface';
 import { peerIdFromString } from '@libp2p/peer-id';
-import { Libp2p } from 'libp2p/dist/src';
-import { PeerInfoLite } from './types';
+import { PeerInfoLite } from './types.js';
 
 export class DialQueue {
   private dialQueue: Array<PeerInfoLite>;
