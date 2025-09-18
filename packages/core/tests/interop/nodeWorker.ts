@@ -1,20 +1,8 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { parentPort, workerData } from 'node:worker_threads';
 import { GossipSub } from '@chainsafe/libp2p-gossipsub/dist/src';
-import { createNode } from '../src/node';
-
-// If your node.ts already exports a start function returning { node, verifiedPeers, ... },
-// prefer that. Here I'll assume you can require it and pass config overrides.
-
-type Args = {
-  idx: number;
-  total: number;
-  networkId: string;
-  pubsubTopic: string;
-  bootstrapMultiaddrs: string[];
-  runSeconds: number;
-  msgRate: number; // msgs per second
-};
+import { createNode } from '../../src/node';
+import { WorkerData } from './types';
 
 const percentile = (xs: number[], p: number): number => {
   if (xs.length === 0) return -1;
@@ -23,19 +11,16 @@ const percentile = (xs: number[], p: number): number => {
 };
 
 const runNode = async () => {
-  const args = workerData as Args;
-  const { networkId, pubsubTopic, runSeconds, msgRate } = args;
+  const args = workerData as WorkerData;
+  const { networkId, pubsubTopic, runDurationSec, messageRate } = args;
 
   // Start your node factory with mdns disabled for determinism (optional)
-  const { node, pexService } = await createNode(
-    networkId,
-    {
-      mdns: true,
-      listenTcp: ['/ip4/127.0.0.1/tcp/0'],
-      // bootstrap: bootstrapMultiaddrs, // make your node.ts honor this
-    },
-    { onBoardingPeerTime: Math.random() * 10 * 1000 },
-  );
+  const { node, pexService } = await createNode(networkId, {
+    mdns: true,
+    listenTcp: ['/ip4/127.0.0.1/tcp/0'],
+    // bootstrap: bootstrapMultiaddrs, // make your node.ts honor this
+    onBoardingPeerTime: Math.random() * 10 * 1000,
+  });
 
   await node.start();
 
@@ -71,9 +56,9 @@ const runNode = async () => {
 
   // Send load
   const sendLoop = (async () => {
-    const intervalMs = Math.max(1, Math.floor(1000 / Math.max(1, msgRate)));
+    const intervalMs = Math.max(1, Math.floor(1000 / Math.max(1, messageRate)));
     const enc = new TextEncoder();
-    const deadline = Date.now() + runSeconds * 1000;
+    const deadline = Date.now() + runDurationSec * 1000;
     while (Date.now() < deadline) {
       const payload = enc.encode(JSON.stringify({ type: 'ping', ts: Date.now(), from: me }));
       try {
@@ -84,6 +69,8 @@ const runNode = async () => {
   })();
 
   await sendLoop;
+
+  //Clean Up
   clearInterval(checkTimer);
   pubsub.removeEventListener('message', subHandler);
 

@@ -14,20 +14,5 @@
         "noImplicitAny": false,
         "allowSyntheticDefaultImports": true,
         "allowJs": true
-        // "baseUrl": "./",
-        // "paths": {
-        //     "@blockchain/*": [
-        //         "packages/blockchain/*"
-        //     ],
-        //     "@core/*": [
-        //         "packages/core/*"
-        //     ],
-        //     "@common/*": [
-        //         "packages/common/*"
-        //     ],
-        //     "@crypto/*": [
-        //         "packages/crypto/*"
-        //     ]
-        // },
     }
 }

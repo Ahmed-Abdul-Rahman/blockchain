@@ -1,6 +1,7 @@
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { logger } from '@dechat/common';
 import { Message, PeerId, Stream, Libp2p } from '@libp2p/interface';
+import bloomFilters from 'bloom-filters';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { DialQueue } from './DialQueue';
@@ -24,12 +25,14 @@ export class PeerExchangeService {
   private node: Libp2p;
   private pubsub: GossipSub;
   private scorer: scorer;
+  private peersSeen: bloomFilters.ScalableBloomFilter;
 
   constructor(node: Libp2p, scorer: scorer) {
     this.peerRegistry = new PeerRegistry(node.peerId.toString());
     this.node = node;
     this.scorer = scorer;
     this.dialQ = new DialQueue(node, { isDialable: (id) => this.isScoreEnoughToDial(id) }, 256, 750);
+    this.peersSeen = new bloomFilters.ScalableBloomFilter(1000, 0.01);
 
     node.handle(PEX_PROTOCOL, ({ stream, connection }) =>
       this.onPexProtocolMessage(stream, connection.remotePeer?.toString?.()),
@@ -50,11 +53,11 @@ export class PeerExchangeService {
   }
 
   /**
-   * Add peers to the dial queue
+   * Add peers to the dial queue which are new or have not been dailed for sometime
    * @param peers
    */
   enqueueDial(peers: PeerInfoLite[]): void {
-    this.dialQ.enqueue(peers);
+    this.dialQ.enqueue(peers.filter(({ peerId }) => this.shouldDial(peerId)));
   }
 
   /**
@@ -75,6 +78,20 @@ export class PeerExchangeService {
   private isScoreEnoughToDial(peerId: string): boolean {
     // tiny bonus: if a peer provided good PX/gossip recently, it likely has more value
     return this.scorer.isDialable(peerId); // dialQueue already checks shouldDial via injected scorer; keep hook if you expand
+  }
+
+  /**
+   * returns true if this peer is new or have'nt been contacted for sometime otherwise
+   * @param peerId
+   * @returns
+   */
+  shouldDial(peerId: string): boolean {
+    if (this.peersSeen.has(peerId)) {
+      // already seen → skip dialing
+      return false;
+    }
+    this.peersSeen.add(peerId);
+    return true;
   }
 
   /**

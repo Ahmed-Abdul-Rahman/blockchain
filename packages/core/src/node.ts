@@ -16,10 +16,12 @@ import { PeerExchangeService } from './PeerExchangeService';
 import { shouldDialNewPeer } from './shouldDial';
 import { SimplePeerScorer } from './SimplePeerScorer';
 
-export interface NodeOverrides {
+export interface NodeOptions {
   mdns?: boolean;
   listenTcp?: string[]; // override listen multiaddrs
   bootstrap?: string[]; // override bootstrap multiaddrs
+  seeds?: { peerId: string; addresses: string[] }[];
+  onBoardingPeerTime?: number;
 }
 
 const requestAndDialPeers = async (peerId: PeerId, pexService: PeerExchangeService) => {
@@ -48,11 +50,7 @@ const onBoardNewPeer = async (
 
 export const createNode = async (
   infoHash: string,
-  overrides?: NodeOverrides,
-  opts?: {
-    seeds?: { peerId: string; addresses: string[] }[];
-    onBoardingPeerTime?: number;
-  },
+  nodeOptions?: NodeOptions,
 ): Promise<{
   node: Libp2p;
   scorer: SimplePeerScorer;
@@ -62,17 +60,17 @@ export const createNode = async (
   const privateKey = await generateKeyPairFromSeed('Ed25519', nodeKey.secret);
   const scorer = new SimplePeerScorer();
 
-  const listenAddrs = overrides?.listenTcp ?? ['/ip4/0.0.0.0/tcp/0'];
+  const listenAddrs = nodeOptions?.listenTcp ?? ['/ip4/0.0.0.0/tcp/0'];
   const transports = [tcp()];
   const streamMuxers = [yamux()];
   const connectionEncrypters = [noise()];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const peerDiscovery: any[] = [];
-  if (overrides?.mdns !== false) peerDiscovery.push(mdns({ interval: 10e3 }));
+  if (nodeOptions?.mdns !== false) peerDiscovery.push(mdns({ interval: 10e3 }));
 
-  if (overrides?.bootstrap && overrides.bootstrap.length > 0)
-    peerDiscovery.push(bootstrap({ list: overrides.bootstrap }));
+  if (nodeOptions?.bootstrap && nodeOptions.bootstrap.length > 0)
+    peerDiscovery.push(bootstrap({ list: nodeOptions.bootstrap }));
 
   const node = (await createLibp2p({
     privateKey,
@@ -131,9 +129,11 @@ export const createNode = async (
   installAuthServer(node, { pex: pexService });
 
   // seed (optional but recommended for internet-wide discovery)
-  if (opts?.seeds?.length) pexService.seed(opts.seeds);
+  if (nodeOptions?.seeds?.length) pexService.seed(nodeOptions.seeds);
 
-  const onBoardNewPeerDebounced = debounce(onBoardNewPeer, opts?.onBoardingPeerTime || 5_000, { trailing: true });
+  const onBoardNewPeerDebounced = debounce(onBoardNewPeer, nodeOptions?.onBoardingPeerTime || 5_000, {
+    trailing: true,
+  });
 
   // discovery: record + gentle pull + trickle dials (do NOT dial everything)
   node.addEventListener('peer:discovery', async (event: CustomEvent<PeerInfo>) => {

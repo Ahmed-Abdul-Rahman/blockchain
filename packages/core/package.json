@@ -12,9 +12,10 @@
         "fixBuild": "tsc-esm-fix --target dist --ext .js",
         "clean": "rm -rf dist",
         "test": "vitest run",
-        "test:watch": "vitest",
-        "sim": "NODE_ENV=perf node dist/tests/SimulateMultiNode.int.js --nodes 10 --duration 300",
-        "sim:peak": "NODE_OPTIONS='--max-old-space-size=4096' NODE_ENV=perf node dist/tests/SimulateMultiNode.int.js --nodes 50 --duration 1500"
+        "test:unit": "vitest run **/*.unit.test.ts",
+        "test:int": "vitest run **/*.int.test.js",
+        "sim": "NODE_ENV=perf node dist/tests/interop/SimulateMultiNode.int.js --nodes 12 --duration 300",
+        "sim:peak": "NODE_OPTIONS='--max-old-space-size=4096' NODE_ENV=perf node dist/tests/interop/SimulateMultiNode.int.js --nodes 50 --duration 1500"
     },
     "dependencies": {
         "@chainsafe/libp2p-gossipsub": "^14.1.0",

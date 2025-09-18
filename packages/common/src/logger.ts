@@ -24,7 +24,7 @@ else if (process.env.NODE_ENV === 'perf') logLevel = 'DEBUG';
 else if (process.env.LOG_LEVEL) logLevel = process.env.LOG_LEVEL;
 
 const baseLogger = new Logger({
-  name: 'app',
+  name: process.env.APP_NAME ?? 'deChat',
   minLevel: logLevels[logLevel],
   type: process.env.NODE_ENV === 'production' ? 'json' : 'pretty',
   hideLogPositionForProduction: true,

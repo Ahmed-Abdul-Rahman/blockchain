@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SimplePeerScorer } from '../src/SimplePeerScorer';
+import { SimplePeerScorer } from '../../src/SimplePeerScorer';
 
 describe('SimplePeerScorer', () => {
   it('rewards and penalizes; dialable threshold works', () => {

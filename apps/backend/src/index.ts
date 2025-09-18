@@ -107,7 +107,7 @@ app.post(CHALLENGE, postChallengeRateLimiter, postChallenge.bind(null, privateKe
 
 server.listen(0, async () => {
   const { address, port } = server.address() as AddressInfo;
-  const { node } = await createNode(infoHash);
+  const { node } = await createNode(infoHash, { onBoardingPeerTime: Math.random() * 10 * 1000 });
   await node.start();
   // const networkNode = await createNetworkNode(networkNodeConfig);
   // await networkNode.start();
