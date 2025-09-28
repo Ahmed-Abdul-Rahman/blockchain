@@ -15,12 +15,3 @@ export const generateIdProtocolPrefix = (hash: string): string => {
 };
 
 export const generateTimestamp = (): string => new Date().toISOString();
-
-export const wait = (time: number): Promise<null> => {
-  return new Promise((resolve) => setTimeout(() => resolve(null), time));
-};
-
-export const pickRandom = (items: unknown[]): unknown => {
-  const randomIndex = Math.floor(Math.random() * ((items.length as number) - 1));
-  return items[randomIndex];
-};

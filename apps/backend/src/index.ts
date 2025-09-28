@@ -5,7 +5,7 @@ import path from 'path';
 // import { sha256 } from '@common/utils';
 import { bytecoin } from '@dechat/blockchain';
 import { logger } from '@dechat/common';
-import { createNode } from '@dechat/core';
+import { createNode, genEd25519KeyPair } from '@dechat/core';
 import { loadOrGenerateKeypair } from '@dechat/crypto';
 import bodyParser from 'body-parser';
 import express from 'express';
@@ -107,7 +107,8 @@ app.post(CHALLENGE, postChallengeRateLimiter, postChallenge.bind(null, privateKe
 
 server.listen(0, async () => {
   const { address, port } = server.address() as AddressInfo;
-  const { node } = await createNode(infoHash, { onBoardingPeerTime: Math.random() * 10 * 1000 });
+  const nodeSeed = await genEd25519KeyPair();
+  const { node } = await createNode(infoHash, nodeSeed, { onBoardingPeerTime: Math.random() * 10 * 1000 });
   await node.start();
   // const networkNode = await createNetworkNode(networkNodeConfig);
   // await networkNode.start();

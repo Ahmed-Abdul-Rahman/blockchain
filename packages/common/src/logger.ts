@@ -20,8 +20,9 @@ const logDirectory = path.join(dirname(__filename), 'logs');
 let logLevel = 'TRACE';
 
 if (process.env.NODE_ENV === 'production') logLevel = 'INFO';
-else if (process.env.NODE_ENV === 'perf') logLevel = 'DEBUG';
-else if (process.env.LOG_LEVEL) logLevel = process.env.LOG_LEVEL;
+else if (process.env.NODE_ENV === 'perf') logLevel = 'INFO';
+
+if (process.env.LOG_LEVEL) logLevel = process.env.LOG_LEVEL;
 
 const baseLogger = new Logger({
   name: process.env.APP_NAME ?? 'deChat',

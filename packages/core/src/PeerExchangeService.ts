@@ -1,5 +1,5 @@
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
-import { logger } from '@dechat/common';
+import { logger, wait } from '@dechat/common';
 import { Message, PeerId, Stream, Libp2p } from '@libp2p/interface';
 import bloomFilters from 'bloom-filters';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
@@ -66,7 +66,7 @@ export class PeerExchangeService {
   async initiatePeerExchange(): Promise<void> {
     if (!this.isPeerExchangeStarted) {
       this.isPeerExchangeStarted = true;
-      this.peerExchangeIntervalId = this.loopGossip();
+      this.loopGossip();
     }
   }
 
@@ -129,39 +129,48 @@ export class PeerExchangeService {
   /**
    * periodically publish a pex gossip message with other peers info on pex topic
    */
-  private loopGossip(): NodeJS.Timeout | null {
-    if (this.isPeerExchangeStarted && !this.peerExchangeIntervalId) {
-      logger.info('Registered Peer Exchange Topic');
-      return setInterval(async () => {
-        try {
-          const peers = sampleList(this.peerRegistry.getCandidates(256), MAX_SHARED_PEERS).map((p) => ({
-            peerId: p.peerId,
-            addresses: filterAddrs(p.addresses),
-          }));
-          if (peers.length) {
-            const msg: PEX_GOSSIP = {
-              type: 'PEX_GOSSIP',
-              peers,
-              ts: now(),
-              originPeerInfo: {
-                peerId: this.node.peerId.toString(),
-                addresses: this.node.getMultiaddrs().map((multiAddr) => multiAddr.toString()),
-              },
-            };
-            await this.pubsub.publish(PEX_TOPIC, uint8ArrayFromString(JSON.stringify(msg)));
-            logger.trace('Published peers info on pex topic');
+  private async loopGossip(): Promise<void> {
+    logger.info('Registered Peer Exchange Topic');
+    let attempt = 0;
+    let retryWithExponentialBackOff = false;
+    while (this.isPeerExchangeStarted) {
+      try {
+        const peers = sampleList(this.peerRegistry.getCandidates(256), MAX_SHARED_PEERS).map((p) => ({
+          peerId: p.peerId,
+          addresses: filterAddrs(p.addresses),
+        }));
+        if (peers.length) {
+          const msg: PEX_GOSSIP = {
+            type: 'PEX_GOSSIP',
+            peers,
+            ts: now(),
+            originPeerInfo: {
+              peerId: this.node.peerId.toString(),
+              addresses: this.node.getMultiaddrs().map((multiAddr) => multiAddr.toString()),
+            },
+          };
+          let totalDelay = GOSSIP_INTERVAL_MS;
+          if (retryWithExponentialBackOff) {
+            attempt++;
+            const delay = GOSSIP_INTERVAL_MS + Math.pow(2, attempt - 1);
+            const jitter = Math.random() * 500;
+            totalDelay = delay + jitter;
+            logger.info('Retrying pex gossip again in: ', totalDelay, 'ms');
           }
-        } catch (error: unknown) {
-          /* noop */
-          logger.warn('Error occured while publishing a gossip message to a peer: ', error);
-          if ((error as Error)?.message === 'PublishError.NoPeersSubscribedToTopic') {
-            logger.warn('Stopping pex gossip as there are no peers to gossip');
-            this.stopGossip();
-          }
+          await wait(totalDelay);
+          await this.pubsub.publish(PEX_TOPIC, uint8ArrayFromString(JSON.stringify(msg)));
+          attempt = 0;
+          retryWithExponentialBackOff = false;
+          logger.trace('Published peers info on pex topic');
         }
-      }, GOSSIP_INTERVAL_MS);
+      } catch (error: unknown) {
+        logger.warn('Error occured while publishing a gossip message to a peer');
+        logger.debug(error);
+        if ((error as Error)?.message === 'PublishError.NoPeersSubscribedToTopic') {
+          retryWithExponentialBackOff = true;
+        }
+      }
     }
-    return null;
   }
 
   /**
@@ -237,6 +246,5 @@ export class PeerExchangeService {
    */
   stopGossip(): void {
     this.isPeerExchangeStarted = false;
-    if (this.peerExchangeIntervalId) clearInterval(this.peerExchangeIntervalId);
   }
 }

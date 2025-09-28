@@ -1,5 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises';
-import { parentPort, workerData } from 'node:worker_threads';
+import { parentPort, threadId, workerData } from 'node:worker_threads';
 import { GossipSub } from '@chainsafe/libp2p-gossipsub/dist/src';
 import { createNode } from '../../src/node';
 import { WorkerData } from './types';
@@ -12,10 +12,10 @@ const percentile = (xs: number[], p: number): number => {
 
 const runNode = async () => {
   const args = workerData as WorkerData;
-  const { networkId, pubsubTopic, runDurationSec, messageRate } = args;
+  const { index, nodeSeed, networkId, pubsubTopic, runDurationSec, messageRate } = args;
 
   // Start your node factory with mdns disabled for determinism (optional)
-  const { node, pexService } = await createNode(networkId, {
+  const { node, pexService } = await createNode(networkId, nodeSeed, {
     mdns: true,
     listenTcp: ['/ip4/127.0.0.1/tcp/0'],
     // bootstrap: bootstrapMultiaddrs, // make your node.ts honor this
@@ -25,7 +25,7 @@ const runNode = async () => {
   await node.start();
 
   const me = node.peerId.toString();
-
+  console.log('Wroker thread: ', threadId, 'and index: ', index, ' started with peerId: ', me);
   // Join pubsub topic
   const pubsub = node.services.pubsub as GossipSub;
   pubsub.subscribe(pubsubTopic);

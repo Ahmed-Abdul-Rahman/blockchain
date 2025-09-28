@@ -13,8 +13,8 @@
         "clean": "rm -rf dist",
         "test": "vitest run",
         "test:unit": "vitest run **/*.unit.test.ts",
-        "test:int": "vitest run **/*.int.test.js",
-        "sim": "NODE_ENV=perf node dist/tests/interop/SimulateMultiNode.int.js --nodes 12 --duration 300",
+        "test:int": "NODE_ENV=perf node dist/tests/interop/interOpTestRunner.int.js",
+        "sim": "NODE_ENV=perf node dist/tests/interop/initiateTest.js --nodes 3 --duration 30",
         "sim:peak": "NODE_OPTIONS='--max-old-space-size=4096' NODE_ENV=perf node dist/tests/interop/SimulateMultiNode.int.js --nodes 50 --duration 1500"
     },
     "dependencies": {

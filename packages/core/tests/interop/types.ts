@@ -1,3 +1,5 @@
+import { Worker } from 'node:worker_threads';
+
 export type WorkerResult = {
   me?: string;
   verified: number;
@@ -34,6 +36,7 @@ export type AggregatedResult = {
 
 export type WorkerData = {
   index: number;
+  nodeSeed: { secret: Uint8Array; pub: Uint8Array };
   totalNodes: number;
   networkId: string;
   pubsubTopic: string;
@@ -41,3 +44,16 @@ export type WorkerData = {
   runDurationSec: number;
   messageRate: number; // msgs per second
 };
+
+export type WorkerDataConfig = {
+  totalNodes: number;
+  networkId: string;
+  pubsubTopic: string;
+  bootstrapMultiaddrs: string[];
+  runDurationSec: number;
+  messageRate: number; // msgs per second
+};
+
+export type RunWorkersScenario = (...args) => void;
+
+export type WorkerDetails = { workerData: WorkerData; workerRef: Worker };

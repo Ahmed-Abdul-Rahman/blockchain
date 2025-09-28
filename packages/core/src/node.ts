@@ -20,7 +20,7 @@ export interface NodeOptions {
   mdns?: boolean;
   listenTcp?: string[]; // override listen multiaddrs
   bootstrap?: string[]; // override bootstrap multiaddrs
-  seeds?: { peerId: string; addresses: string[] }[];
+  peerSeeds?: { peerId: string; addresses: string[] }[];
   onBoardingPeerTime?: number;
 }
 
@@ -50,13 +50,14 @@ const onBoardNewPeer = async (
 
 export const createNode = async (
   infoHash: string,
+  nodeSeed: { secret: Uint8Array; pub: Uint8Array },
   nodeOptions?: NodeOptions,
 ): Promise<{
   node: Libp2p;
   scorer: SimplePeerScorer;
   pexService: PeerExchangeService;
 }> => {
-  const nodeKey = await genEd25519KeyPair();
+  const nodeKey = nodeSeed ?? (await genEd25519KeyPair());
   const privateKey = await generateKeyPairFromSeed('Ed25519', nodeKey.secret);
   const scorer = new SimplePeerScorer();
 
@@ -129,7 +130,7 @@ export const createNode = async (
   installAuthServer(node, { pex: pexService });
 
   // seed (optional but recommended for internet-wide discovery)
-  if (nodeOptions?.seeds?.length) pexService.seed(nodeOptions.seeds);
+  if (nodeOptions?.peerSeeds?.length) pexService.seed(nodeOptions.peerSeeds);
 
   const onBoardNewPeerDebounced = debounce(onBoardNewPeer, nodeOptions?.onBoardingPeerTime || 5_000, {
     trailing: true,

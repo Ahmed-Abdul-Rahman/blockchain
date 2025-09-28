@@ -1,20 +1,6 @@
 import { Worker } from 'node:worker_threads';
 import { average, percentile } from './helper';
-import { AggregatedResult, WorkerData, WorkerResult } from './types';
-
-// --------------------
-// CLI args parser
-// --------------------
-
-// --------------------
-// Config
-// --------------------
-// const totalNodes: number = parseArg('nodes', 10);
-// const runDurationSec: number = parseArg('duration', 30);
-// const messageRate: number = parseArg('rate', 5);
-// const pubsubTopic: string = parseArg('topic', '/bench/1');
-// const networkId: string = parseArg('net', 'benchnet-1');
-// const bootstrapMultiaddrs: string[] = []; // can be filled with known seeds
+import { AggregatedResult, WorkerData, WorkerDetails, WorkerResult } from './types';
 
 export const aggregateResults = (results: WorkerResult[]): AggregatedResult => {
   const connections = results.map((r) => r.connections);
@@ -44,30 +30,14 @@ export const aggregateResults = (results: WorkerResult[]): AggregatedResult => {
   };
 };
 
-// export const finish = (results: WorkerResult[]): void => {
-//   const summary = aggregateResults(results);
-//   try {
-//     results.forEach((workerResult) => {
-//       assertWorkerResult(workerResult, expectedResult);
-//     });
-//   } catch (err) {
-//     console.error('❌ Test failed:', (err as Error).message);
-//     process.exit(1);
-//   }
-//   console.log('\n=== Aggregate Results ===');
-//   console.log(JSON.stringify(summary, null, 2));
-//   console.log('✅ All assertions passed!');
-// };
-
 export const createWorker = (
   workerPath: string,
   workerData: WorkerData,
-  workers: Worker[],
   workerResults: WorkerResult[],
   onComplete: (results: WorkerResult[]) => void,
-  onWorkerError: (error: unknown) => void,
-): void => {
-  const { totalNodes } = workerData;
+  onWorkerError: (index: number, error: unknown) => void,
+): WorkerDetails => {
+  const { index, totalNodes } = workerData;
   const worker = new Worker(workerPath, {
     workerData: {
       ...workerData,
@@ -89,11 +59,13 @@ export const createWorker = (
 
   worker.on('error', (err) => {
     console.error('worker crashed:', err);
-    onWorkerError(err);
+    onWorkerError(index, err);
   });
-  worker.on('exit', (exitCode) => console.log('worker exited with code: ', exitCode));
 
-  workers.push(worker);
+  if (process.env.LOG_WORKER_EXITS === 'true')
+    worker.on('exit', (exitCode) => console.log('worker exited with code: ', exitCode));
+
+  return { workerData, workerRef: worker };
 };
 
 export const terminateWorker = async (worker: Worker): Promise<void> => {
