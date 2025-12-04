@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { logger } from '@dechat/common';
 import { sha256 } from '@dechat/crypto';
 import { PeerId, Libp2p } from '@libp2p/interface';
@@ -23,8 +24,13 @@ const NETWORK_ID = 'deChat-net-v1';
 /**
  * Generate a new keypair (private 32 bytes, public 32 bytes)
  */
-export const genEd25519KeyPair = async (): Promise<{ secret: Uint8Array; pub: Uint8Array }> => {
-  const secret = ed.utils.randomSecretKey(); // Uint8Array(32)
+export const genEd25519KeyPair = async (plainSeed?: string): Promise<{ secret: Uint8Array; pub: Uint8Array }> => {
+  let secret = ed.utils.randomSecretKey();
+  if (plainSeed) {
+    const msgBytes = new TextEncoder().encode(plainSeed);
+    const secretHash64Bytes = createHash('sha512').update(msgBytes).digest();
+    secret = ed.utils.randomSecretKey(secretHash64Bytes.subarray(0, 32)); // Uint8Array(32)
+  }
   const pub = await ed.getPublicKeyAsync(secret); // Uint8Array(32)
   return { secret: new Uint8Array(secret), pub: new Uint8Array(pub) };
 };
@@ -96,7 +102,7 @@ export const installAuthServer = (
       }
 
       logger.info('Authentication handled succesfully with peer: ', remotePeerId);
-      pex.seed([{ peerId: remotePeerId, addresses: [connection.remoteAddr.toString()] }]);
+      pex.addPeers([{ peerId: remotePeerId, addresses: [connection.remoteAddr.toString()] }]);
       pex.initiatePeerExchange();
 
       await writeToStream(stream, { isVerified } as AuthSignResponse);

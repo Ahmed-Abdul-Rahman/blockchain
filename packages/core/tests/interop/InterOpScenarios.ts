@@ -1,7 +1,6 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sampleIndices, wait } from '@dechat/common';
-import { genEd25519KeyPair } from '../../src/auth';
 import { computeTotalRuntime, isInPercentRange } from './helper';
 import {
   AggregatedResult,
@@ -32,11 +31,10 @@ export const setupScenario = (
     };
 
     const handleWorkerError = async (index: number, err: unknown) => {
-      console.log('Inside HandlerWorkerError');
+      console.log('Error occured in worker thread with index: ', index);
       await Promise.all(
         workers.filter((_, curIndex) => curIndex !== index).map(({ workerRef }) => terminateWorker(workerRef)),
       );
-      console.log('Promise complete HandlerWorkerError');
       reject(err);
     };
 
@@ -53,7 +51,7 @@ export const setupScenario = (
 export const simulateBurstPeersAtStartUp = (workerDataConfig: WorkerDataConfig): Promise<AggregatedResult> => {
   const scenario: RunWorkersScenario = async (workers, workerResults, handleComplete, handleWorkerError) => {
     for (let i = 0; i < workerDataConfig.totalNodes; i++) {
-      const nodeSeed = await genEd25519KeyPair();
+      const nodeSeed = `Test-StartUp-Worker-${i + 1}`;
       const workerData = {
         index: i,
         nodeSeed,
@@ -75,14 +73,14 @@ export const simulateStaggeredPeersAtStartUp = (workerDataConfig: WorkerDataConf
     const totalRuntimeSec =
       computeTotalRuntime(totalNodes, [
         { startPercent: 0, endPercent: 50, delayMs: 0 },
-        { startPercent: 51, endPercent: 90, delayMs: 20000 },
-        { startPercent: 91, endPercent: 100, delayMs: 60000 },
+        { startPercent: 51, endPercent: 90, delayMs: 20_000 },
+        { startPercent: 91, endPercent: 100, delayMs: 60_000 },
       ]) / 1000;
 
     const finalRuntimeDurationSec = runDurationSec > totalRuntimeSec ? runDurationSec : totalRuntimeSec + 60;
 
     for (let i = 0; i < totalNodes; i++) {
-      const nodeSeed = await genEd25519KeyPair();
+      const nodeSeed = `Test-Staggered-Worker-${i + 1}`;
       const workerData = {
         index: i,
         nodeSeed,
@@ -91,8 +89,8 @@ export const simulateStaggeredPeersAtStartUp = (workerDataConfig: WorkerDataConf
       } as WorkerData;
 
       if (isInPercentRange(i, totalNodes, 0, 50)) await wait(1);
-      else if (isInPercentRange(i, totalNodes, 51, 90)) await wait(20000);
-      else await wait(60000);
+      else if (isInPercentRange(i, totalNodes, 51, 90)) await wait(20_000);
+      else await wait(60_000);
       workers.push(createWorker(workerPath, workerData, workerResults, handleComplete, handleWorkerError));
     }
   };
@@ -105,10 +103,10 @@ export const simulatePeerChurn = async (workerDataConfig: WorkerDataConfig): Pro
   const scenario: RunWorkersScenario = async (workers, workerResults, handleComplete, handleWorkerError) => {
     const { totalNodes, runDurationSec } = workerDataConfig;
     const totalRuntimeSec = 270 + Math.ceil(totalNodes / 3) * 70;
-    const finalRuntimeDurationSec = runDurationSec > totalRuntimeSec ? runDurationSec : totalRuntimeSec + 180;
+    const finalRuntimeDurationSec = runDurationSec > totalRuntimeSec ? runDurationSec : totalRuntimeSec + 60;
 
-    for (let i = 0; i < totalNodes; i++) {
-      const nodeSeed = await genEd25519KeyPair();
+    for (let i = 0; i <= totalNodes; i++) {
+      const nodeSeed = `Test-Node-Worker-${i + 1}`;
       const workerData = {
         index: i,
         nodeSeed,
@@ -119,8 +117,8 @@ export const simulatePeerChurn = async (workerDataConfig: WorkerDataConfig): Pro
       workers.push(createWorker(workerPath, workerData, workerResults, handleComplete, handleWorkerError));
     }
 
-    await wait(180000); // wait for 2mins so the network is stable
-    const randomSampleIndices = sampleIndices(totalNodes, totalNodes / 3);
+    await wait(180_000); // wait for 3mins so the network is stable
+    const randomSampleIndices = sampleIndices(totalNodes, 3);
 
     await Promise.all(
       randomSampleIndices.map((index) => {

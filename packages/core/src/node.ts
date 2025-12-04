@@ -36,28 +36,33 @@ const onBoardNewPeer = async (
   pexService: PeerExchangeService,
   nodeKey: { secret: Uint8Array; pub: Uint8Array },
 ): Promise<void> => {
-  const peerId = event.detail.id.toString();
-  const addresses = (event.detail.multiaddrs || []).map((ma) => ma.toString());
+  try {
+    const peerId = event.detail.id.toString();
+    const addresses = (event.detail.multiaddrs || []).map((ma) => ma.toString());
 
-  const isAuthenticated = await runAuthClient(node, event.detail.id, nodeKey.secret);
-  if (isAuthenticated) {
-    logger.info('Authentication succesful with peer: ', peerId);
-    pexService.seed([{ peerId, addresses }]);
-    pexService.initiatePeerExchange();
-    requestAndDialPeers(event.detail.id, pexService);
+    const isAuthenticated = await runAuthClient(node, event.detail.id, nodeKey.secret);
+    if (isAuthenticated) {
+      logger.info('Authentication succesful with peer: ', peerId);
+      pexService.addPeers([{ peerId, addresses }]);
+      pexService.initiatePeerExchange();
+      requestAndDialPeers(event.detail.id, pexService);
+    }
+  } catch (error: unknown) {
+    logger.info('Error occured while onBoarding a peer');
+    logger.debug(error);
   }
 };
 
 export const createNode = async (
   infoHash: string,
-  nodeSeed: { secret: Uint8Array; pub: Uint8Array },
+  nodeSeed: string,
   nodeOptions?: NodeOptions,
 ): Promise<{
   node: Libp2p;
   scorer: SimplePeerScorer;
   pexService: PeerExchangeService;
 }> => {
-  const nodeKey = nodeSeed ?? (await genEd25519KeyPair());
+  const nodeKey = await genEd25519KeyPair(nodeSeed);
   const privateKey = await generateKeyPairFromSeed('Ed25519', nodeKey.secret);
   const scorer = new SimplePeerScorer();
 
@@ -130,13 +135,12 @@ export const createNode = async (
   installAuthServer(node, { pex: pexService });
 
   // seed (optional but recommended for internet-wide discovery)
-  if (nodeOptions?.peerSeeds?.length) pexService.seed(nodeOptions.peerSeeds);
+  if (nodeOptions?.peerSeeds?.length) pexService.addPeers(nodeOptions.peerSeeds);
 
   const onBoardNewPeerDebounced = debounce(onBoardNewPeer, nodeOptions?.onBoardingPeerTime || 5_000, {
     trailing: true,
   });
 
-  // discovery: record + gentle pull + trickle dials (do NOT dial everything)
   node.addEventListener('peer:discovery', async (event: CustomEvent<PeerInfo>) => {
     const peerId = event.detail.id.toString();
     logger.info('Peer Discovered: ', peerId);

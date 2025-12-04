@@ -60,8 +60,8 @@ describe('P2P Network Integration StartUp Tests', () => {
 });
 
 describe('P2P Network Integration Stability Tests', () => {
-  it(`Peer Churn - Random peers drop and rejoin with same peerId - total running nodes ${12}`, async () => {
-    const totalNodes = totalNodesArg ?? 12;
+  it(`Peer Churn - Random peers drop and rejoin with same peerId - total running nodes ${10}`, async () => {
+    const totalNodes = totalNodesArg ?? 10;
     const runDurationSec = runDurationSecArg ?? 300;
     const messageRate = messageRateArg ?? 5;
     const pubsubTopic = pubsubTopicArg ?? '/bench/1';

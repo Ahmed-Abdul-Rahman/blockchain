@@ -1,13 +1,13 @@
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
-import { logger, wait } from '@dechat/common';
 import { Message, PeerId, Stream, Libp2p } from '@libp2p/interface';
 import bloomFilters from 'bloom-filters';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
+import { logger, wait } from '../../common';
 import { DialQueue } from './DialQueue';
 import { PeerRegistry } from './PeerRegistry';
 import { GET_PEERS_MSG, PeerInfoLite, PEX_GOSSIP, PEX_PEER_LIST, scorer } from './types';
-import { filterAddrs, now, processDataFromStream, sampleList, writeToStream } from './utils';
+import { filterAddrs, now, processDataFromStream, publishWithRetry, sampleList, writeToStream } from './utils';
 
 export const PEX_PROTOCOL = '/deChat/peer-exchange-protocol/1.0.0';
 export const PEX_TOPIC = '/deChat/peer-exchange-topic/1.0.0';
@@ -21,7 +21,6 @@ export class PeerExchangeService {
   private dialQ: DialQueue;
   private lastGossipByPeer = new Map<string, number>();
   private isPeerExchangeStarted: boolean = false;
-  private peerExchangeIntervalId: NodeJS.Timeout | null = null;
   private node: Libp2p;
   private pubsub: GossipSub;
   private scorer: scorer;
@@ -31,11 +30,11 @@ export class PeerExchangeService {
     this.peerRegistry = new PeerRegistry(node.peerId.toString());
     this.node = node;
     this.scorer = scorer;
-    this.dialQ = new DialQueue(node, { isDialable: (id) => this.isScoreEnoughToDial(id) }, 256, 750);
+    this.dialQ = new DialQueue(node, { isDialable: (id) => this.isScoreEnoughToDial(id) });
     this.peersSeen = new bloomFilters.ScalableBloomFilter(1000, 0.01);
 
     node.handle(PEX_PROTOCOL, ({ stream, connection }) =>
-      this.onPexProtocolMessage(stream, connection.remotePeer?.toString?.()),
+      this.onPexProtocolMessage(stream, connection.remotePeer.toString()),
     );
 
     this.pubsub = this.node.services.pubsub as GossipSub;
@@ -45,10 +44,10 @@ export class PeerExchangeService {
   }
 
   /**
-   * Add peers to the registry (typically used for bootstrap peers)
+   * Add peers to the registry
    * @param peers
    */
-  seed(peers: PeerInfoLite[]): void {
+  addPeers(peers: PeerInfoLite[]): void {
     this.peerRegistry.upsertMany(peers);
   }
 
@@ -100,6 +99,7 @@ export class PeerExchangeService {
    * @param fromId
    */
   private async onPexProtocolMessage(stream: Stream, fromId?: string): Promise<void> {
+    logger.trace('PeerExchangeService - onPexProtocolMessage - entry');
     await processDataFromStream(
       stream,
       async (message) => {
@@ -124,6 +124,7 @@ export class PeerExchangeService {
         if (fromId) this.scorer.penalize(fromId, 1);
       },
     );
+    logger.trace('PeerExchangeService - onPexProtocolMessage - exit');
   }
 
   /**
@@ -131,8 +132,6 @@ export class PeerExchangeService {
    */
   private async loopGossip(): Promise<void> {
     logger.info('Registered Peer Exchange Topic');
-    let attempt = 0;
-    let retryWithExponentialBackOff = false;
     while (this.isPeerExchangeStarted) {
       try {
         const peers = sampleList(this.peerRegistry.getCandidates(256), MAX_SHARED_PEERS).map((p) => ({
@@ -149,25 +148,19 @@ export class PeerExchangeService {
               addresses: this.node.getMultiaddrs().map((multiAddr) => multiAddr.toString()),
             },
           };
-          let totalDelay = GOSSIP_INTERVAL_MS;
-          if (retryWithExponentialBackOff) {
-            attempt++;
-            const delay = GOSSIP_INTERVAL_MS + Math.pow(2, attempt - 1);
-            const jitter = Math.random() * 500;
-            totalDelay = delay + jitter;
-            logger.info('Retrying pex gossip again in: ', totalDelay, 'ms');
-          }
-          await wait(totalDelay);
-          await this.pubsub.publish(PEX_TOPIC, uint8ArrayFromString(JSON.stringify(msg)));
-          attempt = 0;
-          retryWithExponentialBackOff = false;
+          await wait(GOSSIP_INTERVAL_MS);
+          await publishWithRetry(this.pubsub, PEX_TOPIC, uint8ArrayFromString(JSON.stringify(msg)), {
+            retries: 7,
+            baseDelay: GOSSIP_INTERVAL_MS,
+          });
           logger.trace('Published peers info on pex topic');
         }
       } catch (error: unknown) {
         logger.warn('Error occured while publishing a gossip message to a peer');
         logger.debug(error);
-        if ((error as Error)?.message === 'PublishError.NoPeersSubscribedToTopic') {
-          retryWithExponentialBackOff = true;
+        if ((error as Error)?.message === 'publishWithRetry: exhausted retries') {
+          logger.info('All publish retry attempts exhausted, stopping peer exchange delivery');
+          this.stopGossip();
         }
       }
     }
@@ -182,31 +175,37 @@ export class PeerExchangeService {
     const detail = event.detail;
     const data = detail.data;
     if (!data || event.detail.topic !== PEX_TOPIC) return;
+    logger.trace('PeerExchangeService - onGossip - entry');
+    try {
+      const { from, type, peers, originPeerInfo } = JSON.parse(uint8ArrayToString(data));
+      // inbound rate-limit per peer
+      const last = this.lastGossipByPeer.get(from) || 0;
+      if (now() - last < 60_000 / MAX_PEX_MSGS_PER_MIN) {
+        this.scorer.penalize(from, 0.5);
+        return;
+      }
+      this.lastGossipByPeer.set(from, now());
 
-    const { from, type, peers, originPeerInfo } = JSON.parse(uint8ArrayToString(data));
-    // inbound rate-limit per peer
-    const last = this.lastGossipByPeer.get(from) || 0;
-    if (now() - last < 60_000 / MAX_PEX_MSGS_PER_MIN) {
-      this.scorer.penalize(from, 0.5);
-      return;
+      if (type !== 'PEX_GOSSIP') {
+        this.scorer.penalize(from, 1);
+        return;
+      }
+
+      logger.trace('Received pex gossip message from: ', originPeerInfo?.peerId);
+      // absorb and reward
+      const updatedPeers = (peers || []).slice(0, MAX_SHARED_PEERS);
+      this.peerRegistry.upsertMany(updatedPeers);
+      if (originPeerInfo) this.peerRegistry.upsert(originPeerInfo);
+
+      this.scorer.reward(from, Math.min(3, peers.length / 8)); // tiny reward proportional to usefulness
+
+      // trickle dials
+      this.enqueueDial(sampleList(peers, Math.min(8, peers.length)));
+      logger.trace('PeerExchangeService - onGossip - exit');
+    } catch (error: unknown) {
+      logger.warn('Error occured while receiving gossip message');
+      logger.debug(error);
     }
-    this.lastGossipByPeer.set(from, now());
-
-    if (type !== 'PEX_GOSSIP') {
-      this.scorer.penalize(from, 1);
-      return;
-    }
-
-    logger.trace('Received pex gossip message from: ', originPeerInfo?.peerId);
-    // absorb and reward
-    const updatedPeers = (peers || []).slice(0, MAX_SHARED_PEERS);
-    this.peerRegistry.upsertMany(updatedPeers);
-    if (originPeerInfo) this.peerRegistry.upsert(originPeerInfo);
-
-    this.scorer.reward(from, Math.min(3, peers.length / 8)); // tiny reward proportional to usefulness
-
-    // trickle dials
-    this.enqueueDial(sampleList(peers, Math.min(8, peers.length)));
   }
 
   /**
@@ -219,6 +218,7 @@ export class PeerExchangeService {
     const peerIdString = peerId.toString();
     if (!this.peerRegistry.isPeerDataRequested(peerIdString)) return [];
     this.peerRegistry.markRequested(peerIdString);
+    logger.trace('PeerExchangeService - requestPeersFrom - entry');
     try {
       const stream = await this.node.dialProtocol(peerId, PEX_PROTOCOL);
       const req: GET_PEERS_MSG = { type: 'GET_PEERS', want };
@@ -234,9 +234,13 @@ export class PeerExchangeService {
 
       this.peerRegistry.upsertMany(receivedPeers);
       this.scorer.reward(peerIdString, Math.min(4, receivedPeers.length / 8));
+      logger.trace('PeerExchangeService - requestPeersFrom - exit');
       return receivedPeers;
-    } catch {
+    } catch (error: unknown) {
+      logger.info('Error Occured while requesting peers');
+      logger.debug(error);
       this.scorer.penalize(peerIdString, 2);
+      logger.trace('PeerExchangeService - requestPeersFrom - catch - exit');
       return [];
     }
   }

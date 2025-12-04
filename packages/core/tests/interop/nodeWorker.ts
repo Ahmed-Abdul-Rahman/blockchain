@@ -60,11 +60,11 @@ const runNode = async () => {
     const enc = new TextEncoder();
     const deadline = Date.now() + runDurationSec * 1000;
     while (Date.now() < deadline) {
+      await delay(intervalMs);
       const payload = enc.encode(JSON.stringify({ type: 'ping', ts: Date.now(), from: me }));
       try {
         await pubsub.publish(pubsubTopic, payload);
       } catch {}
-      await delay(intervalMs);
     }
   })();
 
@@ -93,6 +93,7 @@ const runNode = async () => {
 };
 
 runNode().catch((e) => {
+  console.log(`Caught worker ${threadId} error with threadId: `, e);
   parentPort?.postMessage({ type: 'error', error: String(e) });
   process.exit(1);
 });

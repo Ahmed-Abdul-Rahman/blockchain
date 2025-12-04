@@ -36,7 +36,7 @@ export type AggregatedResult = {
 
 export type WorkerData = {
   index: number;
-  nodeSeed: { secret: Uint8Array; pub: Uint8Array };
+  nodeSeed: string;
   totalNodes: number;
   networkId: string;
   pubsubTopic: string;
