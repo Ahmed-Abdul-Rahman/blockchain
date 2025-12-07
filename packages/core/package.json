@@ -8,13 +8,15 @@
         "default": "./dist/index.js"
     },
     "scripts": {
+        "dev": "tsx --conditions=development src/testNode.ts",
         "build": "tsc -p tsconfig.json && tsc-alias --resolve-full-paths",
         "fixBuild": "tsc-esm-fix --target dist --ext .js",
         "clean": "rm -rf dist",
         "test": "vitest run",
-        "test:watch": "vitest",
-        "sim": "NODE_ENV=perf node dist/tests/SimulateMultiNode.int.js --nodes 10 --duration 300",
-        "sim:peak": "NODE_OPTIONS='--max-old-space-size=4096' NODE_ENV=perf node dist/tests/SimulateMultiNode.int.js --nodes 50 --duration 1500"
+        "test:unit": "vitest run **/*.unit.test.ts",
+        "test:int": "NODE_ENV=perf LOG_LEVEL=INFO node dist/tests/interop/interOpTestRunner.int.js",
+        "sim": "NODE_ENV=perf node dist/tests/interop/initiateTest.js --nodes 3 --duration 30",
+        "sim:peak": "NODE_OPTIONS='--max-old-space-size=4096' NODE_ENV=perf node dist/tests/interop/SimulateMultiNode.int.js --nodes 50 --duration 1500"
     },
     "dependencies": {
         "@chainsafe/libp2p-gossipsub": "^14.1.0",

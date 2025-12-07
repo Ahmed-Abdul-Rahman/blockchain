@@ -8,7 +8,7 @@ const PEER_ENTRY_TTL_MS = 30 * 60_000;
 export class PeerRegistry {
   private selfPeerId: string;
   private maxSize: number;
-  private peerRegistry: Map<string, { addresses: Set<string>; lastSeen: number; lastRequested?: number }>;
+  private peerRegistry: Map<string, { addresses: Set<string>; lastUpdated: number; lastRequested?: number }>;
 
   constructor(selfPeerId: string, maxSize = 50_000) {
     this.selfPeerId = selfPeerId;
@@ -54,15 +54,15 @@ export class PeerRegistry {
       let oldestId: string | null = null;
       let oldest = Infinity;
       for (const [peerId, value] of this.peerRegistry)
-        if (value.lastSeen < oldest) {
-          oldest = value.lastSeen;
+        if (value.lastUpdated < oldest) {
+          oldest = value.lastUpdated;
           oldestId = peerId;
         }
       if (oldestId) this.peerRegistry.delete(oldestId); // drop oldest
     }
-    const current = this.peerRegistry.get(peerInfo.peerId) ?? { addresses: new Set<string>(), lastSeen: 0 };
+    const current = this.peerRegistry.get(peerInfo.peerId) ?? { addresses: new Set<string>(), lastUpdated: 0 };
     for (const address of peerInfo.addresses || []) current.addresses.add(address);
-    current.lastSeen = now();
+    current.lastUpdated = now();
     this.peerRegistry.set(peerInfo.peerId, current);
   }
 
@@ -75,7 +75,7 @@ export class PeerRegistry {
     const result: PeerInfoLite[] = [];
     const cutOff = now() - PEER_ENTRY_TTL_MS;
     for (const [peerId, value] of this.peerRegistry) {
-      if (value.lastSeen < cutOff) {
+      if (value.lastUpdated < cutOff) {
         this.peerRegistry.delete(peerId);
         continue;
       }
@@ -103,10 +103,11 @@ export class PeerRegistry {
     if (value) value.lastRequested = now();
   }
 
-  private logRegistryData() {
-    setInterval(() => {
+  private logRegistryData(): NodeJS.Timeout {
+    return setInterval(() => {
+      logger.debug('Total peers in registry: ', this.getSize());
       for (const [key, value] of this.peerRegistry) {
-        logger.debug('peer: ', key, ' lastRequested: ', value.lastRequested);
+        logger.trace('peer: ', key, ' lastRequested: ', value.lastUpdated);
       }
     }, 30_000);
   }

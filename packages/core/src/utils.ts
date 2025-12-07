@@ -1,3 +1,4 @@
+import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { logger } from '@dechat/common';
 import { Stream } from '@libp2p/interface';
 import * as lp from 'it-length-prefixed';
@@ -122,3 +123,29 @@ export const now = (): number => Date.now();
 export const sleep = (ms: number): Promise<unknown> => new Promise((r) => setTimeout(r, ms));
 
 export const filterAddrs = (addrs: string[]): string[] => (addrs || []).slice(0, 4);
+
+export const publishWithRetry = async (
+  pubsub: GossipSub,
+  topic: string,
+  data: Uint8Array,
+  opts: { retries: number; baseDelay: number },
+): Promise<void> => {
+  const retries = opts.retries;
+  const baseDelay = opts.baseDelay;
+  for (let i = 0; i < retries; i++) {
+    try {
+      await pubsub.publish(topic, data);
+      return;
+    } catch (err: unknown) {
+      const msg = String(err);
+      if (msg.includes('PublishError.NoPeersSubscribedToTopic') || msg.includes('NoPeersSubscribedToTopic')) {
+        const backoff = baseDelay * Math.pow(2, i) + Math.floor(Math.random() * 200);
+        logger.info('NoPeersSubscribedToTopic error retrying again in: ', backoff, 'ms');
+        await new Promise((r) => setTimeout(r, backoff));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('publishWithRetry: exhausted retries');
+};

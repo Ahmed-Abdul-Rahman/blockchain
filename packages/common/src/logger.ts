@@ -20,11 +20,12 @@ const logDirectory = path.join(dirname(__filename), 'logs');
 let logLevel = 'TRACE';
 
 if (process.env.NODE_ENV === 'production') logLevel = 'INFO';
-else if (process.env.NODE_ENV === 'perf') logLevel = 'DEBUG';
-else if (process.env.LOG_LEVEL) logLevel = process.env.LOG_LEVEL;
+else if (process.env.NODE_ENV === 'perf') logLevel = 'INFO';
+
+if (process.env.LOG_LEVEL) logLevel = process.env.LOG_LEVEL;
 
 const baseLogger = new Logger({
-  name: 'app',
+  name: process.env.APP_NAME ?? 'deChat',
   minLevel: logLevels[logLevel],
   type: process.env.NODE_ENV === 'production' ? 'json' : 'pretty',
   hideLogPositionForProduction: true,
@@ -64,6 +65,7 @@ const isTemplateStringsArray = (x: unknown): x is TemplateStringsArray =>
 export const logger = {
   // Tagged template support
   silly(message: TemplateStringsArray | unknown, ...args: unknown[]): void {
+    if (logLevels[logLevel] > 0) return;
     if (isTemplateStringsArray(message)) {
       baseLogger.silly(tag(message, ...args));
       return;
@@ -72,6 +74,7 @@ export const logger = {
   },
 
   trace(message: TemplateStringsArray | unknown, ...args: unknown[]): void {
+    if (logLevels[logLevel] > 1) return;
     if (isTemplateStringsArray(message)) {
       baseLogger.trace(tag(message, ...args));
       return;
@@ -80,6 +83,7 @@ export const logger = {
   },
 
   debug(message: TemplateStringsArray | unknown, ...args: unknown[]): void {
+    if (logLevels[logLevel] > 2) return;
     if (isTemplateStringsArray(message)) {
       baseLogger.debug(tag(message, ...args));
       return;
@@ -88,6 +92,7 @@ export const logger = {
   },
 
   info(message: TemplateStringsArray | unknown, ...args: unknown[]): void {
+    if (logLevels[logLevel] > 3) return;
     if (isTemplateStringsArray(message)) {
       baseLogger.info(tag(message, ...args));
       return;
@@ -96,6 +101,7 @@ export const logger = {
   },
 
   warn(message: TemplateStringsArray | unknown, ...args: unknown[]): void {
+    if (logLevels[logLevel] > 4) return;
     if (isTemplateStringsArray(message)) {
       baseLogger.warn(tag(message, ...args));
       return;
@@ -104,6 +110,7 @@ export const logger = {
   },
 
   error(message: TemplateStringsArray | unknown, ...args: unknown[]): void {
+    if (logLevels[logLevel] > 5) return;
     if (isTemplateStringsArray(message)) {
       baseLogger.error(tag(message, ...args));
       return;
@@ -112,6 +119,7 @@ export const logger = {
   },
 
   fatal(message: TemplateStringsArray | unknown, ...args: unknown[]): void {
+    if (logLevels[logLevel] > 6) return;
     if (isTemplateStringsArray(message)) {
       baseLogger.fatal(tag(message, ...args));
       return;

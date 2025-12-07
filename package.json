@@ -13,6 +13,7 @@
     "hoistingLimits": "workspaces"
   },
   "scripts": {
+    "postinstall": "yarn run scanMalware",
     "foreach-workspace": "yarn workspaces foreach --topological-dev -Avi --exclude .",
     "blockchain": "yarn workspace @dechat/blockchain",
     "core": "yarn workspace @dechat/core",
@@ -31,7 +32,8 @@
     "lint:common": "eslint packages/common",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.{ts,js,tsx,jsx,json,md}\"",
-    "prepare": "husky"
+    "prepare": "husky",
+    "scanMalware": "node scripts/shai-hulud-scan.js"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

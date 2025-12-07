@@ -1,13 +1,13 @@
 import http2 from 'http2';
 import { AddressInfo } from 'net';
 import path from 'path';
-// import { EventId } from 'eventid';
 // import { sha256 } from '@common/utils';
 import { bytecoin } from '@dechat/blockchain';
 import { logger } from '@dechat/common';
 import { createNode } from '@dechat/core';
 import { loadOrGenerateKeypair } from '@dechat/crypto';
 import bodyParser from 'body-parser';
+import { EventId } from 'eventid';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 
@@ -39,7 +39,7 @@ import { infoHash } from './constants';
 
 const KEY_FILE = path.join(process.cwd(), 'node_identity.pem');
 
-// const nodeEventId = new EventId();
+const nodeEventId = new EventId();
 const { publicKey, privateKey } = loadOrGenerateKeypair(KEY_FILE, true);
 
 process.env.NODE_PUBLIC_KEY = publicKey.export({ type: 'spki', format: 'pem' }).toString();
@@ -107,7 +107,8 @@ app.post(CHALLENGE, postChallengeRateLimiter, postChallenge.bind(null, privateKe
 
 server.listen(0, async () => {
   const { address, port } = server.address() as AddressInfo;
-  const { node } = await createNode(infoHash);
+  const nodeSeed = `BackendNode-${nodeEventId}-${port}`;
+  const { node } = await createNode(infoHash, nodeSeed, { onBoardingPeerTime: Math.random() * 10 * 1000 });
   await node.start();
   // const networkNode = await createNetworkNode(networkNodeConfig);
   // await networkNode.start();
