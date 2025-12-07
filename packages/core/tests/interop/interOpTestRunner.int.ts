@@ -10,7 +10,7 @@ const pubsubTopicArg: string = parseArg('topic');
 const networkIdArg: string = parseArg('net');
 
 describe('P2P Network Integration StartUp Tests', () => {
-  it.skip(`Burst startup of ${totalNodesArg ?? 12} nodes at once`, async () => {
+  it(`Burst startup of ${totalNodesArg ?? 12} nodes at once`, async () => {
     const totalNodes = totalNodesArg ?? 12;
     const runDurationSec = runDurationSecArg ?? 300;
     const messageRate = messageRateArg ?? 5;
@@ -34,7 +34,7 @@ describe('P2P Network Integration StartUp Tests', () => {
     });
   });
 
-  it.skip(`Staggered startup of ${totalNodesArg ?? 10} nodes`, async () => {
+  it(`Staggered startup of ${totalNodesArg ?? 10} nodes`, async () => {
     const totalNodes = totalNodesArg ?? 10;
     const runDurationSec = runDurationSecArg ?? 300;
     const messageRate = messageRateArg ?? 5;
