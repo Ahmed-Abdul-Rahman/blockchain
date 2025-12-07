@@ -24,6 +24,7 @@
     "backend-node": "yarn workspace backend-node run",
     "build": "yarn foreach-workspace run build",
     "test": "yarn foreach-workspace run test",
+    "test:int": "yarn core test:int",
     "lint": "eslint .",
     "lint:backend-node": "eslint apps/backend",
     "lint:blockchain": "eslint packages/blockchain",
