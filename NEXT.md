@@ -1,27 +1,31 @@
 # Next Steps (for Future Me)
 
-**Last session:** 2025-12-04  
-**Branch:** feature/add-auth
+**Last session:** 2025-12-07  
+**Branch:** InterOp/Adding-interoperability-tests
+
+---
 
 ## What I just did
 
-- Implemented login API (`POST /api/login`)
-- Added basic validation for email + password
-- Started wiring frontend login form, not finished yet
+- Implemented p2p integration tests by leveragin worker threads added three scenarios (Burst Startup of peers, Staggered startup and Network Stability peer churn (did peer revived, restored and connected to network))
 
 ## What problem I was solving
 
-- Allow users to authenticate and get a JWT token
-- Next step: protect the dashboard routes using that token
+- Ensuring the Core package p2p implementation is robust and stable by implementing Integration and Inter-Operability tests to test the core package's network reliabiltiy and stability.
 
 ## What to do next (in order)
 
-1. Finish login form submit handler in `Login.tsx`
-2. Handle error UI for invalid credentials
-3. Add auth guard in the frontend router
-4. Write one test for successful login
+1. Migrate to es-toolkit and biomeJs for better performance and code quality
+2. Ensure incase of worker thread crashes or any other issues, the integration test harness should always teardown and terminate.
+3. Implement Github Actions build pipeline for the project.
+
+## Random Improvements/Enhancements/TODO List
+
+- Make Integration tests more configurable (Ex: Control No Of nodes, duration, env variables)
+- Implement data replication and data propagation mechanism between peers in the network. (This should be an in-built functionality of the core package)
 
 ## Open questions / decisions
 
-- Should JWT expiry be 15 mins or 1 hour?
-- Do we need refresh tokens for MVP? (leaning towards **no**)
+- Where to store the node seed and how to load it? (private key or node seed to revive the peer incase it crashed)
+- Should add a design diagram for the Core package's implementation and working
+- Come up with more integration/inter-op tests for the core packge to ensure its reliability and stability.

@@ -1,7 +1,7 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sampleIndices, wait } from '@dechat/common';
-import { computeTotalRuntime, isInPercentRange } from './helper';
+import { isInPercentRange } from './helper';
 import {
   AggregatedResult,
   RunWorkersScenario,
@@ -10,7 +10,7 @@ import {
   WorkerDetails,
   WorkerResult,
 } from './types';
-import { aggregateResults, createWorker, terminateWorker } from './workerUtils';
+import { aggregateResults, createWorker, terminateWorker, terminateWorkers } from './workerUtils';
 
 const filename = fileURLToPath(import.meta.url);
 const workerPath = resolve(dirname(filename), './nodeWorker.js');
@@ -38,7 +38,7 @@ export const setupScenario = (
       reject(err);
     };
 
-    runWorkersScenario(workers, workerResults, handleComplete, handleWorkerError);
+    await runWorkersScenario(workers, workerResults, handleComplete, handleWorkerError);
   });
 
   return {
@@ -50,16 +50,22 @@ export const setupScenario = (
 
 export const simulateBurstPeersAtStartUp = (workerDataConfig: WorkerDataConfig): Promise<AggregatedResult> => {
   const scenario: RunWorkersScenario = async (workers, workerResults, handleComplete, handleWorkerError) => {
+    const terminationPromises: Promise<boolean>[] = [];
     for (let i = 0; i < workerDataConfig.totalNodes; i++) {
-      const nodeSeed = `Test-StartUp-Worker-${i + 1}`;
+      const nodeSeed = `Test-StartUp-Worker-${i}`;
       const workerData = {
         index: i,
         nodeSeed,
         ...workerDataConfig,
       } as WorkerData;
 
-      workers.push(createWorker(workerPath, workerData, workerResults, handleComplete, handleWorkerError));
+      workers.push(
+        createWorker(workerPath, workerData, workerResults, handleComplete, handleWorkerError, terminationPromises),
+      );
     }
+    await wait(workerDataConfig.runDurationSec * 1000);
+    terminateWorkers(workers);
+    await Promise.all(terminationPromises);
   };
 
   const { scenarioResults } = setupScenario(scenario);
@@ -68,31 +74,27 @@ export const simulateBurstPeersAtStartUp = (workerDataConfig: WorkerDataConfig):
 
 export const simulateStaggeredPeersAtStartUp = (workerDataConfig: WorkerDataConfig): Promise<AggregatedResult> => {
   const scenario: RunWorkersScenario = async (workers, workerResults, handleComplete, handleWorkerError) => {
-    const { totalNodes, runDurationSec } = workerDataConfig;
-
-    const totalRuntimeSec =
-      computeTotalRuntime(totalNodes, [
-        { startPercent: 0, endPercent: 50, delayMs: 0 },
-        { startPercent: 51, endPercent: 90, delayMs: 20_000 },
-        { startPercent: 91, endPercent: 100, delayMs: 60_000 },
-      ]) / 1000;
-
-    const finalRuntimeDurationSec = runDurationSec > totalRuntimeSec ? runDurationSec : totalRuntimeSec + 60;
+    const terminationPromises: Promise<boolean>[] = [];
+    const { totalNodes } = workerDataConfig;
 
     for (let i = 0; i < totalNodes; i++) {
-      const nodeSeed = `Test-Staggered-Worker-${i + 1}`;
+      const nodeSeed = `Test-Staggered-Worker-${i}`;
       const workerData = {
         index: i,
         nodeSeed,
         ...workerDataConfig,
-        runDurationSec: finalRuntimeDurationSec,
       } as WorkerData;
 
       if (isInPercentRange(i, totalNodes, 0, 50)) await wait(1);
       else if (isInPercentRange(i, totalNodes, 51, 90)) await wait(20_000);
       else await wait(60_000);
-      workers.push(createWorker(workerPath, workerData, workerResults, handleComplete, handleWorkerError));
+      workers.push(
+        createWorker(workerPath, workerData, workerResults, handleComplete, handleWorkerError, terminationPromises),
+      );
     }
+    await wait(workerDataConfig.runDurationSec * 1000);
+    terminateWorkers(workers);
+    await Promise.all(terminationPromises);
   };
 
   const { scenarioResults } = setupScenario(scenario);
@@ -101,25 +103,27 @@ export const simulateStaggeredPeersAtStartUp = (workerDataConfig: WorkerDataConf
 
 export const simulatePeerChurn = async (workerDataConfig: WorkerDataConfig): Promise<AggregatedResult> => {
   const scenario: RunWorkersScenario = async (workers, workerResults, handleComplete, handleWorkerError) => {
-    const { totalNodes, runDurationSec } = workerDataConfig;
-    const totalRuntimeSec = 270 + Math.ceil(totalNodes / 3) * 70;
-    const finalRuntimeDurationSec = runDurationSec > totalRuntimeSec ? runDurationSec : totalRuntimeSec + 60;
+    const terminationPromises: Promise<boolean>[] = [];
+    const { totalNodes } = workerDataConfig;
 
-    for (let i = 0; i <= totalNodes; i++) {
-      const nodeSeed = `Test-Node-Worker-${i + 1}`;
+    for (let i = 0; i < totalNodes; i++) {
+      const nodeSeed = `Test-Node-Worker-${i}`;
       const workerData = {
         index: i,
         nodeSeed,
         ...workerDataConfig,
-        runDurationSec: finalRuntimeDurationSec,
       } as WorkerData;
 
-      workers.push(createWorker(workerPath, workerData, workerResults, handleComplete, handleWorkerError));
+      workers.push(
+        createWorker(workerPath, workerData, workerResults, handleComplete, handleWorkerError, terminationPromises),
+      );
     }
 
     await wait(180_000); // wait for 3mins so the network is stable
-    const randomSampleIndices = sampleIndices(totalNodes, 3);
+    workers.forEach((worker) => worker.workerRef.postMessage({ type: 'statistics' }));
+    await wait(3000); // wait for 3seconds so we get the statistics
 
+    const randomSampleIndices = sampleIndices(totalNodes, 3);
     await Promise.all(
       randomSampleIndices.map((index) => {
         const randomWorker = workers[index] as WorkerDetails;
@@ -136,9 +140,14 @@ export const simulatePeerChurn = async (workerDataConfig: WorkerDataConfig): Pro
         workerResults,
         handleComplete,
         handleWorkerError,
+        terminationPromises,
       );
       workers[index] = revivedWorker;
     });
+
+    await wait(workerDataConfig.runDurationSec * 1000);
+    terminateWorkers(workers);
+    await Promise.all(terminationPromises);
   };
 
   const { scenarioResults } = setupScenario(scenario);

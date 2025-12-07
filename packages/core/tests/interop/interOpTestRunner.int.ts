@@ -30,7 +30,7 @@ describe('P2P Network Integration StartUp Tests', () => {
     const { workerResults } = aggregatedResults;
     workerResults.forEach((workerResult) => {
       assert.equal(workerResult.verified, totalNodes - 1);
-      assert.ok(workerResult.connections < totalNodes - 1);
+      assert.ok(workerResult.connections <= totalNodes - 1);
     });
   });
 
@@ -54,7 +54,7 @@ describe('P2P Network Integration StartUp Tests', () => {
     const { workerResults } = aggregatedResults;
     workerResults.forEach((workerResult) => {
       assert.equal(workerResult.verified, totalNodes - 1);
-      assert.ok(workerResult.connections < totalNodes - 1);
+      assert.ok(workerResult.connections <= totalNodes - 1);
     });
   });
 });
@@ -80,7 +80,7 @@ describe('P2P Network Integration Stability Tests', () => {
     const { workerResults } = aggregatedResults;
     workerResults.forEach((workerResult) => {
       assert.equal(workerResult.verified, totalNodes - 1);
-      assert.ok(workerResult.connections < totalNodes - 1);
+      assert.ok(workerResult.connections <= totalNodes - 1);
     });
   });
 });

@@ -36,6 +36,7 @@ export const createWorker = (
   workerResults: WorkerResult[],
   onComplete: (results: WorkerResult[]) => void,
   onWorkerError: (index: number, error: unknown) => void,
+  terminationPromises: Promise<boolean>[],
 ): WorkerDetails => {
   const { index, totalNodes } = workerData;
   const worker = new Worker(workerPath, {
@@ -49,9 +50,20 @@ export const createWorker = (
       const stats = message.stats as WorkerResult;
       workerResults.push(stats);
       console.log(
-        `[${workerResults.length}/${totalNodes}] done: node=${stats.me}, verified=${stats.verified}, connections=${stats.connections}`,
+        `[${index + 1}/${totalNodes}] done: node=${stats.me}, verified=${stats.verified}, connections=${stats.connections}`,
       );
       if (workerResults.length === totalNodes) onComplete(workerResults);
+    } else if (message.type === 'statistics') {
+      const stats = message.stats as WorkerResult;
+      console.log(
+        `[${index + 1}/${totalNodes}] done: node=${stats.me}, verified=${stats.verified}, connections=${stats.connections}`,
+      );
+    } else if (message.type === 'terminate') {
+      terminationPromises.push(
+        new Promise((resolve) => {
+          resolve(true);
+        }),
+      );
     } else if (message.type === 'error') {
       console.error('worker error:', message.error);
     }
@@ -74,4 +86,8 @@ export const terminateWorker = async (worker: Worker): Promise<void> => {
   } catch (err) {
     console.log('Could not terminate a worker: ', err);
   }
+};
+
+export const terminateWorkers = (workers: WorkerDetails[]): void => {
+  workers.map(({ workerRef }) => workerRef.postMessage({ type: 'terminate' }));
 };

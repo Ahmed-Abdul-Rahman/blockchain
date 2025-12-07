@@ -54,6 +54,11 @@ export type WorkerDataConfig = {
   messageRate: number; // msgs per second
 };
 
-export type RunWorkersScenario = (...args) => void;
-
 export type WorkerDetails = { workerData: WorkerData; workerRef: Worker };
+
+export type RunWorkersScenario = (
+  workers: WorkerDetails[],
+  workerResults: WorkerResult[],
+  handleComplete: (results: WorkerResult[]) => void,
+  handleWorkerError: (index: number, err: unknown) => Promise<void>,
+) => Promise<void>;
