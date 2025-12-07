@@ -21,9 +21,10 @@
     "common": "yarn workspace @dechat/common",
     "clean": "yarn cache clear && yarn foreach-workspace -p run clean",
     "clean:deps": "yarn clean && node ./scripts/removeFolderRecursive ./node_modules",
-    "build": "yarn foreach-workspace run build",
     "backend-node": "yarn workspace backend-node run",
+    "build": "yarn foreach-workspace run build",
     "test": "yarn foreach-workspace run test",
+    "test:int": "yarn core test:int",
     "lint": "eslint .",
     "lint:backend-node": "eslint apps/backend",
     "lint:blockchain": "eslint packages/blockchain",
@@ -59,5 +60,5 @@
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^3.2.4"
   },
-  "packageManager": "yarn@4.9.4"
+  "packageManager": "yarn@4.12.0"
 }
