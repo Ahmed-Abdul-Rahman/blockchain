@@ -1,9 +1,9 @@
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
+import { logger, wait } from '@dechat/common';
 import { Message, PeerId, Stream, Libp2p } from '@libp2p/interface';
 import bloomFilters from 'bloom-filters';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
-import { logger, wait } from '../../common';
 import { DialQueue } from './DialQueue';
 import { PeerRegistry } from './PeerRegistry';
 import { GET_PEERS_MSG, PeerInfoLite, PEX_GOSSIP, PEX_PEER_LIST, scorer } from './types';
