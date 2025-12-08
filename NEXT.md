@@ -19,7 +19,7 @@
 
 1. Migrate to es-toolkit and biomeJs for better performance and code quality
 2. Ensure incase of worker thread crashes or any other issues, the integration test harness should always teardown and terminate.
-3. Implement Github Actions build pipeline for the project.
+3. Need to come up with better Connection Manager strategy (Maintaining min and max connections for each peer)
 
 ## Random Improvements/Enhancements/TODO List
 
