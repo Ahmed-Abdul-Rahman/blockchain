@@ -1,10 +1,10 @@
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { logger } from '@dechat/common';
 import { Stream } from '@libp2p/interface';
+import { cloneDeep } from 'es-toolkit';
 import * as lp from 'it-length-prefixed';
 import map from 'it-map';
 import { pipe } from 'it-pipe';
-import { cloneDeep } from 'lodash-es';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 

@@ -9,8 +9,8 @@ import { identify } from '@libp2p/identify';
 import { PeerDiscovery, PeerId, PeerInfo } from '@libp2p/interface';
 import { MulticastDNSComponents, mdns } from '@libp2p/mdns';
 import { tcp } from '@libp2p/tcp';
+import { debounce } from 'es-toolkit';
 import { createLibp2p, Libp2p } from 'libp2p';
-import { debounce } from 'lodash-es';
 import { genEd25519KeyPair, installAuthServer, runAuthClient } from './auth';
 import { PeerExchangeService } from './PeerExchangeService';
 import { SimplePeerScorer } from './SimplePeerScorer';
@@ -139,9 +139,7 @@ export const createNode = async (
   // seed (optional but recommended for internet-wide discovery)
   if (nodeOptions?.peerSeeds?.length) pexService.addPeers(nodeOptions.peerSeeds);
 
-  const onBoardNewPeerDebounced = debounce(onBoardNewPeer, nodeOptions?.onBoardingPeerTime || 5_000, {
-    trailing: true,
-  });
+  const onBoardNewPeerDebounced = debounce(onBoardNewPeer, nodeOptions?.onBoardingPeerTime || 5_000);
 
   node.addEventListener('peer:discovery', async (event: CustomEvent<PeerInfo>) => {
     const peerId = event.detail.id.toString();
