@@ -47,7 +47,7 @@ export class DialQueue {
   }
 
   /**
-   * returns a list of peerId Connections that are open and in outbound direction
+   * returns a list of peerId Connections that are open
    * @param peerId
    * @returns
    */
@@ -87,11 +87,9 @@ export class DialQueue {
     return setInterval(async () => {
       if (this.isQueueRunning) return;
       this.isQueueRunning = true;
-
-      const connections = this.getConnections();
       const target = this.getTargetConnections();
 
-      while (connections.length < target) {
+      while (this.getConnections().length < target) {
         const peerInfo = this.dialQueue.shift();
         try {
           if (!peerInfo) break;
@@ -109,8 +107,15 @@ export class DialQueue {
           logger.debug(error);
         }
       }
-      logger.debug('Total outbound connections with remotePeers: ', this.getConnections().length);
+      logger.debug('Total unique connections with remotePeers: ', this.getConnections().length);
       this.isQueueRunning = false;
     }, this.intervalMs);
+  }
+
+  /**
+   * clears the Dial loop interval function
+   */
+  clearDialInterval(): void {
+    if (this.loopIntervalId) clearInterval(this.loopIntervalId);
   }
 }
