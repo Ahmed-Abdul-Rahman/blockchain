@@ -1,7 +1,8 @@
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
-import { logger, wait } from '@dechat/common';
+import { logger } from '@dechat/common';
 import { Libp2p, Message, PeerId, Stream } from '@libp2p/interface';
 import bloomFilters from 'bloom-filters';
+import { delay } from 'es-toolkit';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { DialQueue } from './DialQueue';
@@ -148,7 +149,7 @@ export class PeerExchangeService {
               addresses: this.node.getMultiaddrs().map((multiAddr) => multiAddr.toString()),
             },
           };
-          await wait(GOSSIP_INTERVAL_MS);
+          await delay(GOSSIP_INTERVAL_MS);
           await publishWithRetry(this.pubsub, PEX_TOPIC, uint8ArrayFromString(JSON.stringify(msg)), {
             retries: 7,
             baseDelay: GOSSIP_INTERVAL_MS,

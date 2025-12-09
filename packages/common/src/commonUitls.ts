@@ -1,11 +1,3 @@
-/**
- *
- * @param timeMs in ms
- */
-export const wait = (timeMs: number): Promise<null> => {
-  return new Promise((resolve) => setTimeout(() => resolve(null), timeMs));
-};
-
 export const pickRandom = <T>(items: T[], start?: number, end?: number): { item: T; index: number } => {
   if (items.length === 0) throw new Error('Array cannot be empty');
 
