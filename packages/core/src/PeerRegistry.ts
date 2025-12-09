@@ -82,7 +82,7 @@ export class PeerRegistry {
       }
       result.push({ peerId, addresses: [...value.addresses] });
     }
-    return sampleSize(result, limit);
+    return sampleSize(result, limit > result.length ? result.length : limit);
   }
 
   /**
