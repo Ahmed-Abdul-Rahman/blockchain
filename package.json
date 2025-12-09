@@ -29,7 +29,6 @@
     "lint:crypto": "biome lint packages/crypto",
     "lint:common": "biome lint packages/common",
     "lint:fix": "biome lint . --fix",
-    "prepare": "husky",
     "scanMalware": "node scripts/shai-hulud-scan.js"
   },
   "devDependencies": {
