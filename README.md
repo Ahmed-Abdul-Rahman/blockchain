@@ -1,5 +1,7 @@
 # 🔗 DeChat — Decentralized P2P Networking Network (Libp2p • TypeScript)
 
+[![CI](https://github.com/Ahmed-Abdul-Rahman/blockchain/actions/workflows/ci.yaml/badge.svg)](https://github.com/Ahmed-Abdul-Rahman/blockchain/actions/workflows/ci.yaml)
+
 **DeChat** is an experimental decentralized peer-to-peer networking platform built using **Libp2p** with **TypeScript**.  
 Its first milestone is a **serverless encrypted chat network**, and it is designed to later support **blockchain-style transactions** and **decentralized AI agents**.
 
