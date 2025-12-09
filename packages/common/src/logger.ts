@@ -1,8 +1,8 @@
 import path, { dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { threadId } from 'worker_threads';
 import { createStream } from 'rotating-file-stream';
 import { Logger } from 'tslog';
+import { fileURLToPath } from 'url';
+import { threadId } from 'worker_threads';
 
 const logLevels = {
   SILLY: 0,

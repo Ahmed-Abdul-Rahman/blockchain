@@ -1,6 +1,6 @@
+import axios from 'axios';
 import crypto, { KeyObject } from 'crypto';
 import fs from 'fs';
-import axios from 'axios';
 import { Envelope } from './types';
 
 export const encryptMessage = (message: string, nodePublicKey: KeyObject): string => {

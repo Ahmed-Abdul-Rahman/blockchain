@@ -1,18 +1,18 @@
 {
-    "compilerOptions": {
-        "module": "ESNext",
-        "target": "esnext",
-        "moduleResolution": "node",
-        "outDir": "dist",
-        "declaration": true,
-        "sourceMap": true,
-        "declarationMap": true,
-        "strict": true,
-        "esModuleInterop": true,
-        "forceConsistentCasingInFileNames": true,
-        "skipLibCheck": true,
-        "noImplicitAny": false,
-        "allowSyntheticDefaultImports": true,
-        "allowJs": true
-    }
+  "compilerOptions": {
+    "module": "ESNext",
+    "target": "esnext",
+    "moduleResolution": "node",
+    "outDir": "dist",
+    "declaration": true,
+    "sourceMap": true,
+    "declarationMap": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "noImplicitAny": false,
+    "allowSyntheticDefaultImports": true,
+    "allowJs": true
+  }
 }

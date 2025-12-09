@@ -1,5 +1,5 @@
 import { logger } from '@dechat/common';
-import { Libp2p, Connection } from '@libp2p/interface';
+import { Connection, Libp2p } from '@libp2p/interface';
 import { peerIdFromString } from '@libp2p/peer-id';
 import { PeerInfoLite } from './types.js';
 

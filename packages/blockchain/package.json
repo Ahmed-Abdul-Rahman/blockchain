@@ -1,22 +1,22 @@
 {
-    "name": "@dechat/blockchain",
-    "version": "1.0.0",
-    "type": "module",
-    "exports": {
-        "development": "./index.ts",
-        "default": "./dist/index.js",
-        "types": "./dist/index.d.ts"
-    },
-    "scripts": {
-        "build": "tsc -p tsconfig.json && tsc-alias --resolve-full-paths",
-        "clean": "rm -rf dist",
-        "test": ""
-    },
-    "dependencies": {
-        "@dechat/crypto": "*",
-        "uuid": "^11.0.5"
-    },
-    "devDependencies": {
-        "typescript": "^5.5.0"
-    }
+  "name": "@dechat/blockchain",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    "development": "./index.ts",
+    "default": "./dist/index.js",
+    "types": "./dist/index.d.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc-alias --resolve-full-paths",
+    "clean": "rm -rf dist",
+    "test": ""
+  },
+  "dependencies": {
+    "@dechat/crypto": "*",
+    "uuid": "^11.0.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
 }

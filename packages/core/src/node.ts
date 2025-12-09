@@ -3,18 +3,18 @@ import { noise } from '@chainsafe/libp2p-noise';
 import { yamux } from '@chainsafe/libp2p-yamux';
 import { logger } from '@dechat/common';
 import { generateIdProtocolPrefix } from '@dechat/crypto';
-import { bootstrap } from '@libp2p/bootstrap';
+import { BootstrapComponents, bootstrap } from '@libp2p/bootstrap';
 import { generateKeyPairFromSeed } from '@libp2p/crypto/keys';
 import { identify } from '@libp2p/identify';
-import { PeerId, PeerInfo } from '@libp2p/interface';
-import { mdns } from '@libp2p/mdns';
+import { PeerDiscovery, PeerId, PeerInfo } from '@libp2p/interface';
+import { MulticastDNSComponents, mdns } from '@libp2p/mdns';
 import { tcp } from '@libp2p/tcp';
 import { createLibp2p, Libp2p } from 'libp2p';
 import { debounce } from 'lodash-es';
 import { genEd25519KeyPair, installAuthServer, runAuthClient } from './auth';
 import { PeerExchangeService } from './PeerExchangeService';
-import { shouldDialNewPeer } from './shouldDial';
 import { SimplePeerScorer } from './SimplePeerScorer';
+import { shouldDialNewPeer } from './shouldDial';
 
 export interface NodeOptions {
   mdns?: boolean;
@@ -71,8 +71,10 @@ export const createNode = async (
   const streamMuxers = [yamux()];
   const connectionEncrypters = [noise()];
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const peerDiscovery: any[] = [];
+  const peerDiscovery: (
+    | ((components: MulticastDNSComponents) => PeerDiscovery)
+    | ((components: BootstrapComponents) => PeerDiscovery)
+  )[] = [];
   if (nodeOptions?.mdns !== false) peerDiscovery.push(mdns({ interval: 10e3 }));
 
   if (nodeOptions?.bootstrap && nodeOptions.bootstrap.length > 0)
