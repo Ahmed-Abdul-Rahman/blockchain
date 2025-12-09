@@ -1,6 +1,7 @@
 import { logger } from '@dechat/common';
+import { sampleSize } from 'es-toolkit';
 import { PeerInfoLite } from './types';
-import { now, sampleList } from './utils';
+import { now } from './utils';
 
 const PEX_REQUEST_COOLDOWN_MS = 15_000;
 const PEER_ENTRY_TTL_MS = 30 * 60_000;
@@ -81,7 +82,7 @@ export class PeerRegistry {
       }
       result.push({ peerId, addresses: [...value.addresses] });
     }
-    return sampleList(result, limit);
+    return sampleSize(result, limit);
   }
 
   /**

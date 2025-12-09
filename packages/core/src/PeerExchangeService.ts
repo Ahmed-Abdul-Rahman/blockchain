@@ -2,13 +2,13 @@ import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { logger } from '@dechat/common';
 import { Libp2p, Message, PeerId, Stream } from '@libp2p/interface';
 import bloomFilters from 'bloom-filters';
-import { delay } from 'es-toolkit';
+import { delay, sampleSize } from 'es-toolkit';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { DialQueue } from './DialQueue';
 import { PeerRegistry } from './PeerRegistry';
 import { GET_PEERS_MSG, PEX_GOSSIP, PEX_PEER_LIST, PeerInfoLite, scorer } from './types';
-import { filterAddrs, now, processDataFromStream, publishWithRetry, sampleList, writeToStream } from './utils';
+import { filterAddrs, now, processDataFromStream, publishWithRetry, writeToStream } from './utils';
 
 export const PEX_PROTOCOL = '/deChat/peer-exchange-protocol/1.0.0';
 export const PEX_TOPIC = '/deChat/peer-exchange-topic/1.0.0';
@@ -111,7 +111,7 @@ export class PeerExchangeService {
         }
         if (req.type === 'GET_PEERS') {
           if (fromId) this.scorer.reward(fromId, 1); // good behavior: asks, not floods
-          const share = sampleList(this.peerRegistry.getCandidates(MAX_SHARED_PEERS * 2), MAX_SHARED_PEERS).map(
+          const share = sampleSize(this.peerRegistry.getCandidates(MAX_SHARED_PEERS * 2), MAX_SHARED_PEERS).map(
             ({ peerId, addresses }) => ({
               peerId,
               addresses: filterAddrs(addresses),
@@ -135,7 +135,7 @@ export class PeerExchangeService {
     logger.info('Registered Peer Exchange Topic');
     while (this.isPeerExchangeStarted) {
       try {
-        const peers = sampleList(this.peerRegistry.getCandidates(256), MAX_SHARED_PEERS).map((p) => ({
+        const peers = sampleSize(this.peerRegistry.getCandidates(256), MAX_SHARED_PEERS).map((p) => ({
           peerId: p.peerId,
           addresses: filterAddrs(p.addresses),
         }));
@@ -201,7 +201,7 @@ export class PeerExchangeService {
       this.scorer.reward(from, Math.min(3, peers.length / 8)); // tiny reward proportional to usefulness
 
       // trickle dials
-      this.enqueueDial(sampleList(peers, Math.min(8, peers.length)));
+      this.enqueueDial(sampleSize(peers, Math.min(8, peers.length)));
       logger.trace('PeerExchangeService - onGossip - exit');
     } catch (error: unknown) {
       logger.warn('Error occured while receiving gossip message');

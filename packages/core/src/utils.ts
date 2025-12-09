@@ -1,7 +1,6 @@
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { logger } from '@dechat/common';
 import { Stream } from '@libp2p/interface';
-import { cloneDeep } from 'es-toolkit';
 import * as lp from 'it-length-prefixed';
 import map from 'it-map';
 import { pipe } from 'it-pipe';
@@ -102,20 +101,6 @@ export const processDataFromStream = async (
       }
     },
   );
-};
-
-export const sampleList = <T>(array: T[], limit: number): T[] => {
-  if (array.length <= limit) return [...array];
-  const resultSample: T[] = [];
-  const seenItems = new Set<number>();
-  while (resultSample.length < limit) {
-    const randomIndex = (Math.random() * array.length) | 0;
-    if (!seenItems.has(randomIndex)) {
-      seenItems.add(randomIndex);
-      resultSample.push(cloneDeep(array[randomIndex]));
-    }
-  }
-  return resultSample;
 };
 
 export const now = (): number => Date.now();
