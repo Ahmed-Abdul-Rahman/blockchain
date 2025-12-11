@@ -1,6 +1,7 @@
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { logger } from '@dechat/common';
 import { Stream } from '@libp2p/interface';
+import { cloneDeep } from 'es-toolkit';
 import * as lp from 'it-length-prefixed';
 import map from 'it-map';
 import { pipe } from 'it-pipe';
@@ -101,6 +102,42 @@ export const processDataFromStream = async (
       }
     },
   );
+};
+
+export const trivialSampling = <T>(array: T[], limit: number): number[] => {
+  const chosenIndices: number[] = [];
+  const seenItems = new Set<number>();
+  while (chosenIndices.length < limit) {
+    const randIndex = (Math.random() * array.length) | 0;
+    if (!seenItems.has(randIndex)) {
+      seenItems.add(randIndex);
+      chosenIndices.push(randIndex);
+    }
+  }
+  return chosenIndices;
+};
+
+export const floydSampling = <T>(array: T[], limit: number): number[] => {
+  const chosenIndices: number[] = [];
+  const seenItems = new Set<number>();
+  const n = array.length;
+  for (let j = n - limit; j < n; j++) {
+    const randIndex = Math.floor(Math.random() * (j + 1));
+    if (!seenItems.has(randIndex)) {
+      seenItems.add(randIndex);
+      chosenIndices.push(randIndex);
+    } else {
+      seenItems.add(j);
+      chosenIndices.push(j);
+    }
+  }
+  return chosenIndices;
+};
+
+export const sampleList = <T>(array: T[], limit: number): T[] => {
+  if (array.length <= limit) return [...array];
+  const chosenIndices = trivialSampling(array, limit);
+  return chosenIndices.map((index) => cloneDeep(array[index]));
 };
 
 export const now = (): number => Date.now();
