@@ -13,7 +13,7 @@ import { filterAddrs, now, processDataFromStream, publishWithRetry, sampleList, 
 export const PEX_PROTOCOL = '/deChat/peer-exchange-protocol/1.0.0';
 export const PEX_TOPIC = '/deChat/peer-exchange-topic/1.0.0';
 
-const MAX_SHARED_PEERS = 3;
+const MAX_SHARED_PEERS = 32;
 const MAX_PEX_MSGS_PER_MIN = 12;
 const GOSSIP_INTERVAL_MS = 30_000;
 
