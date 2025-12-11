@@ -136,7 +136,7 @@ export const floydSampling = <T>(array: T[], limit: number): number[] => {
 
 export const sampleList = <T>(array: T[], limit: number): T[] => {
   if (array.length <= limit) return [...array];
-  const chosenIndices = trivialSampling(array, limit);
+  const chosenIndices = floydSampling(array, limit);
   return chosenIndices.map((index) => cloneDeep(array[index]));
 };
 
