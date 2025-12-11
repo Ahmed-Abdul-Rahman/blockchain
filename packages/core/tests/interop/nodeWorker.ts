@@ -1,7 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { parentPort, threadId, workerData } from 'node:worker_threads';
 import { GossipSub } from '@chainsafe/libp2p-gossipsub/dist/src';
-import { wait } from '@dechat/common';
 import { Libp2p, Message, ServiceMap } from '@libp2p/interface';
 import { createNode } from '../../src/node';
 import { PeerExchangeService } from '../../src/PeerExchangeService';
@@ -68,7 +67,7 @@ const terminateAndCleanUp = async (node: Libp2p<ServiceMap>) => {
     type: 'terminate',
     status: 'success',
   });
-  wait(100);
+  delay(100);
 };
 
 const runNode = async () => {

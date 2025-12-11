@@ -1,8 +1,8 @@
-import { createHash } from 'crypto';
 import { logger } from '@dechat/common';
 import { sha256 } from '@dechat/crypto';
-import { PeerId, Libp2p } from '@libp2p/interface';
+import { Libp2p, PeerId } from '@libp2p/interface';
 import * as ed from '@noble/ed25519';
+import { createHash } from 'crypto';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { PeerExchangeService } from './PeerExchangeService';
 import { now, readFromStream, writeToStream } from './utils';

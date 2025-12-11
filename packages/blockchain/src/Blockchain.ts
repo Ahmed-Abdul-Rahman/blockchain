@@ -1,5 +1,5 @@
-import { KeyObject } from 'crypto';
 import { sha256 } from '@dechat/crypto';
+import { KeyObject } from 'crypto';
 import { v1 as uuidV1 } from 'uuid';
 
 export interface Transaction {

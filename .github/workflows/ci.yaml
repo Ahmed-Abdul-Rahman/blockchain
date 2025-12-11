@@ -35,6 +35,7 @@ jobs:
   integration-tests:
     runs-on: ubuntu-latest
     needs: unit-tests
+    timeout-minutes: 60  # hosted max is 360
     # optional: only run integration tests on push to develop (not on PR)
     # if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
 
@@ -59,4 +60,6 @@ jobs:
         run: yarn build
 
       - name: Run integration (interop) tests
+        env:
+          NODE_OPTIONS: "--max-old-space-size=6144"
         run: yarn test:int

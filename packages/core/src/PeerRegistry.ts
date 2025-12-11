@@ -81,7 +81,7 @@ export class PeerRegistry {
       }
       result.push({ peerId, addresses: [...value.addresses] });
     }
-    return sampleList(result, limit);
+    return sampleList(result, limit > result.length ? result.length : limit);
   }
 
   /**

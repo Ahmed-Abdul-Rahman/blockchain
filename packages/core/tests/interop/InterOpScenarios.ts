@@ -1,6 +1,7 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { sampleIndices, wait } from '@dechat/common';
+import { sampleIndices } from '@dechat/common';
+import { delay } from 'es-toolkit';
 import { isInPercentRange } from './helper';
 import {
   AggregatedResult,
@@ -63,7 +64,7 @@ export const simulateBurstPeersAtStartUp = (workerDataConfig: WorkerDataConfig):
         createWorker(workerPath, workerData, workerResults, handleComplete, handleWorkerError, terminationPromises),
       );
     }
-    await wait(workerDataConfig.runDurationSec * 1000);
+    await delay(workerDataConfig.runDurationSec * 1000);
     terminateWorkers(workers);
     await Promise.all(terminationPromises);
   };
@@ -85,14 +86,14 @@ export const simulateStaggeredPeersAtStartUp = (workerDataConfig: WorkerDataConf
         ...workerDataConfig,
       } as WorkerData;
 
-      if (isInPercentRange(i, totalNodes, 0, 50)) await wait(1);
-      else if (isInPercentRange(i, totalNodes, 51, 90)) await wait(20_000);
-      else await wait(60_000);
+      if (isInPercentRange(i, totalNodes, 0, 50)) await delay(1);
+      else if (isInPercentRange(i, totalNodes, 51, 90)) await delay(20_000);
+      else await delay(60_000);
       workers.push(
         createWorker(workerPath, workerData, workerResults, handleComplete, handleWorkerError, terminationPromises),
       );
     }
-    await wait(workerDataConfig.runDurationSec * 1000);
+    await delay(workerDataConfig.runDurationSec * 1000);
     terminateWorkers(workers);
     await Promise.all(terminationPromises);
   };
@@ -119,9 +120,9 @@ export const simulatePeerChurn = async (workerDataConfig: WorkerDataConfig): Pro
       );
     }
 
-    await wait(180_000); // wait for 3mins so the network is stable
+    await delay(180_000); // delay for 3mins so the network is stable
     workers.forEach((worker) => worker.workerRef.postMessage({ type: 'statistics' }));
-    await wait(3000); // wait for 3seconds so we get the statistics
+    await delay(3000); // delay for 3seconds so we get the statistics
 
     const randomSampleIndices = sampleIndices(totalNodes, 3);
     await Promise.all(
@@ -145,7 +146,7 @@ export const simulatePeerChurn = async (workerDataConfig: WorkerDataConfig): Pro
       workers[index] = revivedWorker;
     });
 
-    await wait(workerDataConfig.runDurationSec * 1000);
+    await delay(workerDataConfig.runDurationSec * 1000);
     terminateWorkers(workers);
     await Promise.all(terminationPromises);
   };

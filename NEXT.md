@@ -7,9 +7,11 @@
 
 ## What I just did
 
-- Implemented p2p integration tests by leveragin worker threads added three scenarios (Burst Startup of peers, Staggered startup and Network Stability peer churn (did peer revived, restored and connected to network))
+- Implemented p2p integration tests by leveraging worker threads added three scenarios (Burst Startup of peers, Staggered startup and Network Stability peer churn (did peer revived, restored and connected to network))
 - Updated dialQueue logic to maintain minimum connections with other peers
 - Added some support to restore the peer node's id and details if the node gets restarted.
+- Added Github CI with unit-tests and integration-tests jobs
+- Migrated from eslint and prettier to biomeJs, replaced husky with lefthook and replaced lodash with es-toolkit
 
 ## What problem I was solving
 
@@ -17,9 +19,8 @@
 
 ## What to do next (in order)
 
-1. Migrate to es-toolkit and biomeJs for better performance and code quality
-2. Ensure incase of worker thread crashes or any other issues, the integration test harness should always teardown and terminate.
-3. Need to come up with better Connection Manager strategy (Maintaining min and max connections for each peer)
+1. Ensure incase of worker thread crashes or any other issues, the integration test harness should always teardown and terminate.
+2. Need to come up with better Connection Manager strategy (Maintaining min and max connections for each peer) Latest Libp2p version 3.x.x has support for autoDial and minConnections in the connection Manager config check that out.
 
 ## Random Improvements/Enhancements/TODO List
 

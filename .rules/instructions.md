@@ -52,7 +52,7 @@ Primary goals:
 - Use Async/Await for asynchronous tasks.
 - Avoid using loops try to use in-built iteration functions. (Can use loops if they are running indefinitely or doing complex scheduling tasks)
 - Provide return types for funcitons, add types for params.
-- Use lodash-es functions wherever possible
+- Use es-toolkit functions wherever possible
 
 ---
 

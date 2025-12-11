@@ -1,6 +1,3 @@
-import http2 from 'http2';
-import { AddressInfo } from 'net';
-import path from 'path';
 // import { sha256 } from '@common/utils';
 import { bytecoin } from '@dechat/blockchain';
 import { logger } from '@dechat/common';
@@ -10,6 +7,9 @@ import bodyParser from 'body-parser';
 import { EventId } from 'eventid';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
+import http2 from 'http2';
+import { AddressInfo } from 'net';
+import path from 'path';
 
 import {
   getBlockChain,

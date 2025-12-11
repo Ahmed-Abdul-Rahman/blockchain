@@ -1,5 +1,5 @@
-import crypto, { KeyObject } from 'crypto';
 import axios from 'axios';
+import crypto, { KeyObject } from 'crypto';
 
 export const encryptMessage = (message: string, nodePublicKey: KeyObject): string => {
   return crypto.publicEncrypt(nodePublicKey, Buffer.from(message)).toString('base64');
