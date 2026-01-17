@@ -22,7 +22,7 @@ export interface NodeOptions {
   bootstrap?: string[]; // override bootstrap multiaddrs
   peerSeeds?: { peerId: string; addresses: string[] }[];
   onBoardingPeerTime?: number;
-  maxConnections: number;
+  maxConnections?: number;
 }
 
 const requestAndDialPeers = async (peerId: PeerId, pexService: PeerExchangeService) => {
