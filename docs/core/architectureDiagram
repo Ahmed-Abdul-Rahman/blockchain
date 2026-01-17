@@ -1,0 +1,41 @@
+┌──────────────────────────────────────────────┐
+│ Application / Consumer Layer                 │
+│ (backend, blockchain, chat, AI agents)       │
+│                                              │
+│ uses createNode(...)                         │
+└──────────────────────────────────────────────┘
+                │
+                ▼
+┌──────────────────────────────────────────────┐
+│ Core Coordination Layer (packages/core)      │
+│                                              │
+│ ┌───────────────┐   ┌───────────────────┐    │
+│ │ PeerExchange  │◀──▶│   PeerRegistry   │    │
+│ │ Service       │   │ (known peers, TTL)│    │
+│ └───────────────┘   └───────────────────┘    │
+│         ▲                    ▲               │
+│         │ gossip             │ metadata      │
+│         ▼                    ▼               │
+│ ┌─────────────────────────────────────────┐  │
+│ │           DialQueue                     │  │
+│ │ (rate limit + fairness + backoff)       │  │
+│ └─────────────────────────────────────────┘  │
+│                    ▲                         │
+│                    │ shouldDial()            │
+│                    ▼                         │
+│ ┌─────────────────────────────────────────┐  │
+│ │      SimplePeerScorer                   │  │
+│ │ (score, decay, penalties, recovery)     │  │
+│ └─────────────────────────────────────────┘  │
+└──────────────────────────────────────────────┘
+                │
+                ▼
+┌──────────────────────────────────────────────┐
+│ Transport & Crypto Layer                     │
+│                                              │
+│ Libp2p Node                                  │
+│  - Transports                                │
+│  - Streams                                   │
+│  - Encryption                                │
+│  - Multiplexing                              │
+└──────────────────────────────────────────────┘
