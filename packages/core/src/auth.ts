@@ -3,6 +3,7 @@ import { sha256 } from '@dechat/crypto';
 import { Libp2p, PeerId } from '@libp2p/interface';
 import * as ed from '@noble/ed25519';
 import { createHash } from 'crypto';
+import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { PeerExchangeService } from './PeerExchangeService';
 import { now, readFromStream, writeToStream } from './utils';
@@ -54,15 +55,10 @@ export const installAuthServer = (
   const { pex } = opts;
   const replayCacheWindowMs = opts.replayCacheWindowMs ?? 60_000;
 
-  const nonceCache = new Map<string, number>();
-
-  setInterval(
-    () => {
-      const now = Date.now();
-      for (const [k, t] of nonceCache) if (now - t > replayCacheWindowMs) nonceCache.delete(k);
-    },
-    Math.max(10_000, Math.floor(replayCacheWindowMs / 4)),
-  );
+  const nonceCache = new LRUCache<string, number>({
+    max: 50000, // Limit entries
+    ttl: replayCacheWindowMs,
+  });
 
   node.handle(AUTH_PROTOCOL, async ({ stream, connection }) => {
     try {

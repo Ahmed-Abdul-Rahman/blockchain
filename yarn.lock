@@ -232,6 +232,7 @@ __metadata:
     it-pipe: "npm:^3.0.1"
     it-pushable: "npm:^3.2.3"
     libp2p: "npm:^2.5.0"
+    lru-cache: "npm:^11.2.4"
     typescript: "npm:^5.5.0"
   languageName: unknown
   linkType: soft
@@ -3239,7 +3240,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lru-cache@npm:^11.0.0, lru-cache@npm:^11.1.0, lru-cache@npm:^11.2.1":
+"lru-cache@npm:^11.0.0, lru-cache@npm:^11.1.0, lru-cache@npm:^11.2.1, lru-cache@npm:^11.2.4":
   version: 11.2.4
   resolution: "lru-cache@npm:11.2.4"
   checksum: 10c0/4a24f9b17537619f9144d7b8e42cd5a225efdfd7076ebe7b5e7dc02b860a818455201e67fbf000765233fe7e339d3c8229fc815e9b58ee6ede511e07608c19b2

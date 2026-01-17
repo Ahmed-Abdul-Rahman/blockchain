@@ -22,6 +22,7 @@ export interface NodeOptions {
   bootstrap?: string[]; // override bootstrap multiaddrs
   peerSeeds?: { peerId: string; addresses: string[] }[];
   onBoardingPeerTime?: number;
+  maxConnections: number;
 }
 
 const requestAndDialPeers = async (peerId: PeerId, pexService: PeerExchangeService) => {
@@ -35,11 +36,19 @@ const onBoardNewPeer = async (
   node: Libp2p,
   pexService: PeerExchangeService,
   nodeKey: { secret: Uint8Array; pub: Uint8Array },
+  authenticatingPeers: Set<string>,
 ): Promise<void> => {
-  try {
-    const peerId = event.detail.id.toString();
-    const addresses = (event.detail.multiaddrs || []).map((ma) => ma.toString());
+  const peerId = event.detail.id.toString();
+  const addresses = (event.detail.multiaddrs || []).map((ma) => ma.toString());
 
+  if (authenticatingPeers.has(peerId)) {
+    logger.debug('Already authenticating with: ', peerId);
+    return;
+  }
+
+  authenticatingPeers.add(peerId);
+
+  try {
     const isAuthenticated = await runAuthClient(node, event.detail.id, nodeKey.secret);
     if (isAuthenticated) {
       logger.info('Authentication succesful with peer: ', peerId);
@@ -50,6 +59,8 @@ const onBoardNewPeer = async (
   } catch (error: unknown) {
     logger.info('Error occured while onBoarding a peer');
     logger.debug(error);
+  } finally {
+    authenticatingPeers.delete(peerId);
   }
 };
 
@@ -102,7 +113,7 @@ export const createNode = async (
 
     // keep the node stable under load
     connectionManager: {
-      maxConnections: 150,
+      maxConnections: nodeOptions?.maxConnections ?? 150,
       maxIncomingPendingConnections: 20,
     },
 
@@ -124,6 +135,7 @@ export const createNode = async (
     },
   })) as Libp2p;
 
+  const authenticatingPeers = new Set<string>();
   // optional: decay every minute
   setInterval(() => scorer.decay(), 60_000);
 
@@ -143,16 +155,20 @@ export const createNode = async (
 
   node.addEventListener('peer:discovery', async (event: CustomEvent<PeerInfo>) => {
     const peerId = event.detail.id.toString();
-    logger.info('Peer Discovered: ', peerId);
+    logger.info('Peer Discovered: ', {
+      peerId,
+      multiaddrs: event.detail.multiaddrs.length,
+      registrySize: pexService.peerRegistry.getSize(),
+    });
 
     if (pexService.peerRegistry.getSize() > 0) {
       if (shouldDialNewPeer(node.peerId.toString(), peerId, pexService.peerRegistry.getPeers())) {
         logger.trace('Elected dailing new peer');
-        onBoardNewPeer(event, node, pexService, nodeKey);
+        onBoardNewPeer(event, node, pexService, nodeKey, authenticatingPeers);
       }
     } else {
       logger.trace('onBoardNewPeerDebounced triggered');
-      onBoardNewPeerDebounced(event, node, pexService, nodeKey);
+      onBoardNewPeerDebounced(event, node, pexService, nodeKey, authenticatingPeers);
     }
   });
 

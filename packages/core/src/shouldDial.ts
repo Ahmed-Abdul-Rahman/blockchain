@@ -81,15 +81,7 @@ export const shouldDialNewPeer = (
   // If we *are* the new peer, skip (let others decide)
   if (selfPeerId === newPeerId) return false;
 
-  const scores = allKnownPeers.map((peerId) => {
-    const hash = createHash('sha256')
-      .update(newPeerId + peerId)
-      .digest('hex');
-    return { peerId, score: BigInt('0x' + hash) };
-  });
-
-  scores.sort((a, b) => (a.score < b.score ? -1 : 1));
-  const electedSet = new Set(scores.slice(0, electedPeers).map((s) => s.peerId));
-
-  return electedSet.has(selfPeerId);
+  const selfHash = hashToBigInt(selfPeerId + newPeerId);
+  const threshold = (BigInt(electedPeers) * BigInt(2) ** BigInt(256)) / BigInt(allKnownPeers.length);
+  return selfHash < threshold;
 };

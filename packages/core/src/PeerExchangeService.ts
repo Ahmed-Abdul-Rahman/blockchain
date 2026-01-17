@@ -3,6 +3,7 @@ import { logger } from '@dechat/common';
 import { Libp2p, Message, PeerId, Stream } from '@libp2p/interface';
 import bloomFilters from 'bloom-filters';
 import { delay } from 'es-toolkit';
+import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { DialQueue } from './DialQueue';
@@ -20,7 +21,10 @@ const GOSSIP_INTERVAL_MS = 30_000;
 export class PeerExchangeService {
   readonly peerRegistry: PeerRegistry;
   private dialQ: DialQueue;
-  private lastGossipByPeer = new Map<string, number>();
+  private lastGossipByPeer = new LRUCache<string, number>({
+    max: 10000,
+    ttl: 10 * 60 * 1000, // 10 minutes
+  });
   private isPeerExchangeStarted: boolean = false;
   private node: Libp2p;
   private pubsub: GossipSub;
@@ -141,6 +145,7 @@ export class PeerExchangeService {
         }));
         if (peers.length) {
           const msg: PEX_GOSSIP = {
+            from: this.node.peerId.toString(),
             type: 'PEX_GOSSIP',
             peers,
             ts: now(),
@@ -168,6 +173,23 @@ export class PeerExchangeService {
   }
 
   /**
+   * Validates the Peer Gossip exchange Message
+   * @param msg
+   * @returns
+   */
+  private validatePexMessage(msg: unknown): msg is PEX_GOSSIP {
+    return (
+      typeof msg === 'object' &&
+      msg !== null &&
+      'type' in msg &&
+      msg.type === 'PEX_GOSSIP' &&
+      'peers' in msg &&
+      Array.isArray(msg.peers) &&
+      msg.peers.length <= MAX_SHARED_PEERS
+    );
+  }
+
+  /**
    * Handles messages received on pex gossip topic
    * @param event
    * @returns
@@ -178,7 +200,14 @@ export class PeerExchangeService {
     if (!data || event.detail.topic !== PEX_TOPIC) return;
     logger.trace('PeerExchangeService - onGossip - entry');
     try {
-      const { from, type, peers, originPeerInfo } = JSON.parse(uint8ArrayToString(data));
+      const parsedData = JSON.parse(uint8ArrayToString(data));
+
+      if (!this.validatePexMessage(parsedData)) {
+        this.scorer.penalize(parsedData.from, 5);
+        return;
+      }
+
+      const { from, type, peers, originPeerInfo } = parsedData;
       // inbound rate-limit per peer
       const last = this.lastGossipByPeer.get(from) || 0;
       if (now() - last < 60_000 / MAX_PEX_MSGS_PER_MIN) {
@@ -251,5 +280,13 @@ export class PeerExchangeService {
    */
   stopGossip(): void {
     this.isPeerExchangeStarted = false;
+  }
+
+  /**
+   * clears intervals, gossips and loops
+   */
+  cleanUp(): void {
+    this.stopGossip();
+    this.dialQ.stop();
   }
 }

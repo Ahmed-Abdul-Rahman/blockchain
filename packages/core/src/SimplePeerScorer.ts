@@ -70,8 +70,18 @@ export class SimplePeerScorer {
    *  decays the score of every peer periodically by a factor of @constant {DECAY}
    */
   decay(): void {
+    const now = Date.now();
     for (const [peerId, score] of this.scores) {
-      this.scores.set(peerId, score * this.DECAY);
+      const lastActivity = this.lastSeen.get(peerId) || 0;
+      const inactiveMs = now - lastActivity;
+
+      // Decay faster for inactive peers
+      if (inactiveMs > 5 * 60_000) {
+        // 5 min
+        this.scores.set(peerId, score * 0.5); // Faster decay
+      } else {
+        this.scores.set(peerId, score * this.DECAY);
+      }
     }
   }
 }
