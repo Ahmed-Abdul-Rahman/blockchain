@@ -1,169 +1,148 @@
 import { logger } from '@dechat/common';
 import { Libp2p } from '@libp2p/interface';
-import { DialQueue } from './DialQueue';
-import { PeerExchangeService } from './PeerExchangeService';
-import { SimplePeerScorer } from './SimplePeerScorer';
+import EventEmitter from 'events';
 
-export type CleanupTask = {
-  name: string;
-  priority: number; // Lower runs first
-  cleanup: () => Promise<void> | void;
-};
-
-export class LifecycleManager {
-  private cleanupTasks: CleanupTask[] = [];
-  private timers: NodeJS.Timeout[] = [];
-  private isShuttingDown = false;
-  private shutdownPromise: Promise<void> | null = null;
-
-  /**
-   * Register a cleanup task
-   * @param name - Descriptive name for the task
-   * @param cleanup - Async or sync cleanup function
-   * @param priority - Execution order (lower = earlier)
-   */
-  registerCleanup(name: string, cleanup: () => Promise<void> | void, priority = 50): void {
-    this.cleanupTasks.push({ name, cleanup, priority });
-    this.cleanupTasks.sort((a, b) => a.priority - b.priority);
-  }
-
-  /**
-   * Register a timer that should be cleared on shutdown
-   * @param timer - NodeJS.Timeout from setInterval/setTimeout
-   */
-  registerTimer(timer: NodeJS.Timeout): void {
-    this.timers.push(timer);
-  }
-
-  /**
-   * Execute all cleanup tasks in priority order
-   * @param signal - Optional AbortSignal for timeout
-   */
-  async shutdown(signal?: AbortSignal): Promise<void> {
-    if (this.isShuttingDown) {
-      logger.debug('Shutdown already in progress');
-      return this.shutdownPromise!;
-    }
-
-    this.isShuttingDown = true;
-    this.shutdownPromise = this.executeShutdown(signal);
-    return this.shutdownPromise;
-  }
-
-  private async executeShutdown(signal?: AbortSignal): Promise<void> {
-    logger.info('Starting graceful shutdown', {
-      cleanupTasks: this.cleanupTasks.length,
-      activeTimers: this.timers.length,
-    });
-
-    const startTime = Date.now();
-
-    // Clear all timers first
-    logger.debug('Clearing timers', { count: this.timers.length });
-    for (const timer of this.timers) {
-      clearInterval(timer);
-      clearTimeout(timer);
-    }
-    this.timers = [];
-
-    // Execute cleanup tasks in priority order
-    for (const task of this.cleanupTasks) {
-      if (signal?.aborted) {
-        logger.warn('Shutdown aborted, remaining tasks skipped');
-        break;
-      }
-
-      try {
-        logger.debug(`Executing cleanup: ${task.name}`, { priority: task.priority });
-        await Promise.race([
-          task.cleanup(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Cleanup timeout')), 5000)),
-        ]);
-        logger.debug(`Cleanup completed: ${task.name}`);
-      } catch (error) {
-        logger.error(`Cleanup failed: ${task.name}`, { error });
-      }
-    }
-
-    const duration = Date.now() - startTime;
-    logger.info('Graceful shutdown completed', { durationMs: duration });
-  }
-
-  /**
-   * Check if shutdown is in progress
-   */
-  isShutdown(): boolean {
-    return this.isShuttingDown;
-  }
+export enum NodeState {
+  INITIALIZING = 'initializing',
+  STARTING = 'starting',
+  RUNNING = 'running',
+  STOPPING = 'stopping',
+  STOPPED = 'stopped',
+  ERROR = 'error',
 }
 
-/**
- * Factory function to create a fully managed node with proper lifecycle
- */
-export const createManagedNode = async (
-  node: Libp2p,
-  pexService: PeerExchangeService,
-  dialQueue: DialQueue,
-): Promise<{ node: Libp2p; lifecycle: LifecycleManager }> => {
-  const lifecycle = new LifecycleManager();
+export interface LifecycleEvent {
+  state: NodeState;
+  timestamp: number;
+  metadata?: Record<string, unknown>;
+}
 
-  // Register PEX cleanup (highest priority)
-  lifecycle.registerCleanup(
-    'PeerExchangeService',
-    async () => {
-      logger.debug('Stopping peer exchange gossip');
-      pexService.stopGossip();
-    },
-    10,
-  );
+export interface LifecycleHooks {
+  onInitializing?: () => Promise<void>;
+  onStarting?: () => Promise<void>;
+  onRunning?: () => Promise<void>;
+  onStopping?: () => Promise<void>;
+  onStopped?: () => Promise<void>;
+  onError?: (error?: Error) => Promise<void>;
+}
 
-  // Register DialQueue cleanup
-  lifecycle.registerCleanup(
-    'DialQueue',
-    async () => {
-      logger.debug('Stopping dial queue');
-      dialQueue.stop();
-    },
-    20,
-  );
+export class LifecycleManager extends EventEmitter {
+  private currentState: NodeState = NodeState.STOPPED;
+  private stateHistory: LifecycleEvent[] = [];
+  private hooks: LifecycleHooks = {};
+  private node: Libp2p | null = null;
+  private cleanupTasks: Array<() => Promise<void>> = [];
 
-  // Register libp2p cleanup (lowest priority - do last)
-  lifecycle.registerCleanup(
-    'Libp2p',
-    async () => {
-      logger.debug('Stopping libp2p node');
-      await node.stop();
-    },
-    100,
-  );
-
-  // Setup signal handlers for graceful shutdown
-  if (typeof process !== 'undefined') {
-    const handleSignal = (signal: string) => {
-      logger.info(`Received ${signal}, initiating graceful shutdown`);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => {
-        controller.abort();
-        logger.warn('Shutdown timeout exceeded, forcing exit');
-        process.exit(1);
-      }, 30000); // 30 second hard timeout
-
-      lifecycle
-        .shutdown(controller.signal)
-        .then(() => {
-          clearTimeout(timeout);
-          logger.info('Shutdown complete');
-          process.exit(0);
-        })
-        .catch((error) => {
-          logger.error('Shutdown failed', { error });
-          process.exit(1);
-        });
-    };
-
-    process.on('SIGINT', () => handleSignal('SIGINT'));
-    process.on('SIGTERM', () => handleSignal('SIGTERM'));
+  constructor(hooks?: LifecycleHooks) {
+    super();
+    this.hooks = hooks || {};
   }
 
-  return { node, lifecycle };
-};
+  setNode(node: Libp2p): void {
+    this.node = node;
+  }
+
+  getCurrentState(): NodeState {
+    return this.currentState;
+  }
+
+  getStateHistory(): LifecycleEvent[] {
+    return [...this.stateHistory];
+  }
+
+  registerCleanupTask(task: () => Promise<void>): void {
+    this.cleanupTasks.push(task);
+  }
+
+  private async transitionTo(newState: NodeState, metadata?: Record<string, unknown>): Promise<void> {
+    const oldState = this.currentState;
+
+    logger.info(`Lifecycle transition: ${oldState} → ${newState}`, metadata);
+
+    this.currentState = newState;
+
+    const event: LifecycleEvent = {
+      state: newState,
+      timestamp: Date.now(),
+      metadata,
+    };
+
+    this.stateHistory.push(event);
+    this.emit('stateChange', event);
+
+    // Execute hook if available
+    const hookName = `on${newState.charAt(0).toUpperCase()}${newState.slice(1)}` as keyof LifecycleHooks;
+    const hook = this.hooks[hookName];
+
+    if (hook) {
+      try {
+        await hook();
+      } catch (error) {
+        logger.error(`Hook ${hookName} failed:`, error);
+      }
+    }
+  }
+
+  async initialize(): Promise<void> {
+    if (this.currentState !== NodeState.STOPPED) {
+      throw new Error(`Cannot initialize from state ${this.currentState}`);
+    }
+
+    await this.transitionTo(NodeState.INITIALIZING);
+  }
+
+  async start(): Promise<void> {
+    if (this.currentState !== NodeState.INITIALIZING) {
+      throw new Error(`Cannot start from state ${this.currentState}`);
+    }
+
+    await this.transitionTo(NodeState.STARTING);
+
+    if (!this.node) {
+      throw new Error('Node not set in LifecycleManager');
+    }
+
+    await this.node.start();
+    await this.transitionTo(NodeState.RUNNING);
+  }
+
+  async stop(): Promise<void> {
+    if (this.currentState !== NodeState.RUNNING) {
+      logger.warn(`Stopping from unexpected state: ${this.currentState}`);
+    }
+
+    await this.transitionTo(NodeState.STOPPING);
+
+    // Execute cleanup tasks in reverse order
+    for (const task of this.cleanupTasks.reverse()) {
+      try {
+        await task();
+      } catch (error) {
+        logger.error('Cleanup task failed:', error);
+      }
+    }
+
+    if (this.node) {
+      await this.node.stop();
+    }
+
+    await this.transitionTo(NodeState.STOPPED);
+  }
+
+  async handleError(error: Error): Promise<void> {
+    await this.transitionTo(NodeState.ERROR, { error: error.message });
+
+    if (this.hooks.onError) {
+      await this.hooks.onError(error);
+    }
+  }
+
+  isHealthy(): boolean {
+    return this.currentState === NodeState.RUNNING;
+  }
+
+  getUptime(): number {
+    const runningEvent = this.stateHistory.find((e) => e.state === NodeState.RUNNING);
+    return runningEvent ? Date.now() - runningEvent.timestamp : 0;
+  }
+}

@@ -12,26 +12,37 @@ export type expectedWorkerResult = {
   connections: number | ((number: number) => boolean);
 };
 
+export type Summary = {
+  nodes: number;
+  connections: {
+    p50: number;
+    p95: number;
+    avg: number;
+  };
+  verified: {
+    p50: number;
+    p95: number;
+    avg: number;
+  };
+  ttfVerifiedMs: {
+    p50: number;
+    p95: number;
+    avg: number;
+  };
+};
+
+export interface TestReport {
+  testName: string;
+  totalNodes: number;
+  duration: number;
+  summary: Summary;
+  passed: boolean;
+  timestamp: string;
+}
+
 export type AggregatedResult = {
   workerResults: WorkerResult[];
-  summary: {
-    nodes: number;
-    connections: {
-      p50: number;
-      p95: number;
-      avg: number;
-    };
-    verified: {
-      p50: number;
-      p95: number;
-      avg: number;
-    };
-    ttfVerifiedMs: {
-      p50: number;
-      p95: number;
-      avg: number;
-    };
-  };
+  summary: Summary;
 };
 
 export type WorkerData = {

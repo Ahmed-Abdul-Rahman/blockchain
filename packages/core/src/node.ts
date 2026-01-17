@@ -12,6 +12,9 @@ import { tcp } from '@libp2p/tcp';
 import { debounce } from 'es-toolkit';
 import { createLibp2p, Libp2p } from 'libp2p';
 import { genEd25519KeyPair, installAuthServer, runAuthClient } from './auth';
+import { LifecycleManager } from './lifeCycleManager';
+import { HealthChecker } from './metricsCollection/HealthChecker';
+import { MetricsCollector } from './metricsCollection/MetricsCollector';
 import { PeerExchangeService } from './PeerExchangeService';
 import { SimplePeerScorer } from './SimplePeerScorer';
 import { shouldDialNewPeer } from './shouldDial';
@@ -23,11 +26,26 @@ export interface NodeOptions {
   peerSeeds?: { peerId: string; addresses: string[] }[];
   onBoardingPeerTime?: number;
   maxConnections?: number;
+  enableMetrics?: boolean;
+  metricsInterval?: number;
 }
 
-const requestAndDialPeers = async (peerId: PeerId, pexService: PeerExchangeService) => {
+export interface NodeComponents {
+  node: Libp2p;
+  scorer: SimplePeerScorer;
+  pexService: PeerExchangeService;
+  lifecycle: LifecycleManager;
+  metrics: MetricsCollector;
+  health: HealthChecker;
+}
+
+const requestAndDialPeers = async (peerId: PeerId, pexService: PeerExchangeService, metrics: MetricsCollector) => {
   logger.info(`Requesting Peers from: ${peerId.toString()}`);
+  metrics.incrementPexRequest(true);
+
   const got = await pexService.requestPeersFrom(peerId, 24);
+  metrics.incrementPexPeersShared(got.length);
+
   pexService.enqueueDial(got.slice(0, 10));
 };
 
@@ -37,28 +55,36 @@ const onBoardNewPeer = async (
   pexService: PeerExchangeService,
   nodeKey: { secret: Uint8Array; pub: Uint8Array },
   authenticatingPeers: Set<string>,
+  metrics: MetricsCollector,
 ): Promise<void> => {
   const peerId = event.detail.id.toString();
   const addresses = (event.detail.multiaddrs || []).map((ma) => ma.toString());
-
-  if (authenticatingPeers.has(peerId)) {
-    logger.debug('Already authenticating with: ', peerId);
-    return;
-  }
-
-  authenticatingPeers.add(peerId);
-
   try {
+    if (authenticatingPeers.has(peerId)) {
+      logger.debug('Already authenticating with: ', peerId);
+      return;
+    }
+
+    metrics.incrementDialAttempt();
+    authenticatingPeers.add(peerId);
+
     const isAuthenticated = await runAuthClient(node, event.detail.id, nodeKey.secret);
+
     if (isAuthenticated) {
-      logger.info('Authentication succesful with peer: ', peerId);
+      logger.info('Authentication successful with peer:', peerId);
+      metrics.incrementPeerAuthenticated();
+      metrics.incrementDialSuccess();
+
       pexService.addPeers([{ peerId, addresses }]);
       pexService.initiatePeerExchange();
-      requestAndDialPeers(event.detail.id, pexService);
+      requestAndDialPeers(event.detail.id, pexService, metrics);
+    } else {
+      metrics.incrementDialFailure();
     }
   } catch (error: unknown) {
-    logger.info('Error occured while onBoarding a peer');
+    logger.info('Error occurred while onBoarding a peer');
     logger.debug(error);
+    metrics.incrementDialFailure();
   } finally {
     authenticatingPeers.delete(peerId);
   }
@@ -68,11 +94,30 @@ export const createNode = async (
   infoHash: string,
   nodeSeed: string,
   nodeOptions?: NodeOptions,
-): Promise<{
-  node: Libp2p;
-  scorer: SimplePeerScorer;
-  pexService: PeerExchangeService;
-}> => {
+): Promise<NodeComponents> => {
+  const lifecycle = new LifecycleManager({
+    onInitializing: async () => {
+      logger.info('Node initializing...');
+    },
+    onStarting: async () => {
+      logger.info('Node starting...');
+    },
+    onRunning: async () => {
+      logger.info('Node is now running');
+    },
+    onStopping: async () => {
+      logger.info('Node stopping...');
+    },
+    onStopped: async () => {
+      logger.info('Node stopped');
+    },
+    onError: async (error?: Error) => {
+      logger.error('Node encountered error:', error);
+    },
+  });
+
+  await lifecycle.initialize();
+
   const nodeKey = await genEd25519KeyPair(nodeSeed);
   const privateKey = await generateKeyPairFromSeed('Ed25519', nodeKey.secret);
   const scorer = new SimplePeerScorer();
@@ -86,6 +131,7 @@ export const createNode = async (
     | ((components: MulticastDNSComponents) => PeerDiscovery)
     | ((components: BootstrapComponents) => PeerDiscovery)
   )[] = [];
+
   if (nodeOptions?.mdns !== false) peerDiscovery.push(mdns({ interval: 10e3 }));
 
   if (nodeOptions?.bootstrap && nodeOptions.bootstrap.length > 0)
@@ -121,23 +167,36 @@ export const createNode = async (
     connectionGater: {
       denyDialPeer: async (peerId) => {
         const id = peerId.toString();
-        const isDenied = scorer.get(id) < -2; // too low, don't dial
-        if (isDenied) logger.debug('Denied Dialing to the peer: ', id);
+        const isDenied = scorer.get(id) < -2;
+        if (isDenied) logger.debug('Denied Dialing to the peer:', id);
         return isDenied;
       },
       denyInboundConnection: async (conn) => {
         const peerId = conn.remoteAddr.getPeerId()?.toString?.() ?? '';
-        // soft gate on inbound; also cap total
         const isDenied = scorer.get(peerId) < -5 || node.getConnections().length >= 150;
-        if (isDenied) logger.debug('Denied inbound connection to the peer: ', peerId);
+        if (isDenied) logger.debug('Denied inbound connection to the peer:', peerId);
         return isDenied;
       },
     },
   })) as Libp2p;
 
+  lifecycle.setNode(node);
+
+  // Initialize metrics
+  const metrics = new MetricsCollector(node);
+  const health = new HealthChecker(node, metrics);
   const authenticatingPeers = new Set<string>();
-  // optional: decay every minute
-  setInterval(() => scorer.decay(), 60_000);
+
+  // Register cleanup tasks
+  lifecycle.registerCleanupTask(async () => {
+    logger.info('Stopping metrics collection...');
+    metrics.stopPeriodicCollection();
+  });
+
+  const decayInterval = setInterval(() => scorer.decay(), 60_000);
+  lifecycle.registerCleanupTask(async () => {
+    clearInterval(decayInterval);
+  });
 
   // PEX service
   const pexService = new PeerExchangeService(node, {
@@ -148,29 +207,35 @@ export const createNode = async (
 
   installAuthServer(node, { pex: pexService });
 
-  // seed (optional but recommended for internet-wide discovery)
   if (nodeOptions?.peerSeeds?.length) pexService.addPeers(nodeOptions.peerSeeds);
 
-  const onBoardNewPeerDebounced = debounce(onBoardNewPeer, nodeOptions?.onBoardingPeerTime || 5_000);
+  const onBoardNewPeerDebounced = debounce(
+    (event: CustomEvent<PeerInfo>) => onBoardNewPeer(event, node, pexService, nodeKey, authenticatingPeers, metrics),
+    nodeOptions?.onBoardingPeerTime || 5_000,
+  );
 
   node.addEventListener('peer:discovery', async (event: CustomEvent<PeerInfo>) => {
     const peerId = event.detail.id.toString();
-    logger.info('Peer Discovered: ', {
-      peerId,
-      multiaddrs: event.detail.multiaddrs.length,
-      registrySize: pexService.peerRegistry.getSize(),
-    });
+    logger.info('Peer Discovered:', peerId);
+    metrics.incrementPeerDiscovered();
 
     if (pexService.peerRegistry.getSize() > 0) {
       if (shouldDialNewPeer(node.peerId.toString(), peerId, pexService.peerRegistry.getPeers())) {
-        logger.trace('Elected dailing new peer');
-        onBoardNewPeer(event, node, pexService, nodeKey, authenticatingPeers);
+        logger.trace('Elected dialing new peer');
+        onBoardNewPeer(event, node, pexService, nodeKey, authenticatingPeers, metrics);
       }
     } else {
       logger.trace('onBoardNewPeerDebounced triggered');
-      onBoardNewPeerDebounced(event, node, pexService, nodeKey, authenticatingPeers);
+      onBoardNewPeerDebounced(event);
     }
   });
 
-  return { node, scorer, pexService };
+  // Start metrics collection if enabled
+  if (nodeOptions?.enableMetrics !== false) {
+    metrics.startPeriodicCollection(nodeOptions?.metricsInterval || 30_000);
+  }
+
+  await lifecycle.start();
+
+  return { node, scorer, pexService, lifecycle, metrics, health };
 };
