@@ -1,5 +1,7 @@
 # React Best Practices
 
+# This content is taken from https://github.com/vercel-labs/agent-skills repo. Refer to this repo for updated guidelines
+
 **Version 1.0.0**  
 Vercel Engineering  
 January 2026
