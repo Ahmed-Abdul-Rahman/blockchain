@@ -57,7 +57,7 @@ export class LifecycleManager extends EventEmitter {
   private async transitionTo(newState: NodeState, metadata?: Record<string, unknown>): Promise<void> {
     const oldState = this.currentState;
 
-    logger.info(`Lifecycle transition: ${oldState} → ${newState}`, metadata);
+    logger.info(`Lifecycle transition: ${oldState} → ${newState}`);
 
     this.currentState = newState;
 
