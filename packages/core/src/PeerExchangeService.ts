@@ -30,6 +30,7 @@ export class PeerExchangeService {
   private pubsub: GossipSub;
   private scorer: scorer;
   private peersSeen: bloomFilters.ScalableBloomFilter;
+  private gossipListener: (event: CustomEvent<Message>) => void;
 
   constructor(node: Libp2p, scorer: scorer) {
     this.peerRegistry = new PeerRegistry(node.peerId.toString());
@@ -45,7 +46,8 @@ export class PeerExchangeService {
     this.pubsub = this.node.services.pubsub as GossipSub;
 
     this.pubsub.subscribe(PEX_TOPIC);
-    this.pubsub.addEventListener('message', (event: CustomEvent<Message>) => this.onGossip(event));
+    this.gossipListener = (event: CustomEvent<Message>) => this.onGossip(event);
+    this.pubsub.addEventListener('message', this.gossipListener);
   }
 
   /**
@@ -194,7 +196,7 @@ export class PeerExchangeService {
    * @param event
    * @returns
    */
-  private onGossip(event: CustomEvent<Message>) {
+  private onGossip(event: CustomEvent<Message>): void {
     const detail = event.detail;
     const data = detail.data;
     if (!data || event.detail.topic !== PEX_TOPIC) return;
@@ -288,5 +290,7 @@ export class PeerExchangeService {
   cleanUp(): void {
     this.stopGossip();
     this.dialQ.stop();
+    this.peerRegistry.cleanUp();
+    this.pubsub.removeEventListener('message', this.gossipListener);
   }
 }

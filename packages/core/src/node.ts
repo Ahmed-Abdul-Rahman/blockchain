@@ -12,7 +12,6 @@ import { tcp } from '@libp2p/tcp';
 import { debounce } from 'es-toolkit';
 import { createLibp2p, Libp2p } from 'libp2p';
 import { genEd25519KeyPair, installAuthServer, runAuthClient } from './auth';
-import { LifecycleManager } from './lifeCycleManager';
 import { HealthChecker } from './metricsCollection/HealthChecker';
 import { MetricsCollector } from './metricsCollection/MetricsCollector';
 import { PeerExchangeService } from './PeerExchangeService';
@@ -34,9 +33,9 @@ export interface NodeComponents {
   node: Libp2p;
   scorer: SimplePeerScorer;
   pexService: PeerExchangeService;
-  lifecycle: LifecycleManager;
   metrics: MetricsCollector;
   health: HealthChecker;
+  nodeCleanUp: () => void;
 }
 
 const requestAndDialPeers = async (peerId: PeerId, pexService: PeerExchangeService, metrics: MetricsCollector) => {
@@ -95,29 +94,6 @@ export const createNode = async (
   nodeSeed: string,
   nodeOptions?: NodeOptions,
 ): Promise<NodeComponents> => {
-  const lifecycle = new LifecycleManager({
-    onInitializing: async () => {
-      logger.info('Node initializing...');
-    },
-    onStarting: async () => {
-      logger.info('Node starting...');
-    },
-    onRunning: async () => {
-      logger.info('Node is now running');
-    },
-    onStopping: async () => {
-      logger.info('Node stopping...');
-    },
-    onStopped: async () => {
-      logger.info('Node stopped');
-    },
-    onError: async (error?: Error) => {
-      logger.error('Node encountered error:', error);
-    },
-  });
-
-  await lifecycle.initialize();
-
   const nodeKey = await genEd25519KeyPair(nodeSeed);
   const privateKey = await generateKeyPairFromSeed('Ed25519', nodeKey.secret);
   const scorer = new SimplePeerScorer();
@@ -180,25 +156,13 @@ export const createNode = async (
     },
   })) as Libp2p;
 
-  lifecycle.setNode(node);
-
   // Initialize metrics
   const metrics = new MetricsCollector(node);
   const health = new HealthChecker(node, metrics);
   const authenticatingPeers = new Set<string>();
 
-  // Register cleanup tasks
-  lifecycle.registerCleanupTask(async () => {
-    logger.info('Stopping metrics collection...');
-    metrics.stopPeriodicCollection();
-  });
-
   const decayInterval = setInterval(() => scorer.decay(), 60_000);
-  lifecycle.registerCleanupTask(async () => {
-    clearInterval(decayInterval);
-  });
 
-  // PEX service
   const pexService = new PeerExchangeService(node, {
     reward: (peerId, amount) => scorer.reward(peerId, amount),
     penalize: (peerId, amount) => scorer.penalize(peerId, amount),
@@ -214,7 +178,7 @@ export const createNode = async (
     nodeOptions?.onBoardingPeerTime || 5_000,
   );
 
-  node.addEventListener('peer:discovery', async (event: CustomEvent<PeerInfo>) => {
+  const peerDiscoveryListener = async (event: CustomEvent<PeerInfo>) => {
     const peerId = event.detail.id.toString();
     logger.info('Peer Discovered:', peerId);
     metrics.incrementPeerDiscovered();
@@ -228,14 +192,21 @@ export const createNode = async (
       logger.trace('onBoardNewPeerDebounced triggered');
       onBoardNewPeerDebounced(event);
     }
-  });
+  };
+
+  node.addEventListener('peer:discovery', peerDiscoveryListener);
 
   // Start metrics collection if enabled
   if (nodeOptions?.enableMetrics !== false) {
     metrics.startPeriodicCollection(nodeOptions?.metricsInterval || 30_000);
   }
 
-  await lifecycle.start();
+  const nodeCleanUp = () => {
+    node.removeEventListener('peer:discovery', peerDiscoveryListener);
+    clearInterval(decayInterval);
+    metrics.stopPeriodicCollection();
+    pexService.cleanUp();
+  };
 
-  return { node, scorer, pexService, lifecycle, metrics, health };
+  return { node, scorer, pexService, metrics, health, nodeCleanUp };
 };
