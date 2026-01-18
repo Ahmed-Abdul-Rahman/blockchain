@@ -1,21 +1,5 @@
-import crypto, { createHash } from 'node:crypto';
-
-export interface ShouldDialOptions {
-  /** Our own peer ID (string form, e.g. base58) */
-  selfPeerId: string;
-
-  /** The peer we just discovered */
-  discoveredPeerId: string;
-
-  /** Whether this node is "new" (true = recently joined) */
-  isNewPeer: boolean;
-
-  /** How many peers should a new peer dial? */
-  maxOutbound?: number;
-
-  /** Backoff probability for existing peers */
-  electionModulo?: number;
-}
+import crypto from 'node:crypto';
+import { ShouldDialOptions } from './types';
 
 /**
  * Decide if the current node should initiate a dial to a discovered peer.

@@ -2,8 +2,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { parentPort, threadId, workerData } from 'node:worker_threads';
 import { GossipSub } from '@chainsafe/libp2p-gossipsub/dist/src';
 import { Libp2p, Message, ServiceMap } from '@libp2p/interface';
+import { PeerExchangeService } from '../../src/networking/PeerExchangeService';
 import { createNode } from '../../src/node';
-import { PeerExchangeService } from '../../src/PeerExchangeService';
 import { WorkerData } from './types';
 
 const percentile = (xs: number[], p: number): number => {
