@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PeerRegistry } from '../../src/PeerRegistry';
+import { PeerRegistry } from '../../src/networking/PeerRegistry';
 
 describe('PeerRegistry', () => {
   it('adds, dedups addresses and TTLs entries', () => {

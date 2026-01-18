@@ -1,28 +1,40 @@
-export type PeerInfoLite = { peerId: string; addresses: string[] };
+import { Libp2p } from 'libp2p';
+import { HealthChecker } from './metricsCollection/HealthChecker';
+import { MetricsCollector } from './metricsCollection/MetricsCollector';
+import { PeerExchangeService } from './networking/PeerExchangeService';
+import { SimplePeerScorer } from './networking/SimplePeerScorer';
 
-export type GET_PEERS_MSG = { type: 'GET_PEERS'; want?: number };
-export type PEX_PEER_LIST = { type: 'PEER_LIST'; peers: PeerInfoLite[] };
-export type PEX_GOSSIP = {
-  from: string;
-  type: 'PEX_GOSSIP';
-  peers: PeerInfoLite[];
-  ts: number;
-  originPeerInfo: PeerInfoLite;
-};
+export interface NodeOptions {
+  /** Enable Multicast DNS */
+  mdns?: boolean;
 
-export type scorer = {
-  reward: (peerId: string, amount?: number) => void;
-  penalize: (peerId: string, amount?: number) => void;
-  isDialable: (peerId: string) => boolean;
-};
+  /** override listen multiaddrs */
+  listenTcp?: string[];
 
-export type AuthMessage = {
-  pub: string;
-  sig: string;
-  timestamp: number;
-  nonce: string;
-};
+  /** override bootstrap multiaddrs */
+  bootstrap?: string[];
 
-export type AuthResponse = {
-  isVerified: boolean;
-};
+  /** Initial bootstrap peers to be loaded */
+  peerSeeds?: { peerId: string; addresses: string[] }[];
+
+  /** Time to interact with a newly discovered peer and on board it to the network */
+  onBoardingPeerTime?: number;
+
+  /** Maximum direct peer connections to be maintained */
+  maxConnections?: number;
+
+  /** Enable metrics for peer connectivity analysis */
+  enableMetrics?: boolean;
+
+  /** Collect metrics at this interval*/
+  metricsInterval?: number;
+}
+
+export interface NodeComponents {
+  node: Libp2p;
+  scorer: SimplePeerScorer;
+  pexService: PeerExchangeService;
+  metrics: MetricsCollector;
+  health: HealthChecker;
+  nodeCleanUp: () => void;
+}

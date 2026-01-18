@@ -6,17 +6,12 @@ import { delay } from 'es-toolkit';
 import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
+import { GOSSIP_INTERVAL_MS, MAX_PEX_MSGS_PER_MIN, MAX_SHARED_PEERS } from './configurations';
 import { DialQueue } from './DialQueue';
 import { PeerRegistry } from './PeerRegistry';
+import { PEX_PROTOCOL, PEX_TOPIC } from './protocols';
 import { GET_PEERS_MSG, PEX_GOSSIP, PEX_PEER_LIST, PeerInfoLite, scorer } from './types';
 import { filterAddrs, now, processDataFromStream, publishWithRetry, sampleList, writeToStream } from './utils';
-
-export const PEX_PROTOCOL = '/deChat/peer-exchange-protocol/1.0.0';
-export const PEX_TOPIC = '/deChat/peer-exchange-topic/1.0.0';
-
-const MAX_SHARED_PEERS = 32;
-const MAX_PEX_MSGS_PER_MIN = 12;
-const GOSSIP_INTERVAL_MS = 30_000;
 
 export class PeerExchangeService {
   readonly peerRegistry: PeerRegistry;

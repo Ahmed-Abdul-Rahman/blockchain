@@ -1,9 +1,7 @@
 import { logger } from '@dechat/common';
+import { PEER_ENTRY_TTL_MS, PEX_REQUEST_COOLDOWN_MS } from './configurations';
 import { PeerInfoLite } from './types';
 import { now, sampleList } from './utils';
-
-const PEX_REQUEST_COOLDOWN_MS = 15_000;
-const PEER_ENTRY_TTL_MS = 30 * 60_000;
 
 export class PeerRegistry {
   private selfPeerId: string;

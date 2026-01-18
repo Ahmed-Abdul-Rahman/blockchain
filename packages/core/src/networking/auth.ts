@@ -6,26 +6,14 @@ import { createHash } from 'crypto';
 import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { PeerExchangeService } from './PeerExchangeService';
+import { AUTH_PROTOCOL, NETWORK_ID } from './protocols';
+import { AuthSignMessage, AuthSignResponse, NodeKey } from './types';
 import { now, readFromStream, writeToStream } from './utils';
-
-type AuthSignMessage = {
-  pub: string; // base64url of public key (32 bytes)
-  sig: string; // base64url of signature
-  timestamp: number;
-  nonce: string;
-};
-
-type AuthSignResponse = {
-  isVerified: boolean;
-};
-
-const AUTH_PROTOCOL = '/deChat/auth/1.0.0';
-const NETWORK_ID = 'deChat-net-v1';
 
 /**
  * Generate a new keypair (private 32 bytes, public 32 bytes)
  */
-export const genEd25519KeyPair = async (plainSeed?: string): Promise<{ secret: Uint8Array; pub: Uint8Array }> => {
+export const genEd25519KeyPair = async (plainSeed?: string): Promise<NodeKey> => {
   let secret = ed.utils.randomSecretKey();
   if (plainSeed) {
     const msgBytes = new TextEncoder().encode(plainSeed);
