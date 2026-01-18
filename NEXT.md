@@ -6,13 +6,6 @@
 ---
 
 ## What I just did
-
-- Lifecycle Manager Review
-
-Assessment: Solid state machine design (INITIALIZING → STARTING → RUNNING → STOPPING → STOPPED → ERROR)
-Strengths: Event-driven transitions, cleanup task registration, state history tracking
-Recommendations: Add error recovery strategies and restart mechanisms
-
 - Integration with node.ts
 
 Added authenticatinPeers Set data, to avoid authenticating with the same peer
@@ -20,7 +13,6 @@ Returns a complete NodeComponents interface with all services accessible
 Replaced Map objects with LRUCache in PeerExchangeService and auth
 
 - Metrics & Observability System
-Full TypeScript implementation of:
 
 MetricsCollector: Tracks connections, peers, dial queue, performance, PEX, and pubsub metrics
 HealthChecker: Three-tier health status (HEALTHY/DEGRADED/UNHEALTHY) with configurable thresholds
