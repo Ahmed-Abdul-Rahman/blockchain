@@ -60,9 +60,10 @@ export class DialQueue {
   }
 
   getTargetConnections(): number {
+    const configMax = this.maxConnections ?? 150;
     const n = this.dialQueue.length + this.getConnections().length;
     const adaptive = Math.floor(Math.log2(Math.max(2, n))) + this.buffer;
-    return Math.min(this.maxConnections, Math.max(this.minConnections, adaptive));
+    return Math.min(configMax, Math.max(this.minConnections, adaptive));
   }
 
   /**
@@ -117,5 +118,14 @@ export class DialQueue {
    */
   clearDialInterval(): void {
     if (this.loopIntervalId) clearInterval(this.loopIntervalId);
+  }
+
+  stop(): void {
+    if (this.loopIntervalId) {
+      clearInterval(this.loopIntervalId);
+      this.loopIntervalId = null;
+    }
+    this.dialQueue = [];
+    this.isQueueRunning = false;
   }
 }

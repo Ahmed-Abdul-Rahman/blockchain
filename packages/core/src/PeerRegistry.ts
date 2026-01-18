@@ -9,6 +9,7 @@ export class PeerRegistry {
   private selfPeerId: string;
   private maxSize: number;
   private peerRegistry: Map<string, { addresses: Set<string>; lastUpdated: number; lastRequested?: number }>;
+  private logIntervalId: NodeJS.Timeout | null = null;
 
   constructor(selfPeerId: string, maxSize = 50_000) {
     this.selfPeerId = selfPeerId;
@@ -16,7 +17,7 @@ export class PeerRegistry {
     this.maxSize = maxSize;
 
     if (process.env.NODE_ENV !== 'production') {
-      this.logRegistryData();
+      this.logIntervalId = this.logRegistryData();
     }
   }
 
@@ -110,5 +111,9 @@ export class PeerRegistry {
         logger.trace('peer: ', key, ' lastRequested: ', value.lastUpdated);
       }
     }, 30_000);
+  }
+
+  cleanUp(): void {
+    if (this.logIntervalId) clearInterval(this.logIntervalId);
   }
 }

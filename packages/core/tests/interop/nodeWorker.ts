@@ -75,7 +75,7 @@ const runNode = async () => {
   const { index, nodeSeed, networkId, pubsubTopic, messageRate } = args;
 
   // Start your node factory with mdns disabled for determinism (optional)
-  const { node, pexService } = await createNode(networkId, nodeSeed, {
+  const { node, pexService, nodeCleanUp } = await createNode(networkId, nodeSeed, {
     mdns: true,
     listenTcp: ['/ip4/127.0.0.1/tcp/0'],
     // bootstrap: bootstrapMultiaddrs, // make your node.ts honor this
@@ -103,6 +103,7 @@ const runNode = async () => {
     else if (message.type === 'terminate') {
       terminateThread = true;
       await terminateAndCleanUp(node);
+      nodeCleanUp();
       process.exit(0);
     }
   });
