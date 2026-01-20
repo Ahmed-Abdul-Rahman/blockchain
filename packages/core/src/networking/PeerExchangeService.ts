@@ -192,8 +192,7 @@ export class PeerExchangeService {
    * @returns
    */
   private onGossip(event: CustomEvent<Message>): void {
-    const detail = event.detail;
-    const data = detail.data;
+    const data = event.detail.data;
     if (!data || event.detail.topic !== PEX_TOPIC) return;
     logger.trace('PeerExchangeService - onGossip - entry');
     try {

@@ -1,6 +1,6 @@
 import { Libp2p } from 'libp2p';
-import { HealthChecker } from './metricsCollection/HealthChecker';
-import { MetricsCollector } from './metricsCollection/MetricsCollector';
+import { HealthChecker } from './metrics-collection/HealthChecker';
+import { MetricsCollector } from './metrics-collection/MetricsCollector';
 import { PeerExchangeService } from './networking/PeerExchangeService';
 import { SimplePeerScorer } from './networking/SimplePeerScorer';
 

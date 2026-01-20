@@ -1,6 +1,6 @@
 import { logger } from '@dechat/common';
 import { Libp2p, PeerId, PeerInfo } from '@libp2p/interface';
-import { MetricsCollector } from './metricsCollection/MetricsCollector';
+import { MetricsCollector } from './metrics-collection/MetricsCollector';
 import { runAuthClient } from './networking/auth';
 import { PeerExchangeService } from './networking/PeerExchangeService';
 
