@@ -1,14 +1,16 @@
 import { parentPort, threadId, workerData } from 'node:worker_threads';
 import { GossipSub } from '@chainsafe/libp2p-gossipsub/dist/src';
 import { sha256 } from '@dechat/crypto';
-import { Libp2p, Message, ServiceMap } from '@libp2p/interface';
+import { Libp2p, Message, ServiceMap, transportSymbol } from '@libp2p/interface';
 import { delay, random } from 'es-toolkit';
 import { GossipSubPropagation } from '../../src/data-propagation/GossipSubPropagation';
 import { PeerExchangeService } from '../../src/networking/PeerExchangeService';
 import { createNode } from '../../src/node';
 import { WorkerData } from './types';
 
-export type GossipMessage = { message: string };
+type GossipMessageA = { message: string };
+
+type GossipMessageB = string;
 
 const percentile = (xs: number[], p: number): number => {
   if (xs.length === 0) return -1;
@@ -16,7 +18,8 @@ const percentile = (xs: number[], p: number): number => {
   return xs[i];
 };
 
-const GossipPropTopic = '/deChat/v1/test-chat';
+const GossipPropTopicA = '/deChat/v1/test-chat-a';
+const GossipPropTopicB = '/deChat/v1/test-chat-b';
 const latencies: number[] = [];
 
 let terminateThread = false;
@@ -29,17 +32,23 @@ let selfPeerId: string | null = null;
 const getStatistics = (
   node: Libp2p<ServiceMap>,
   pexService: PeerExchangeService,
-  propagation: GossipSubPropagation<GossipMessage>,
-) => ({
-  me: selfPeerId,
-  verified: pexService.peerRegistry.getSize(),
-  connections: node.getConnections().length,
-  ttfvpMs: ttfvp ?? -1,
-  latencyP50: percentile(latencies, 50),
-  latencyP95: percentile(latencies, 95),
-  msgsObserved: latencies.length,
-  seenMessages: propagation.getSeenMessages().get(GossipPropTopic)?.size,
-});
+  propagation: GossipSubPropagation,
+) => {
+  const gossipSeenMessages = propagation.getSeenMessages();
+  return {
+    me: selfPeerId,
+    verified: pexService.peerRegistry.getSize(),
+    connections: node.getConnections().length,
+    ttfvpMs: ttfvp ?? -1,
+    latencyP50: percentile(latencies, 50),
+    latencyP95: percentile(latencies, 95),
+    msgsObserved: latencies.length,
+    seenMessages: Array.from(gossipSeenMessages.keys()).map((key) => ({
+      topic: key,
+      seen: gossipSeenMessages.get(key)?.size ?? 0,
+    })),
+  };
+};
 
 const subHandler = (evt: CustomEvent<Message>) => {
   try {
@@ -66,25 +75,35 @@ const registerPubsub = (pubsubTopic: string) => {
   pubsub.addEventListener('message', subHandler);
 };
 
-const terminateAndCleanUp = async (node: Libp2p<ServiceMap>, propagation: GossipSubPropagation<GossipMessage>) => {
-  if (checkTimer) clearInterval(checkTimer);
-  if (!pubsub || !peerExchangeService) return;
+const terminateAndCleanUp = async (node: Libp2p<ServiceMap>, propagation: GossipSubPropagation) => {
+  try {
+    if (checkTimer) clearInterval(checkTimer);
+    if (!pubsub || !peerExchangeService) return;
 
-  pubsub.removeEventListener('message', subHandler);
-  parentPort?.postMessage({ type: 'done', stats: getStatistics(node, peerExchangeService, propagation) });
+    pubsub.removeEventListener('message', subHandler);
+    propagation.stop();
+    parentPort?.postMessage({ type: 'done', stats: getStatistics(node, peerExchangeService, propagation) });
 
-  await node.stop();
-  parentPort?.postMessage({
-    type: 'terminate',
-    status: 'success',
-  });
-  delay(100);
+    await node.stop();
+    parentPort?.postMessage({
+      type: 'terminate',
+      status: 'success',
+    });
+    delay(100);
+  } catch (error) {
+    console.log('Error occurred while terminateAndCleanUp ', error);
+  }
 };
 
-const publisMessage = (node: Libp2p, propagation: GossipSubPropagation<GossipMessage>, message: GossipMessage) => {
+const publisMessage = (
+  node: Libp2p,
+  propagation: GossipSubPropagation,
+  message: GossipMessageA | GossipMessageB,
+  topic: string,
+) => {
   const id = sha256(JSON.stringify(message));
   console.log(threadId, 'message id: ', id);
-  propagation.publish(GossipPropTopic, {
+  propagation.publish(topic, {
     payload: message,
     id,
     from: node.peerId.toString(),
@@ -104,8 +123,6 @@ const runNode = async () => {
     onBoardingPeerTime: Math.random() * 10 * 1000,
   });
 
-  const propagation = new GossipSubPropagation<GossipMessage>(node);
-
   await node.start();
 
   selfPeerId = node.peerId.toString();
@@ -117,7 +134,10 @@ const runNode = async () => {
   peerExchangeService = pexService;
 
   registerPubsub(pubsubTopic);
-  propagation.subscribe(GossipPropTopic, (message, ctx) => {});
+  const propagation = new GossipSubPropagation(node);
+
+  propagation.subscribe(GossipPropTopicA, (message, ctx) => {});
+  propagation.subscribe(GossipPropTopicB, (message, ctx) => {});
 
   parentPort?.on('message', async (message) => {
     if (message.type === 'statistics')
@@ -128,9 +148,11 @@ const runNode = async () => {
     else if (message.type === 'produce_messages') {
       for (let j = 0; j < 2; j++) {
         for (let i = 1; i <= 2; i++) {
-          const payload = { message: `Hello ${i} from: ${node.peerId.toString()}` };
-          publisMessage(node, propagation, payload);
+          const payloadA = { message: `Hello ${i} from: ${node.peerId.toString()}` };
+          publisMessage(node, propagation, payloadA, GossipPropTopicA);
           await delay(random(1, 10) * 500);
+          const payloadB = `Hello ${i} from: ${node.peerId.toString()}`;
+          publisMessage(node, propagation, payloadB, GossipPropTopicB);
         }
       }
     } else if (message.type === 'terminate') {

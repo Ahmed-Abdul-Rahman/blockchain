@@ -8,7 +8,7 @@ export type WorkerResult = {
   latencyP50: number;
   latencyP95: number;
   msgsObserved: number;
-  seenMessages?: number;
+  seenMessages?: Array<{ topic: string; seen: number }>;
 };
 
 export type expectedWorkerResult = {

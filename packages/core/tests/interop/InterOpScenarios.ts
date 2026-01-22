@@ -183,7 +183,7 @@ export const simulateBurstPeersAtStartUpWithGossipPropagation = (
 
     await delay(180_000);
     postMessageToWorkers(workers, { type: 'produce_messages' });
-    await delay(180_000);
+    await delay(130_000);
     terminateWorkers(workers);
     await Promise.all(terminationPromises);
   };

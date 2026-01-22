@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/suspicious/noExplicitAny: <Need a generic GossipSubPropagation Implementation not tied to any specific message type> */
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { logger } from '@dechat/common';
 import { Libp2p, Message, SignedMessage } from '@libp2p/interface';
@@ -7,7 +8,7 @@ import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { DataPropagationInterface } from './DataPropagationInterface';
 import { PropagatedMessage, PropagationContext } from './types';
 
-export class GossipSubPropagation<T> implements DataPropagationInterface<PropagatedMessage<T>> {
+export class GossipSubPropagation implements DataPropagationInterface {
   private node: Libp2p;
 
   private pubsub: GossipSub;
@@ -19,7 +20,7 @@ export class GossipSubPropagation<T> implements DataPropagationInterface<Propaga
   private gossipListener: (event: CustomEvent<Message>) => void;
 
   /** Handler function that gets executed when a message is received on the corresponding topics */
-  private topicsHandler: Map<string, (message: PropagatedMessage<T>, ctx: PropagationContext) => void>;
+  private topicsConfig: Map<string, (message: PropagatedMessage<any>, ctx: PropagationContext) => Promise<void> | void>;
 
   /** Maximum seen messages a topic can have */
   private MAX_SEEN_MSGS_PER_TOPIC: number;
@@ -33,7 +34,7 @@ export class GossipSubPropagation<T> implements DataPropagationInterface<Propaga
   constructor(node: Libp2p, maxSeenMsgsPerTopic = 10_000, msgsTtlMin = 10 * 60 * 1000, maxMsgBytes = 64 * 1024) {
     this.node = node;
     this.pubsub = this.node.services.pubsub as GossipSub;
-    this.topicsHandler = new Map();
+    this.topicsConfig = new Map();
     this.seenMessages = new Map();
     this.MAX_SEEN_MSGS_PER_TOPIC = maxSeenMsgsPerTopic;
     this.MSGS_TTL_MIN = msgsTtlMin;
@@ -42,12 +43,12 @@ export class GossipSubPropagation<T> implements DataPropagationInterface<Propaga
     this.gossipListener = (event: CustomEvent<Message>) => {
       const topic = event.detail.topic;
       const data = event.detail.data;
-      const handler = this.topicsHandler.get(topic);
+      const handler = this.topicsConfig.get(topic);
 
       if (!handler || !data || data.length > this.MAX_MSG_BYTES) return;
 
       try {
-        const msg = JSON.parse(uint8ArrayToString(data)) as PropagatedMessage<T>;
+        const msg = JSON.parse(uint8ArrayToString(data)) as PropagatedMessage<any>;
 
         if (!msg || !msg.id) return;
         if (this.seenMessages.has(topic) && this.seenMessages.get(topic)?.has(msg.id)) {
@@ -84,28 +85,36 @@ export class GossipSubPropagation<T> implements DataPropagationInterface<Propaga
     });
   }
 
-  async publish(topic: string, message: PropagatedMessage<T>): Promise<void> {
+  async publish<T>(topic: string, message: PropagatedMessage<T>): Promise<void> {
+    const handler = this.topicsConfig.get(topic);
+    if (!handler) throw new Error(`Cannot publish to unregistered topic "${topic}"`);
+
     const data = uint8ArrayFromString(JSON.stringify(message));
     await this.pubsub.publish(topic, data);
   }
 
-  async subscribe(
+  subscribe<T>(
     topic: string,
-    handler: (message: PropagatedMessage<T>, ctx: PropagationContext) => void,
-  ): Promise<void> {
+    handler: (message: PropagatedMessage<T>, ctx: PropagationContext) => Promise<void> | void,
+  ): void {
     this.pubsub.subscribe(topic);
-    this.topicsHandler.set(topic, handler);
+    this.topicsConfig.set(topic, handler);
   }
 
-  async unsubscribe(topic: string, purgeData = false): Promise<void> {
+  unsubscribe(topic: string, purgeData = false): void {
     this.pubsub.unsubscribe(topic);
-    this.topicsHandler.delete(topic);
+    this.topicsConfig.delete(topic);
     if (purgeData) this.seenMessages.delete(topic);
   }
 
-  async stop(): Promise<void> {
-    this.seenMessages.clear();
+  stop(): void {
     this.pubsub.removeEventListener('message', this.gossipListener);
+    this.topicsConfig.keys().forEach((key) => this.unsubscribe(key));
+  }
+
+  clearMessages(topic?: string): void {
+    if (topic) return this.seenMessages.get(topic)?.clear();
+    this.seenMessages.clear();
   }
 
   getSeenMessages(): ReadonlyMap<string, LRUCache<string, true>> {

@@ -210,7 +210,7 @@ describe('Interop - GossipSub Data Propagation Tests', () => {
     let passed = true;
 
     workerResults.forEach((workerResult, index) => {
-      const seenMessagesOk = workerResult.seenMessages == 22;
+      const seenMessagesOk = workerResult.seenMessages?.reduce((prevSeen, { seen }) => seen == 22 && prevSeen, true);
 
       if (!seenMessagesOk) {
         passed = false;
