@@ -11,10 +11,11 @@ import {
   WorkerDetails,
   WorkerResult,
 } from './types';
-import { aggregateResults, createWorker, terminateWorker, terminateWorkers } from './workerUtils';
+import { aggregateResults, createWorker, postMessageToWorkers, terminateWorker, terminateWorkers } from './workerUtils';
 
 const filename = fileURLToPath(import.meta.url);
-const workerPath = resolve(dirname(filename), './nodeWorker.js');
+const nodeWorkerPath = resolve(dirname(filename), './nodeWorker.js');
+const nodeWorkerDataPropPath = resolve(dirname(filename), './nodeWorkerDataProp.js');
 
 export const setupScenario = (
   runWorkersScenario: RunWorkersScenario,
@@ -61,7 +62,7 @@ export const simulateBurstPeersAtStartUp = (workerDataConfig: WorkerDataConfig):
       } as WorkerData;
 
       workers.push(
-        createWorker(workerPath, workerData, workerResults, handleComplete, handleWorkerError, terminationPromises),
+        createWorker(nodeWorkerPath, workerData, workerResults, handleComplete, handleWorkerError, terminationPromises),
       );
     }
     await delay(workerDataConfig.runDurationSec * 1000);
@@ -90,7 +91,7 @@ export const simulateStaggeredPeersAtStartUp = (workerDataConfig: WorkerDataConf
       else if (isInPercentRange(i, totalNodes, 51, 90)) await delay(20_000);
       else await delay(60_000);
       workers.push(
-        createWorker(workerPath, workerData, workerResults, handleComplete, handleWorkerError, terminationPromises),
+        createWorker(nodeWorkerPath, workerData, workerResults, handleComplete, handleWorkerError, terminationPromises),
       );
     }
     await delay(workerDataConfig.runDurationSec * 1000);
@@ -116,7 +117,7 @@ export const simulatePeerChurn = async (workerDataConfig: WorkerDataConfig): Pro
       } as WorkerData;
 
       workers.push(
-        createWorker(workerPath, workerData, workerResults, handleComplete, handleWorkerError, terminationPromises),
+        createWorker(nodeWorkerPath, workerData, workerResults, handleComplete, handleWorkerError, terminationPromises),
       );
     }
 
@@ -136,7 +137,7 @@ export const simulatePeerChurn = async (workerDataConfig: WorkerDataConfig): Pro
       console.log('Reviving peer with index: ', index);
       const randomWorker = workers[index] as WorkerDetails;
       const revivedWorker = createWorker(
-        workerPath,
+        nodeWorkerPath,
         randomWorker.workerData,
         workerResults,
         handleComplete,
@@ -147,6 +148,42 @@ export const simulatePeerChurn = async (workerDataConfig: WorkerDataConfig): Pro
     });
 
     await delay(workerDataConfig.runDurationSec * 1000);
+    terminateWorkers(workers);
+    await Promise.all(terminationPromises);
+  };
+
+  const { scenarioResults } = setupScenario(scenario);
+  return scenarioResults;
+};
+
+export const simulateBurstPeersAtStartUpWithGossipPropagation = (
+  workerDataConfig: WorkerDataConfig,
+): Promise<AggregatedResult> => {
+  const scenario: RunWorkersScenario = async (workers, workerResults, handleComplete, handleWorkerError) => {
+    const terminationPromises: Promise<boolean>[] = [];
+    for (let i = 0; i < workerDataConfig.totalNodes; i++) {
+      const nodeSeed = `Test-StartUp-Worker-${i}`;
+      const workerData = {
+        index: i,
+        nodeSeed,
+        ...workerDataConfig,
+      } as WorkerData;
+
+      workers.push(
+        createWorker(
+          nodeWorkerDataPropPath,
+          workerData,
+          workerResults,
+          handleComplete,
+          handleWorkerError,
+          terminationPromises,
+        ),
+      );
+    }
+
+    await delay(180_000);
+    postMessageToWorkers(workers, { type: 'produce_messages' });
+    await delay(180_000);
     terminateWorkers(workers);
     await Promise.all(terminationPromises);
   };

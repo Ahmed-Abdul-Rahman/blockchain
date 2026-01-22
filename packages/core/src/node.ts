@@ -64,6 +64,7 @@ export const createLibp2pNode = async (
         emitSelf: false,
         allowPublishToZeroTopicPeers: false,
         gossipFactor: 1,
+        globalSignaturePolicy: 'StrictSign',
       }),
     },
 

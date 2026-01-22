@@ -91,3 +91,7 @@ export const terminateWorker = async (worker: Worker): Promise<void> => {
 export const terminateWorkers = (workers: WorkerDetails[]): void => {
   workers.map(({ workerRef }) => workerRef.postMessage({ type: 'terminate' }));
 };
+
+export const postMessageToWorkers = (workers: WorkerDetails[], message: { type: string }): void => {
+  workers.map(({ workerRef }) => workerRef.postMessage(message));
+};

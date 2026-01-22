@@ -18,8 +18,8 @@ export class GossipSubPropagation<T> implements DataPropagationInterface<Propaga
   /** Listener for listening to gossip messages */
   private gossipListener: (event: CustomEvent<Message>) => void;
 
-  /** Handler functions that gets executed when a message is received on the corresponding topics */
-  private topicHandler: Map<string, (message: PropagatedMessage<T>, ctx: PropagationContext) => void>;
+  /** Handler function that gets executed when a message is received on the corresponding topics */
+  private topicsHandler: Map<string, (message: PropagatedMessage<T>, ctx: PropagationContext) => void>;
 
   /** Maximum seen messages a topic can have */
   private MAX_SEEN_MSGS_PER_TOPIC: number;
@@ -33,7 +33,7 @@ export class GossipSubPropagation<T> implements DataPropagationInterface<Propaga
   constructor(node: Libp2p, maxSeenMsgsPerTopic = 10_000, msgsTtlMin = 10 * 60 * 1000, maxMsgBytes = 64 * 1024) {
     this.node = node;
     this.pubsub = this.node.services.pubsub as GossipSub;
-    this.topicHandler = new Map();
+    this.topicsHandler = new Map();
     this.seenMessages = new Map();
     this.MAX_SEEN_MSGS_PER_TOPIC = maxSeenMsgsPerTopic;
     this.MSGS_TTL_MIN = msgsTtlMin;
@@ -42,7 +42,7 @@ export class GossipSubPropagation<T> implements DataPropagationInterface<Propaga
     this.gossipListener = (event: CustomEvent<Message>) => {
       const topic = event.detail.topic;
       const data = event.detail.data;
-      const handler = this.topicHandler.get(topic);
+      const handler = this.topicsHandler.get(topic);
 
       if (!handler || !data || data.length > this.MAX_MSG_BYTES) return;
 
@@ -50,7 +50,10 @@ export class GossipSubPropagation<T> implements DataPropagationInterface<Propaga
         const msg = JSON.parse(uint8ArrayToString(data)) as PropagatedMessage<T>;
 
         if (!msg || !msg.id) return;
-        if (this.seenMessages.has(topic) && this.seenMessages.get(topic)?.has(msg.id)) return;
+        if (this.seenMessages.has(topic) && this.seenMessages.get(topic)?.has(msg.id)) {
+          logger.info('Ignoring already seen message');
+          return;
+        }
         Object.freeze(msg);
 
         const cache = this.seenMessages.get(topic);
@@ -91,17 +94,21 @@ export class GossipSubPropagation<T> implements DataPropagationInterface<Propaga
     handler: (message: PropagatedMessage<T>, ctx: PropagationContext) => void,
   ): Promise<void> {
     this.pubsub.subscribe(topic);
-    this.topicHandler.set(topic, handler);
+    this.topicsHandler.set(topic, handler);
   }
 
   async unsubscribe(topic: string, purgeData = false): Promise<void> {
     this.pubsub.unsubscribe(topic);
-    this.topicHandler.delete(topic);
+    this.topicsHandler.delete(topic);
     if (purgeData) this.seenMessages.delete(topic);
   }
 
   async stop(): Promise<void> {
     this.seenMessages.clear();
     this.pubsub.removeEventListener('message', this.gossipListener);
+  }
+
+  getSeenMessages(): ReadonlyMap<string, LRUCache<string, true>> {
+    return new Map(this.seenMessages);
   }
 }
