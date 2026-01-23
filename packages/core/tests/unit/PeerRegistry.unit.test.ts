@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
+import { NoopPeerRegistryMetrics } from '../../src/metrics/noop/NoopPeerRegistryMetrics';
 import { PeerRegistry } from '../../src/networking/PeerRegistry';
 
 describe('PeerRegistry', () => {
   it('adds, dedups addresses and TTLs entries', () => {
-    const pr = new PeerRegistry('self', 10);
+    const pr = new PeerRegistry('self', new NoopPeerRegistryMetrics(), 10);
     pr.upsertMany([
       { peerId: 'p1', addresses: ['/ip4/127.0.0.1/tcp/0'] },
       { peerId: 'p1', addresses: ['/ip4/127.0.0.1/tcp/1'] },
@@ -22,7 +23,7 @@ describe('PeerRegistry', () => {
   });
 
   it('enforces PEX request cooldown', () => {
-    const pr = new PeerRegistry('self', 10);
+    const pr = new PeerRegistry('self', new NoopPeerRegistryMetrics(), 10);
     pr.upsert({ peerId: 'p1', addresses: [] });
     // expect(pr.markRequestedAndGetPeers('p1', 5).length).toBeGreaterThanOrEqual(0); // first ok
     // // immediate second call should return empty due to cooldown

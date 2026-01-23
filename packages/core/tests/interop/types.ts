@@ -5,6 +5,10 @@ export type WorkerResult = {
   verified: number;
   connections: number;
   ttfvpMs: number; // time-to-first-verified-peer
+  latencyP50: number;
+  latencyP95: number;
+  msgsObserved: number;
+  seenMessages?: Array<{ topic: string; seen: number }>;
 };
 
 export type expectedWorkerResult = {

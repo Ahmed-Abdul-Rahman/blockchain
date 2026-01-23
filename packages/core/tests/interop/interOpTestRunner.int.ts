@@ -1,7 +1,12 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import { parseArg } from './helper';
-import { simulateBurstPeersAtStartUp, simulatePeerChurn, simulateStaggeredPeersAtStartUp } from './InterOpScenarios';
+import {
+  simulateBurstPeersAtStartUp,
+  simulateBurstPeersAtStartUpWithGossipPropagation,
+  simulatePeerChurn,
+  simulateStaggeredPeersAtStartUp,
+} from './InterOpScenarios';
 import { AggregatedResult, TestReport } from './types';
 
 const totalNodesArg: number = parseArg('nodes');
@@ -174,6 +179,48 @@ describe('P2P Network Integration Stability Tests', () => {
     });
 
     const report = generateTestReport('Peer Churn', totalNodes, runDurationSec, aggregatedResults, passed);
+    printTestReport(report);
+  });
+});
+
+describe('Interop - GossipSub Data Propagation Tests', () => {
+  it(`should propagate messages to all peers without duplicates`, async () => {
+    const totalNodes = totalNodesArg ?? 12;
+    const runDurationSec = runDurationSecArg ?? 300;
+    const messageRate = messageRateArg ?? 5;
+    const pubsubTopic = pubsubTopicArg ?? '/bench/1';
+    const networkId = networkIdArg ?? 'benchnet-1';
+    const bootstrapMultiaddrs = [];
+
+    console.log('\n🚀 Starting Burst Startup Test...');
+    console.log(`   Nodes: ${totalNodes}`);
+    console.log(`   Duration: ${runDurationSec}s`);
+    console.log(`   Message Rate: ${messageRate}/s\n`);
+
+    const aggregatedResults = await simulateBurstPeersAtStartUpWithGossipPropagation({
+      totalNodes,
+      runDurationSec,
+      messageRate,
+      pubsubTopic,
+      networkId,
+      bootstrapMultiaddrs,
+    });
+
+    const { workerResults } = aggregatedResults;
+    let passed = true;
+
+    workerResults.forEach((workerResult, index) => {
+      const seenMessagesOk = workerResult.seenMessages?.reduce((prevSeen, { seen }) => seen == 22 && prevSeen, true);
+
+      if (!seenMessagesOk) {
+        passed = false;
+        console.log(`⚠️  Node ${index} has ${workerResult.seenMessages} expected: 22`);
+      }
+
+      assert.ok(seenMessagesOk, `Node ${index} has unexpected number of seenMessages`);
+    });
+
+    const report = generateTestReport('Burst Startup', totalNodes, runDurationSec, aggregatedResults, passed);
     printTestReport(report);
   });
 });

@@ -11,10 +11,14 @@ import { MulticastDNSComponents, mdns } from '@libp2p/mdns';
 import { tcp } from '@libp2p/tcp';
 import { debounce } from 'es-toolkit';
 import { createLibp2p, Libp2p } from 'libp2p';
-import { HealthChecker } from './metricsCollection/HealthChecker';
-import { MetricsCollector } from './metricsCollection/MetricsCollector';
-import { genEd25519KeyPair, installAuthServer, runAuthClient } from './networking/auth';
+import { NoopAuthMetrics } from './metrics/noop/NoopAuthMetrics';
+import { NoopDialQueueMetrics } from './metrics/noop/NoopDialQueueMetrics';
+import { NoopPeerExchangeMetrics } from './metrics/noop/NoopPeerExchangeMetrics';
+import { NoopPeerRegistryMetrics } from './metrics/noop/NoopPeerRegistryMetrics';
+import { genEd25519KeyPair, installAuthServer } from './networking/auth';
+import { DialQueue } from './networking/DialQueue';
 import { PeerExchangeService } from './networking/PeerExchangeService';
+import { PeerRegistry } from './networking/PeerRegistry';
 import { SimplePeerScorer } from './networking/SimplePeerScorer';
 import { shouldDialNewPeer } from './networking/shouldDial';
 import { NodeKey } from './networking/types';
@@ -64,6 +68,7 @@ export const createLibp2pNode = async (
         emitSelf: false,
         allowPublishToZeroTopicPeers: false,
         gossipFactor: 1,
+        globalSignaturePolicy: 'StrictSign',
       }),
     },
 
@@ -102,33 +107,31 @@ export const createNode = async (
 
   const { node, nodeKey } = await createLibp2pNode(infoHash, nodeSeed, scorer, nodeOptions);
 
-  const metrics = new MetricsCollector(node);
-  const health = new HealthChecker(node, metrics);
-  const pexService = new PeerExchangeService(node, {
-    reward: (peerId, amount) => scorer.reward(peerId, amount),
-    penalize: (peerId, amount) => scorer.penalize(peerId, amount),
-    isDialable: (peerId) => scorer.isDialable(peerId),
-  });
+  const authenticatingPeers = new Set<string>();
+
+  const peerRegistry = new PeerRegistry(node.peerId.toString(), new NoopPeerRegistryMetrics());
+
+  const dialQ = new DialQueue(node, { isDialable: (id) => scorer.isDialable(id) }, new NoopDialQueueMetrics());
+
+  const pexService = new PeerExchangeService(node, scorer, dialQ, peerRegistry, new NoopPeerExchangeMetrics());
 
   if (nodeOptions?.peerSeeds?.length) pexService.addPeers(nodeOptions.peerSeeds);
 
-  const authenticatingPeers = new Set<string>();
-  installAuthServer(node, { pex: pexService });
+  installAuthServer(node, { pex: pexService, metrics: new NoopAuthMetrics() });
 
   const onBoardNewPeerDebounced = debounce(
-    (event: CustomEvent<PeerInfo>) => onBoardNewPeer(event, node, pexService, nodeKey, authenticatingPeers, metrics),
+    (event: CustomEvent<PeerInfo>) => onBoardNewPeer(event, node, pexService, nodeKey, authenticatingPeers),
     nodeOptions?.onBoardingPeerTime || 5_000,
   );
 
   const peerDiscoveryListener = async (event: CustomEvent<PeerInfo>) => {
     const peerId = event.detail.id.toString();
     logger.info('Peer Discovered:', peerId);
-    metrics.incrementPeerDiscovered();
 
     if (pexService.peerRegistry.getSize() > 0) {
       if (shouldDialNewPeer(node.peerId.toString(), peerId, pexService.peerRegistry.getPeers())) {
         logger.trace('Elected dialing new peer');
-        onBoardNewPeer(event, node, pexService, nodeKey, authenticatingPeers, metrics);
+        onBoardNewPeer(event, node, pexService, nodeKey, authenticatingPeers);
       }
     } else {
       logger.trace('onBoardNewPeerDebounced triggered');
@@ -136,18 +139,15 @@ export const createNode = async (
     }
   };
 
-  const decayInterval = setInterval(() => scorer.decay(), 60_000);
   node.addEventListener('peer:discovery', peerDiscoveryListener);
 
-  // Start metrics collection if enabled
-  if (nodeOptions?.enableMetrics !== false) metrics.startPeriodicCollection(nodeOptions?.metricsInterval || 30_000);
+  const decayInterval = setInterval(() => scorer.decay(), 60_000);
 
   const nodeCleanUp = () => {
     node.removeEventListener('peer:discovery', peerDiscoveryListener);
     clearInterval(decayInterval);
-    metrics.stopPeriodicCollection();
     pexService.cleanUp();
   };
 
-  return { node, scorer, pexService, metrics, health, nodeCleanUp };
+  return { node, scorer, pexService, nodeCleanUp };
 };

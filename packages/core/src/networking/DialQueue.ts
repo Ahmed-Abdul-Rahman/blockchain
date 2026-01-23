@@ -1,6 +1,7 @@
 import { logger } from '@dechat/common';
 import { Connection, Libp2p } from '@libp2p/interface';
 import { peerIdFromString } from '@libp2p/peer-id';
+import { DialQueueMetrics } from '../metrics/interfaces/DialQueueMetrics.js';
 import { PeerInfoLite } from './types.js';
 
 export class DialQueue {
@@ -18,6 +19,7 @@ export class DialQueue {
   constructor(
     node: Libp2p,
     scorer: { isDialable: (peerId: string) => boolean },
+    private readonly metrics: DialQueueMetrics,
     maxQueueLength: number = 256,
     intervalMs: number = 10_000,
     minConnections: number = 8,
@@ -76,6 +78,7 @@ export class DialQueue {
       if (this.node.peerId.toString() === peer.peerId) continue; // don't enqueue self
       if (this.getRemotePeerConnections(peer.peerId).length > 3) continue;
       this.dialQueue.push(peer);
+      this.metrics.peerEnqueued(peer.peerId);
     }
     if (!this.loopIntervalId) this.loopIntervalId = this.loop();
   }
@@ -100,16 +103,19 @@ export class DialQueue {
             this.getRemotePeerConnections(peerInfo.peerId).length > 1
           )
             continue;
-
+          this.metrics.dialAttempt();
           await this.node.dial(peerIdFromString(peerInfo.peerId));
+          this.metrics.dialSucceeded();
         } catch (error) {
           // If the dialing failed consistently maybe for twice or thrice remove this peer from registry
           logger.warn('Error occured while dialing a peer in queue');
           logger.debug(error);
+          this.metrics.dialFailed('error');
         }
       }
       logger.debug('Total unique connections with remotePeers: ', this.getConnections().length);
       this.isQueueRunning = false;
+      this.metrics.targetConnectionsComputed(target);
     }, this.intervalMs);
   }
 

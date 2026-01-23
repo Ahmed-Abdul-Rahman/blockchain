@@ -5,6 +5,7 @@ import * as ed from '@noble/ed25519';
 import { createHash } from 'crypto';
 import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
+import { AuthMetrics } from '../metrics/interfaces/AuthMetrics';
 import { PeerExchangeService } from './PeerExchangeService';
 import { AUTH_PROTOCOL, NETWORK_ID } from './protocols';
 import { AuthSignMessage, AuthSignResponse, NodeKey } from './types';
@@ -38,7 +39,7 @@ const generateNonce = (myPeerId: string, remotePeerId: string, timestamp: number
  */
 export const installAuthServer = (
   node: Libp2p,
-  opts: { replayCacheWindowMs?: number; pex: PeerExchangeService },
+  opts: { replayCacheWindowMs?: number; pex: PeerExchangeService; metrics: AuthMetrics },
 ): void => {
   const { pex } = opts;
   const replayCacheWindowMs = opts.replayCacheWindowMs ?? 60_000;
@@ -82,6 +83,7 @@ export const installAuthServer = (
 
       if (!isVerified) {
         await stream.close();
+        opts.metrics.verificationFailed('invalid_signature');
         return;
       }
 
@@ -90,8 +92,10 @@ export const installAuthServer = (
       pex.initiatePeerExchange();
 
       await writeToStream(stream, { isVerified } as AuthSignResponse);
+      opts.metrics.verificationSucceeded();
     } catch {
       logger.warn('Authentication failed with Peer: ', connection.remotePeer.toString(), ' severing connection');
+      opts.metrics.verificationFailed('unknown_peer');
       try {
         await stream.close();
         await node.hangUp(connection.remotePeer);

@@ -1,4 +1,5 @@
 import { logger } from '@dechat/common';
+import { PeerRegistryMetrics } from '../metrics/interfaces/PeerRegistryMetrics';
 import { PEER_ENTRY_TTL_MS, PEX_REQUEST_COOLDOWN_MS } from './configurations';
 import { PeerInfoLite } from './types';
 import { now, sampleList } from './utils';
@@ -9,7 +10,11 @@ export class PeerRegistry {
   private peerRegistry: Map<string, { addresses: Set<string>; lastUpdated: number; lastRequested?: number }>;
   private logIntervalId: NodeJS.Timeout | null = null;
 
-  constructor(selfPeerId: string, maxSize = 50_000) {
+  constructor(
+    selfPeerId: string,
+    private readonly metrics: PeerRegistryMetrics,
+    maxSize = 50_000,
+  ) {
     this.selfPeerId = selfPeerId;
     this.peerRegistry = new Map();
     this.maxSize = maxSize;
@@ -63,6 +68,17 @@ export class PeerRegistry {
     for (const address of peerInfo.addresses || []) current.addresses.add(address);
     current.lastUpdated = now();
     this.peerRegistry.set(peerInfo.peerId, current);
+    this.metrics.peerAdded();
+    this.metrics.registrySize(this.peerRegistry.size);
+  }
+
+  /**
+   * Removes a peer from the registry
+   * @param peerInfo
+   */
+  removePeer(peerInfo: PeerInfoLite): void {
+    this.peerRegistry.delete(peerInfo.peerId);
+    this.metrics.peerRemoved('manual');
   }
 
   /**
