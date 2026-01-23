@@ -1,6 +1,4 @@
 import { Libp2p } from 'libp2p';
-import { HealthChecker } from './metrics-collection/HealthChecker';
-import { MetricsCollector } from './metrics-collection/MetricsCollector';
 import { PeerExchangeService } from './networking/PeerExchangeService';
 import { SimplePeerScorer } from './networking/SimplePeerScorer';
 
@@ -34,7 +32,5 @@ export interface NodeComponents {
   node: Libp2p;
   scorer: SimplePeerScorer;
   pexService: PeerExchangeService;
-  metrics: MetricsCollector;
-  health: HealthChecker;
   nodeCleanUp: () => void;
 }

@@ -5,6 +5,7 @@ import { Libp2p, Message, SignedMessage } from '@libp2p/interface';
 import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
+import { GossipSubPropagationMetrics } from '../metrics/interfaces/GossipSubPropagationMetrics';
 import { DataPropagationInterface } from './DataPropagationInterface';
 import { PropagatedMessage, PropagationContext } from './types';
 
@@ -31,7 +32,13 @@ export class GossipSubPropagation implements DataPropagationInterface {
   /** Maximum message bytes allowed for a message */
   private MAX_MSG_BYTES: number;
 
-  constructor(node: Libp2p, maxSeenMsgsPerTopic = 10_000, msgsTtlMin = 10 * 60 * 1000, maxMsgBytes = 64 * 1024) {
+  constructor(
+    node: Libp2p,
+    private readonly metrics: GossipSubPropagationMetrics,
+    maxSeenMsgsPerTopic = 10_000,
+    msgsTtlMin = 10 * 60 * 1000,
+    maxMsgBytes = 64 * 1024,
+  ) {
     this.node = node;
     this.pubsub = this.node.services.pubsub as GossipSub;
     this.topicsConfig = new Map();
@@ -52,7 +59,8 @@ export class GossipSubPropagation implements DataPropagationInterface {
 
         if (!msg || !msg.id) return;
         if (this.seenMessages.has(topic) && this.seenMessages.get(topic)?.has(msg.id)) {
-          logger.info('Ignoring already seen message');
+          logger.trace('Ignoring already seen message');
+          this.metrics.messageDropped('duplicate');
           return;
         }
         Object.freeze(msg);
@@ -73,6 +81,7 @@ export class GossipSubPropagation implements DataPropagationInterface {
         logger.warn('Error occured while receiving a data propagation message');
         logger.debug(error);
       }
+      this.metrics.messageReceived(topic);
     };
 
     this.pubsub.addEventListener('message', this.gossipListener);
@@ -91,6 +100,7 @@ export class GossipSubPropagation implements DataPropagationInterface {
 
     const data = uint8ArrayFromString(JSON.stringify(message));
     await this.pubsub.publish(topic, data);
+    this.metrics.messagePublished(topic);
   }
 
   subscribe<T>(

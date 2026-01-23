@@ -6,11 +6,13 @@ import { delay } from 'es-toolkit';
 import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
+import { PeerExchangeServiceMetrics } from '../metrics/interfaces/PeerExchangeServiceMetrics';
 import { GOSSIP_INTERVAL_MS, MAX_PEX_MSGS_PER_MIN, MAX_SHARED_PEERS } from './configurations';
 import { DialQueue } from './DialQueue';
 import { PeerRegistry } from './PeerRegistry';
 import { PEX_PROTOCOL, PEX_TOPIC } from './protocols';
-import { GET_PEERS_MSG, PEX_GOSSIP, PEX_PEER_LIST, PeerInfoLite, scorer } from './types';
+import { SimplePeerScorer } from './SimplePeerScorer';
+import { GET_PEERS_MSG, PEX_GOSSIP, PEX_PEER_LIST, PeerInfoLite } from './types';
 import { filterAddrs, now, processDataFromStream, publishWithRetry, sampleList, writeToStream } from './utils';
 
 export class PeerExchangeService {
@@ -23,15 +25,21 @@ export class PeerExchangeService {
   private isPeerExchangeStarted: boolean = false;
   private node: Libp2p;
   private pubsub: GossipSub;
-  private scorer: scorer;
+  private scorer: SimplePeerScorer;
   private peersSeen: bloomFilters.ScalableBloomFilter;
   private gossipListener: (event: CustomEvent<Message>) => void;
 
-  constructor(node: Libp2p, scorer: scorer) {
-    this.peerRegistry = new PeerRegistry(node.peerId.toString());
+  constructor(
+    node: Libp2p,
+    scorer: SimplePeerScorer,
+    dialQ: DialQueue,
+    peerRegistry: PeerRegistry,
+    private readonly metrics: PeerExchangeServiceMetrics,
+  ) {
     this.node = node;
     this.scorer = scorer;
-    this.dialQ = new DialQueue(node, { isDialable: (id) => this.isScoreEnoughToDial(id) });
+    this.dialQ = dialQ;
+    this.peerRegistry = peerRegistry;
     this.peersSeen = new bloomFilters.ScalableBloomFilter(1000, 0.01);
 
     node.handle(PEX_PROTOCOL, ({ stream, connection }) =>
@@ -69,16 +77,6 @@ export class PeerExchangeService {
       this.isPeerExchangeStarted = true;
       this.loopGossip();
     }
-  }
-
-  /**
-   * returns true if the peer has good enough score dialing otherwise false
-   * @param peerId
-   * @returns boolean
-   */
-  private isScoreEnoughToDial(peerId: string): boolean {
-    // tiny bonus: if a peer provided good PX/gossip recently, it likely has more value
-    return this.scorer.isDialable(peerId); // dialQueue already checks shouldDial via injected scorer; keep hook if you expand
   }
 
   /**
@@ -246,6 +244,7 @@ export class PeerExchangeService {
     this.peerRegistry.markRequested(peerIdString);
     logger.trace('PeerExchangeService - requestPeersFrom - entry');
     try {
+      this.metrics.exchangeRequested();
       const stream = await this.node.dialProtocol(peerId, PEX_PROTOCOL);
       const req: GET_PEERS_MSG = { type: 'GET_PEERS', want };
       let receivedPeers: PeerInfoLite[] = [];
@@ -261,6 +260,7 @@ export class PeerExchangeService {
       this.peerRegistry.upsertMany(receivedPeers);
       this.scorer.reward(peerIdString, Math.min(4, receivedPeers.length / 8));
       logger.trace('PeerExchangeService - requestPeersFrom - exit');
+      this.metrics.exchangeResponded();
       return receivedPeers;
     } catch (error: unknown) {
       logger.info('Error Occured while requesting peers');

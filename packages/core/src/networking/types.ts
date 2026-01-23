@@ -15,12 +15,6 @@ export type PEX_GOSSIP = {
   originPeerInfo: PeerInfoLite;
 };
 
-export type scorer = {
-  reward: (peerId: string, amount?: number) => void;
-  penalize: (peerId: string, amount?: number) => void;
-  isDialable: (peerId: string) => boolean;
-};
-
 export type AuthSignMessage = {
   /** base64url of public key (32 bytes) */
   pub: string;

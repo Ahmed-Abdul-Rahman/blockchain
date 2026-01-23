@@ -4,6 +4,7 @@ import { sha256 } from '@dechat/crypto';
 import { Libp2p, Message, ServiceMap, transportSymbol } from '@libp2p/interface';
 import { delay, random } from 'es-toolkit';
 import { GossipSubPropagation } from '../../src/data-propagation/GossipSubPropagation';
+import { NoopGossipMetrics } from '../../src/metrics/noop/NoopGossipSubPropagationMetrics';
 import { PeerExchangeService } from '../../src/networking/PeerExchangeService';
 import { createNode } from '../../src/node';
 import { WorkerData } from './types';
@@ -134,7 +135,7 @@ const runNode = async () => {
   peerExchangeService = pexService;
 
   registerPubsub(pubsubTopic);
-  const propagation = new GossipSubPropagation(node);
+  const propagation = new GossipSubPropagation(node, new NoopGossipMetrics());
 
   propagation.subscribe(GossipPropTopicA, (message, ctx) => {});
   propagation.subscribe(GossipPropTopicB, (message, ctx) => {});
