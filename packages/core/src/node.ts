@@ -9,7 +9,6 @@ import { identify } from '@libp2p/identify';
 import { PeerDiscovery, PeerInfo } from '@libp2p/interface';
 import { MulticastDNSComponents, mdns } from '@libp2p/mdns';
 import { tcp } from '@libp2p/tcp';
-// import { debounce } from 'es-toolkit';
 import { createLibp2p, Libp2p } from 'libp2p';
 import { NoopAuthMetrics } from './metrics/noop/NoopAuthMetrics';
 import { NoopDialQueueMetrics } from './metrics/noop/NoopDialQueueMetrics';
@@ -21,10 +20,8 @@ import { PeerDiscoveryManager } from './networking/PeerDiscoveryManager';
 import { PeerExchangeService } from './networking/PeerExchangeService';
 import { PeerRegistry } from './networking/PeerRegistry';
 import { SimplePeerScorer } from './networking/SimplePeerScorer';
-import { shouldDialNewPeer } from './networking/shouldDial';
 import { NodeKey } from './networking/types';
 import { NodeComponents, NodeOptions } from './types';
-import { onBoardNewPeer } from './uitls';
 
 export const createLibp2pNode = async (
   infoHash: string,
@@ -108,48 +105,23 @@ export const createNode = async (
 
   const { node, nodeKey } = await createLibp2pNode(infoHash, nodeSeed, scorer, nodeOptions);
 
-  // const authenticatingPeers = new Set<string>();
-
   const peerRegistry = new PeerRegistry(node.peerId.toString(), new NoopPeerRegistryMetrics());
 
   const dialQ = new DialQueue(node, { isDialable: (id) => scorer.isDialable(id) }, new NoopDialQueueMetrics());
 
   const pexService = new PeerExchangeService(node, scorer, dialQ, peerRegistry, new NoopPeerExchangeMetrics());
 
-  const peerDiscovery = new PeerDiscoveryManager(node, nodeKey, pexService);
-
-  if (nodeOptions?.peerSeeds?.length) pexService.addPeers(nodeOptions.peerSeeds);
+  const peerDiscovery = new PeerDiscoveryManager(node, nodeKey, pexService, nodeOptions?.onBoardingPeerTime);
 
   installAuthServer(node, { pex: pexService, metrics: new NoopAuthMetrics() });
 
-  // const onBoardNewPeerDebounced = debounce(
-  //   (event: CustomEvent<PeerInfo>) => onBoardNewPeer(event, node, pexService, nodeKey, authenticatingPeers),
-  //   nodeOptions?.onBoardingPeerTime || 5_000,
-  // );
+  if (nodeOptions?.peerSeeds?.length) pexService.addPeers(nodeOptions.peerSeeds);
 
-  // const peerDiscoveryListener = async (event: CustomEvent<PeerInfo>) => {
-  //   const peerId = event.detail.id.toString();
-  //   logger.info('Peer Discovered:', peerId);
-
-  //   if (pexService.peerRegistry.getSize() > 0) {
-  //     if (shouldDialNewPeer(node.peerId.toString(), peerId, pexService.peerRegistry.getPeers())) {
-  //       logger.trace('Elected dialing new peer');
-  //       onBoardNewPeer(event, node, pexService, nodeKey, authenticatingPeers);
-  //     }
-  //   } else {
-  //     logger.trace('onBoardNewPeerDebounced triggered');
-  //     onBoardNewPeerDebounced(event);
-  //   }
-  // };
-
-  // node.addEventListener('peer:discovery', peerDiscoveryListener);
   peerDiscovery.registerPeerDiscovery();
 
-  const decayInterval = setInterval(() => scorer.decay(), 60_000);
+  pexService.startPeerScoreDecay();
 
   const nodeCleanUp = () => {
-    // node.removeEventListener('peer:discovery', peerDiscoveryListener);
-    clearInterval(decayInterval);
     pexService.cleanUp();
     peerDiscovery.cleanUp();
   };

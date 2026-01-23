@@ -11,8 +11,17 @@ import { AUTH_PROTOCOL, NETWORK_ID } from './protocols';
 import { AuthSignMessage, AuthSignResponse, NodeKey } from './types';
 import { now, readFromStream, writeToStream } from './utils';
 
+const hash = (input: string): string => sha256(input);
+
+const generateNonce = (myPeerId: string, remotePeerId: string, timestamp: number, randomNonce: string): string => {
+  const peerNonce = myPeerId < remotePeerId ? `${myPeerId}|${remotePeerId}` : `${remotePeerId}|${myPeerId}`;
+  return `${NETWORK_ID}|${peerNonce}|${timestamp}|${randomNonce}`;
+};
+
 /**
  * Generate a new keypair (private 32 bytes, public 32 bytes)
+ * @param plainSeed
+ * @returns {Promise<NodeKey>}
  */
 export const genEd25519KeyPair = async (plainSeed?: string): Promise<NodeKey> => {
   let secret = ed.utils.randomSecretKey();
@@ -23,13 +32,6 @@ export const genEd25519KeyPair = async (plainSeed?: string): Promise<NodeKey> =>
   }
   const pub = await ed.getPublicKeyAsync(secret); // Uint8Array(32)
   return { secret: new Uint8Array(secret), pub: new Uint8Array(pub) };
-};
-
-const hash = (input: string): string => sha256(input);
-
-const generateNonce = (myPeerId: string, remotePeerId: string, timestamp: number, randomNonce: string): string => {
-  const peerNonce = myPeerId < remotePeerId ? `${myPeerId}|${remotePeerId}` : `${remotePeerId}|${myPeerId}`;
-  return `${NETWORK_ID}|${peerNonce}|${timestamp}|${randomNonce}`;
 };
 
 /**

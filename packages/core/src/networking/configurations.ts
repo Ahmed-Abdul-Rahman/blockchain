@@ -12,3 +12,7 @@ export const PEX_REQUEST_COOLDOWN_MS = 15_000;
 
 /** Only Peers interacting within this time limit remain in the Peer Registry */
 export const PEER_ENTRY_TTL_MS = 30 * 60_000;
+
+/** Decay/Decrease the score of peer at every PEER_SCORE_DECAY_INTERVAL ms,
+ *  this value should always be a minute greater than the @constant GOSSIP_INTERVAL_MS*/
+export const PEER_SCORE_DECAY_INTERVAL = 120_000;

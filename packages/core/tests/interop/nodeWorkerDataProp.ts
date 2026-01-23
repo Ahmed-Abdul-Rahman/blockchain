@@ -78,7 +78,10 @@ const registerPubsub = (pubsubTopic: string) => {
 
 const terminateAndCleanUp = async (node: Libp2p<ServiceMap>, propagation: GossipSubPropagation) => {
   try {
-    if (checkTimer) clearInterval(checkTimer);
+    if (checkTimer) {
+      clearInterval(checkTimer);
+      checkTimer = null;
+    }
     if (!pubsub || !peerExchangeService) return;
 
     pubsub.removeEventListener('message', subHandler);
@@ -121,7 +124,7 @@ const runNode = async () => {
     mdns: true,
     listenTcp: ['/ip4/127.0.0.1/tcp/0'],
     // bootstrap: bootstrapMultiaddrs, // make your node.ts honor this
-    onBoardingPeerTime: Math.random() * 10 * 1000,
+    onBoardingPeerTime: random(1, 10) * 1000 + random(1, 10) * 100,
   });
 
   await node.start();
