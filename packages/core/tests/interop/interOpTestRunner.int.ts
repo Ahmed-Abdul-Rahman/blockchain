@@ -55,7 +55,7 @@ const printTestReport = (report: TestReport): void => {
   console.log('='.repeat(80) + '\n');
 };
 
-describe.skip('P2P Network Integration StartUp Tests', () => {
+describe('P2P Network Integration StartUp Tests', () => {
   it(`Burst startup of ${totalNodesArg ?? 12} nodes at once`, async () => {
     const totalNodes = totalNodesArg ?? 12;
     const runDurationSec = runDurationSecArg ?? 300;
@@ -141,7 +141,7 @@ describe.skip('P2P Network Integration StartUp Tests', () => {
   });
 });
 
-describe.skip('P2P Network Integration Stability Tests', () => {
+describe('P2P Network Integration Stability Tests', () => {
   it(`Peer Churn - Random peers drop and rejoin`, async () => {
     const totalNodes = totalNodesArg ?? 10;
     const runDurationSec = runDurationSecArg ?? 300;
