@@ -7,7 +7,12 @@ import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { PeerExchangeServiceMetrics } from '../metrics/interfaces/PeerExchangeServiceMetrics';
-import { GOSSIP_INTERVAL_MS, MAX_PEX_MSGS_PER_MIN, MAX_SHARED_PEERS } from './configurations';
+import {
+  GOSSIP_INTERVAL_MS,
+  MAX_PEX_MSGS_PER_MIN,
+  MAX_SHARED_PEERS,
+  PEER_SCORE_DECAY_INTERVAL,
+} from './configurations';
 import { DialQueue } from './DialQueue';
 import { PeerRegistry } from './PeerRegistry';
 import { PEX_PROTOCOL, PEX_TOPIC } from './protocols';
@@ -16,18 +21,30 @@ import { GET_PEERS_MSG, PEX_GOSSIP, PEX_PEER_LIST, PeerInfoLite } from './types'
 import { filterAddrs, now, processDataFromStream, publishWithRetry, sampleList, writeToStream } from './utils';
 
 export class PeerExchangeService {
-  readonly peerRegistry: PeerRegistry;
-  private dialQ: DialQueue;
-  private lastGossipByPeer = new LRUCache<string, number>({
-    max: 10000,
-    ttl: 10 * 60 * 1000, // 10 minutes
-  });
-  private isPeerExchangeStarted: boolean = false;
   private node: Libp2p;
+
   private pubsub: GossipSub;
+
   private scorer: SimplePeerScorer;
+
+  readonly peerRegistry: PeerRegistry;
+
+  private dialQ: DialQueue;
+
+  /** Used to avoid frequent gossiping with the same peer */
+  private lastGossipByPeer: LRUCache<string, number>;
+
+  /** Used to avoid frequent dialing to the same peer*/
   private peersSeen: bloomFilters.ScalableBloomFilter;
+
+  /** Flag to initiate or stop peer exchange */
+  private isPeerExchangeStarted: boolean = false;
+
+  /** Gossip pubsub listener */
   private gossipListener: (event: CustomEvent<Message>) => void;
+
+  /** Interval Id of the peer scorer decay interval */
+  private peerScoreDecayInterval: NodeJS.Timeout | null = null;
 
   constructor(
     node: Libp2p,
@@ -41,6 +58,10 @@ export class PeerExchangeService {
     this.dialQ = dialQ;
     this.peerRegistry = peerRegistry;
     this.peersSeen = new bloomFilters.ScalableBloomFilter(1000, 0.01);
+    this.lastGossipByPeer = new LRUCache<string, number>({
+      max: 10000,
+      ttl: 10 * 60 * 1000, // 10 minutes
+    });
 
     node.handle(PEX_PROTOCOL, ({ stream, connection }) =>
       this.onPexProtocolMessage(stream, connection.remotePeer.toString()),
@@ -259,8 +280,8 @@ export class PeerExchangeService {
 
       this.peerRegistry.upsertMany(receivedPeers);
       this.scorer.reward(peerIdString, Math.min(4, receivedPeers.length / 8));
-      logger.trace('PeerExchangeService - requestPeersFrom - exit');
       this.metrics.exchangeResponded();
+      logger.trace('PeerExchangeService - requestPeersFrom - exit');
       return receivedPeers;
     } catch (error: unknown) {
       logger.info('Error Occured while requesting peers');
@@ -269,6 +290,10 @@ export class PeerExchangeService {
       logger.trace('PeerExchangeService - requestPeersFrom - catch - exit');
       return [];
     }
+  }
+
+  startPeerScoreDecay(): void {
+    this.peerScoreDecayInterval = setInterval(() => this.scorer.decay(), PEER_SCORE_DECAY_INTERVAL);
   }
 
   /**
@@ -286,5 +311,9 @@ export class PeerExchangeService {
     this.dialQ.stop();
     this.peerRegistry.cleanUp();
     this.pubsub.removeEventListener('message', this.gossipListener);
+    if (this.peerScoreDecayInterval) {
+      clearInterval(this.peerScoreDecayInterval);
+      this.peerScoreDecayInterval = null;
+    }
   }
 }

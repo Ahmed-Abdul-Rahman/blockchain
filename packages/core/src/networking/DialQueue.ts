@@ -6,14 +6,32 @@ import { PeerInfoLite } from './types.js';
 
 export class DialQueue {
   private node: Libp2p;
+
+  /** Scorer to determine if peer is worth dialing and maintaining a connection */
   private scorer: { isDialable: (peerId: string) => boolean };
+
+  /** Maximum peers that can be enqueued in the dial queue */
   private maxQueueLength: number;
+
+  /** Maximum number of active connections that a peer can have with other peers */
   private maxConnections: number;
+
+  /** Minimum number of active connections with the peer to be maintained */
   private minConnections: number;
+
+  /** At this interval ms the dial queue is processed */
   private intervalMs: number;
+
+  /** Current Peers in the queue to be dialed */
   private dialQueue: Array<PeerInfoLite> = [];
+
+  /** Indicates if the peers in the dial queue are being dialed */
   private isQueueRunning: boolean = false;
+
+  /** Interval Id of the dial queue loop */
   private loopIntervalId: NodeJS.Timeout | null = null;
+
+  /** Buffer number used to calculate the number of target connections to be acheived and maintained*/
   private buffer: number = 5;
 
   constructor(
@@ -123,7 +141,10 @@ export class DialQueue {
    * clears the Dial loop interval function
    */
   clearDialInterval(): void {
-    if (this.loopIntervalId) clearInterval(this.loopIntervalId);
+    if (this.loopIntervalId) {
+      clearInterval(this.loopIntervalId);
+      this.loopIntervalId = null;
+    }
   }
 
   stop(): void {

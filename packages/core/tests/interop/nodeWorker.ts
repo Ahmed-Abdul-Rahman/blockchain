@@ -2,6 +2,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { parentPort, threadId, workerData } from 'node:worker_threads';
 import { GossipSub } from '@chainsafe/libp2p-gossipsub/dist/src';
 import { Libp2p, Message, ServiceMap } from '@libp2p/interface';
+import { random } from 'es-toolkit';
 import { PeerExchangeService } from '../../src/networking/PeerExchangeService';
 import { createNode } from '../../src/node';
 import { WorkerData } from './types';
@@ -56,7 +57,10 @@ const registerPubsub = (pubsubTopic: string) => {
 };
 
 const terminateAndCleanUp = async (node: Libp2p<ServiceMap>) => {
-  if (checkTimer) clearInterval(checkTimer);
+  if (checkTimer) {
+    clearInterval(checkTimer);
+    checkTimer = null;
+  }
   if (!pubsub || !peerExchangeService) return;
 
   pubsub.removeEventListener('message', subHandler);
@@ -79,7 +83,7 @@ const runNode = async () => {
     mdns: true,
     listenTcp: ['/ip4/127.0.0.1/tcp/0'],
     // bootstrap: bootstrapMultiaddrs, // make your node.ts honor this
-    onBoardingPeerTime: Math.random() * 10 * 1000,
+    onBoardingPeerTime: random(1, 10) * 1000 + random(1, 10) * 100,
   });
 
   await node.start();

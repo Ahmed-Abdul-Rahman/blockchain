@@ -1,9 +1,19 @@
 export class SimplePeerScorer {
   private scores: Map<string, number>;
+
+  /** Used to periodically apply score decay for the peer based on last seen*/
   private lastSeen: Map<string, number>;
+
+  /** Minimum score a peer can be penalized with */
   private readonly MIN_SCORE: number;
+
+  /** Maximum score a peer can we rewarded */
   private readonly MAX_SCORE: number;
+
+  /** Minimum score for a peer to be eligible for dailing */
   private readonly MIN_DIALBALE_SCORE: number;
+
+  /** Periodically applies this decay factor to the peers score */
   private readonly DECAY: number; // apply periodically
 
   constructor(minScore: number = -10, maxScore: number = 100, minDiableScore: number = -2, decay: number = 0.98) {

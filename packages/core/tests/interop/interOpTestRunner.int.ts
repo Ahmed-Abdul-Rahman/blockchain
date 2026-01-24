@@ -220,7 +220,13 @@ describe('Interop - GossipSub Data Propagation Tests', () => {
       assert.ok(seenMessagesOk, `Node ${index} has unexpected number of seenMessages`);
     });
 
-    const report = generateTestReport('Burst Startup', totalNodes, runDurationSec, aggregatedResults, passed);
+    const report = generateTestReport(
+      'GossipSub Data Propagation',
+      totalNodes,
+      runDurationSec,
+      aggregatedResults,
+      passed,
+    );
     printTestReport(report);
   });
 });

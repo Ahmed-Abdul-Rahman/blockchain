@@ -5,9 +5,16 @@ import { PeerInfoLite } from './types';
 import { now, sampleList } from './utils';
 
 export class PeerRegistry {
+  /** This nodes peerId */
   private selfPeerId: string;
+
+  /** Maximum peers that can be stored */
   private maxSize: number;
+
+  /** Map of peers with their addresses */
   private peerRegistry: Map<string, { addresses: Set<string>; lastUpdated: number; lastRequested?: number }>;
+
+  /** Debugging purpose interval Id for logging stored peers */
   private logIntervalId: NodeJS.Timeout | null = null;
 
   constructor(
@@ -128,6 +135,9 @@ export class PeerRegistry {
   }
 
   cleanUp(): void {
-    if (this.logIntervalId) clearInterval(this.logIntervalId);
+    if (this.logIntervalId) {
+      clearInterval(this.logIntervalId);
+      this.logIntervalId = null;
+    }
   }
 }
