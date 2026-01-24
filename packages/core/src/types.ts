@@ -21,11 +21,8 @@ export interface NodeOptions {
   /** Maximum direct peer connections to be maintained */
   maxConnections?: number;
 
-  /** Enable metrics for peer connectivity analysis */
+  /** Enable metrics for node behaviour analysis */
   enableMetrics?: boolean;
-
-  /** Collect metrics at this interval*/
-  metricsInterval?: number;
 }
 
 export interface NodeComponents {

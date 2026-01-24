@@ -84,6 +84,7 @@ const runNode = async () => {
     listenTcp: ['/ip4/127.0.0.1/tcp/0'],
     // bootstrap: bootstrapMultiaddrs, // make your node.ts honor this
     onBoardingPeerTime: random(1, 10) * 1000 + random(1, 10) * 100,
+    enableMetrics: true,
   });
 
   await node.start();

@@ -6,14 +6,11 @@ import { generateIdProtocolPrefix } from '@dechat/crypto';
 import { BootstrapComponents, bootstrap } from '@libp2p/bootstrap';
 import { generateKeyPairFromSeed } from '@libp2p/crypto/keys';
 import { identify } from '@libp2p/identify';
-import { PeerDiscovery, PeerInfo } from '@libp2p/interface';
+import { PeerDiscovery } from '@libp2p/interface';
 import { MulticastDNSComponents, mdns } from '@libp2p/mdns';
 import { tcp } from '@libp2p/tcp';
 import { createLibp2p, Libp2p } from 'libp2p';
-import { NoopAuthMetrics } from './metrics/noop/NoopAuthMetrics';
-import { NoopDialQueueMetrics } from './metrics/noop/NoopDialQueueMetrics';
-import { NoopPeerExchangeMetrics } from './metrics/noop/NoopPeerExchangeMetrics';
-import { NoopPeerRegistryMetrics } from './metrics/noop/NoopPeerRegistryMetrics';
+import { BasicAuthMetrics, BasicDialQueueMetrics, BasicPeerExchangeMetrics, BasicPeerRegistryMetrics } from './metrics';
 import { genEd25519KeyPair, installAuthServer } from './networking/auth';
 import { DialQueue } from './networking/DialQueue';
 import { PeerDiscoveryManager } from './networking/PeerDiscoveryManager';
@@ -22,6 +19,15 @@ import { PeerRegistry } from './networking/PeerRegistry';
 import { SimplePeerScorer } from './networking/SimplePeerScorer';
 import { NodeKey } from './networking/types';
 import { NodeComponents, NodeOptions } from './types';
+
+export const getMetricsInstances = (enableMetrics = false) => {
+  const dialMetrics = new BasicDialQueueMetrics();
+  const authMetrics = new BasicAuthMetrics();
+  const pexMetrics = new BasicPeerExchangeMetrics();
+  const peerRegistryMetrics = new BasicPeerRegistryMetrics();
+
+  return { dialMetrics, authMetrics, pexMetrics, peerRegistryMetrics };
+};
 
 export const createLibp2pNode = async (
   infoHash: string,
@@ -105,15 +111,17 @@ export const createNode = async (
 
   const { node, nodeKey } = await createLibp2pNode(infoHash, nodeSeed, scorer, nodeOptions);
 
-  const peerRegistry = new PeerRegistry(node.peerId.toString(), new NoopPeerRegistryMetrics());
+  const { peerRegistryMetrics, dialMetrics, pexMetrics, authMetrics } = getMetricsInstances(nodeOptions?.enableMetrics);
 
-  const dialQ = new DialQueue(node, { isDialable: (id) => scorer.isDialable(id) }, new NoopDialQueueMetrics());
+  const peerRegistry = new PeerRegistry(node.peerId.toString(), peerRegistryMetrics);
 
-  const pexService = new PeerExchangeService(node, scorer, dialQ, peerRegistry, new NoopPeerExchangeMetrics());
+  const dialQ = new DialQueue(node, { isDialable: (id) => scorer.isDialable(id) }, dialMetrics);
+
+  const pexService = new PeerExchangeService(node, scorer, dialQ, peerRegistry, pexMetrics);
 
   const peerDiscovery = new PeerDiscoveryManager(node, nodeKey, pexService, nodeOptions?.onBoardingPeerTime);
 
-  installAuthServer(node, { pex: pexService, metrics: new NoopAuthMetrics() });
+  installAuthServer(node, { pex: pexService, metrics: authMetrics });
 
   if (nodeOptions?.peerSeeds?.length) pexService.addPeers(nodeOptions.peerSeeds);
 
