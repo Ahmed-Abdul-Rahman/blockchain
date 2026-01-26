@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { parseArg } from './helper';
 import {
   simulateBurstPeersAtStartUp,
-  simulateBurstPeersAtStartUpWithGossipPropagation,
+  simulateBurstPeersAtStartUpWithDataPropagation,
   simulatePeerChurn,
   simulateStaggeredPeersAtStartUp,
 } from './InterOpScenarios';
@@ -183,8 +183,8 @@ describe('P2P Network Integration Stability Tests', () => {
   });
 });
 
-describe('Interop - GossipSub Data Propagation Tests', () => {
-  it(`should propagate messages to all peers without duplicates`, async () => {
+describe('Interop - Data Propagation Tests', () => {
+  it(`should propagate messages to all peers without duplicates and send direct stream messages`, async () => {
     const totalNodes = totalNodesArg ?? 12;
     const runDurationSec = runDurationSecArg ?? 300;
     const messageRate = messageRateArg ?? 5;
@@ -197,7 +197,7 @@ describe('Interop - GossipSub Data Propagation Tests', () => {
     console.log(`   Duration: ${runDurationSec}s`);
     console.log(`   Message Rate: ${messageRate}/s\n`);
 
-    const aggregatedResults = await simulateBurstPeersAtStartUpWithGossipPropagation({
+    const aggregatedResults = await simulateBurstPeersAtStartUpWithDataPropagation({
       totalNodes,
       runDurationSec,
       messageRate,
@@ -211,12 +211,13 @@ describe('Interop - GossipSub Data Propagation Tests', () => {
 
     workerResults.forEach((workerResult, index) => {
       const seenMessagesOk = workerResult.seenMessages?.reduce((prevSeen, { seen }) => seen == 22 && prevSeen, true);
-
       if (!seenMessagesOk) {
         passed = false;
         console.log(`⚠️  Node ${index} has ${workerResult.seenMessages} expected: 22`);
       }
-
+      console.log(
+        `Node ${index} received ${workerResult.directStreamMsgsReceivedCount} stream messages from peers in network`,
+      );
       assert.ok(seenMessagesOk, `Node ${index} has unexpected number of seenMessages`);
     });
 

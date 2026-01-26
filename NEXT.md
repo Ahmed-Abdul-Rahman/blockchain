@@ -1,21 +1,20 @@
 # Next Steps (for Future Me)
 
-**Last session:** 2026-18-01  
-**Branch:** improvements/optimizing-code
+**Last session:** 2026-26-01  
+**Branch:** feature/direct-stream-propagation
 
 ---
 
 ## What I just did
 
-- Refactored code, organizing the core package folder to make it a layered architecture implementation.
-- Simplified the node.ts createNode method.
-- Moved the core p2p network logic to networking folder.
+- Refactored DataPropagationInterface and split it into two categories (broadcast and direct)
+- Created DirectPropagationInterface and DirectStreamPropagation class for implementation.
+- Modified interop test for adding DirectStreamPropagation test
+- Renamed DataPropagationInterface to BroadcastPropagationInterface.
 
 ## What problem I was solving
 
-- Ensuring the Core package p2p implementation is robust and stable by implementing Integration and Inter-Operability tests to test the core package's network reliabiltiy and stability.
-- Fixing any bottle necks, and improving the overall node's stability.
-- Refactoring code, organizing the folder to make it a layered architecture implementation.
+- Adding data propagation mechanisms
 
 ## What to do next (in order)
 

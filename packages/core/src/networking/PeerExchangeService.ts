@@ -7,6 +7,7 @@ import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { PeerExchangeServiceMetrics } from '../metrics/interfaces/PeerExchangeServiceMetrics';
+import { now, writeToStream } from '../utils';
 import {
   GOSSIP_INTERVAL_MS,
   MAX_PEX_MSGS_PER_MIN,
@@ -18,7 +19,7 @@ import { PeerRegistry } from './PeerRegistry';
 import { PEX_PROTOCOL, PEX_TOPIC } from './protocols';
 import { SimplePeerScorer } from './SimplePeerScorer';
 import { GET_PEERS_MSG, PEX_GOSSIP, PEX_PEER_LIST, PeerInfoLite } from './types';
-import { filterAddrs, now, processDataFromStream, publishWithRetry, sampleList, writeToStream } from './utils';
+import { filterAddrs, processDataFromStream, publishWithRetry, sampleList } from './utils';
 
 export class PeerExchangeService {
   private node: Libp2p;

@@ -156,7 +156,7 @@ export const simulatePeerChurn = async (workerDataConfig: WorkerDataConfig): Pro
   return scenarioResults;
 };
 
-export const simulateBurstPeersAtStartUpWithGossipPropagation = (
+export const simulateBurstPeersAtStartUpWithDataPropagation = (
   workerDataConfig: WorkerDataConfig,
 ): Promise<AggregatedResult> => {
   const scenario: RunWorkersScenario = async (workers, workerResults, handleComplete, handleWorkerError) => {
