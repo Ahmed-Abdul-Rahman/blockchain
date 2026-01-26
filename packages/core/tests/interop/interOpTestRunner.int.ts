@@ -215,10 +215,12 @@ describe('Interop - Data Propagation Tests', () => {
         passed = false;
         console.log(`⚠️  Node ${index} has ${workerResult.seenMessages} expected: 22`);
       }
-      console.log(
-        `Node ${index} received ${workerResult.directStreamMsgsReceivedCount} stream messages from peers in network`,
-      );
-      assert.ok(seenMessagesOk, `Node ${index} has unexpected number of seenMessages`);
+      if (workerResult.directStreamMsgsReceivedCount)
+        assert.ok(
+          workerResult.directStreamMsgsReceivedCount >= 2 * (totalNodes - 1),
+          `Node ${index} has unexpected number of direct messages, expected: ${2 * (totalNodes - 1)}`,
+        );
+      assert.ok(seenMessagesOk, `Node ${index} has unexpected number of seenMessages, expected: 22`);
     });
 
     const report = generateTestReport(
