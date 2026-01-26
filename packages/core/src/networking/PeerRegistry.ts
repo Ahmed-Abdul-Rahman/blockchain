@@ -1,8 +1,9 @@
 import { logger } from '@dechat/common';
 import { PeerRegistryMetrics } from '../metrics/interfaces/PeerRegistryMetrics';
+import { now } from '../utils';
 import { PEER_ENTRY_TTL_MS, PEX_REQUEST_COOLDOWN_MS } from './configurations';
 import { PeerInfoLite } from './types';
-import { now, sampleList } from './utils';
+import { sampleList } from './utils';
 
 export class PeerRegistry {
   /** This nodes peerId */

@@ -3,7 +3,8 @@ import { GossipSub } from '@chainsafe/libp2p-gossipsub/dist/src';
 import { sha256 } from '@dechat/crypto';
 import { Libp2p, Message, ServiceMap, transportSymbol } from '@libp2p/interface';
 import { delay, random } from 'es-toolkit';
-import { GossipSubPropagation } from '../../src/data-propagation/GossipSubPropagation';
+import { GossipSubPropagation } from '../../src/data-propagation/broadcast/GossipSubPropagation';
+import { DirectStreamPropagation } from '../../src/data-propagation/direct/DirectStreamPropagation';
 import { NoopGossipMetrics } from '../../src/metrics/noop/NoopGossipSubPropagationMetrics';
 import { PeerExchangeService } from '../../src/networking/PeerExchangeService';
 import { createNode } from '../../src/node';
@@ -21,6 +22,7 @@ const percentile = (xs: number[], p: number): number => {
 
 const GossipPropTopicA = '/deChat/v1/test-chat-a';
 const GossipPropTopicB = '/deChat/v1/test-chat-b';
+const DirectStreamTopic = '/deChat/v1/direct';
 const latencies: number[] = [];
 
 let terminateThread = false;
@@ -29,6 +31,7 @@ let ttfvp: number | null = null;
 let peerExchangeService: PeerExchangeService | null = null;
 let checkTimer: NodeJS.Timeout | null = null;
 let selfPeerId: string | null = null;
+let directStreamMsgsReceivedCount = 0;
 
 const getStatistics = (
   node: Libp2p<ServiceMap>,
@@ -48,6 +51,7 @@ const getStatistics = (
       topic: key,
       seen: gossipSeenMessages.get(key)?.size ?? 0,
     })),
+    directStreamMsgsReceivedCount,
   };
 };
 
@@ -143,6 +147,10 @@ const runNode = async () => {
   propagation.subscribe(GossipPropTopicA, (message, ctx) => {});
   propagation.subscribe(GossipPropTopicB, (message, ctx) => {});
 
+  const directStream = new DirectStreamPropagation<string>(node, DirectStreamTopic);
+
+  directStream.onReceive((message) => directStreamMsgsReceivedCount++);
+
   parentPort?.on('message', async (message) => {
     if (message.type === 'statistics')
       parentPort?.postMessage({
@@ -150,7 +158,7 @@ const runNode = async () => {
         stats: getStatistics(node, pexService, propagation),
       });
     else if (message.type === 'produce_messages') {
-      for (let j = 0; j < 2; j++) {
+      for (let j = 1; j <= 2; j++) {
         for (let i = 1; i <= 2; i++) {
           const payloadA = { message: `Hello ${i} from: ${node.peerId.toString()}` };
           publisMessage(node, propagation, payloadA, GossipPropTopicA);
@@ -158,6 +166,12 @@ const runNode = async () => {
           const payloadB = `Hello ${i} from: ${node.peerId.toString()}`;
           publisMessage(node, propagation, payloadB, GossipPropTopicB);
         }
+        pexService.peerRegistry.getPeers().forEach((peerId) => {
+          const selfPeerId = node.peerId.toString();
+          const payload = `Hello ${j} from ${selfPeerId}`;
+          const id = sha256(payload);
+          directStream.send(peerId, { id, payload, from: selfPeerId, timestamp: Date.now() });
+        });
       }
     } else if (message.type === 'terminate') {
       terminateThread = true;

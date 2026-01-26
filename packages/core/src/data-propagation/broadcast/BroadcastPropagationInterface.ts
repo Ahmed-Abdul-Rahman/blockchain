@@ -1,6 +1,6 @@
-import { PropagatedMessage, PropagationContext } from './types';
+import { PropagatedMessage, PropagationContext } from '../types';
 
-export interface DataPropagationInterface {
+export interface BroadcastPropagationInterface {
   /**
    * Publish data to the network
    */
@@ -22,7 +22,7 @@ export interface DataPropagationInterface {
   /**
    * clear all the messages in a given topic or if topic not provided clears all messages of all topics.
    */
-  clearMessages(topic?: string): void;
+  clearMessages?(topic?: string): void;
 
   /**
    * Shutdown / cleanup

@@ -4,6 +4,19 @@ Used to keep track of what was implemented.
 
 ---
 
+**Session:** 2026-26-01  
+**Branch:** improvements/optimizing-code, metrics/basic-implementation, refactoring/peer-discovery
+
+## What I just did
+
+- Refactored code, organizing the core package folder to make it a layered architecture implementation.
+- Simplified the node.ts createNode method.
+- Moved the core p2p network logic to networking folder.
+- Added Basic Metrics implementation for core classes.
+- Refactored Peer discovery logic and moved it to a seperate PeerDiscoveryManager Class.
+- Created DataPropagationInterface and added a GossipSubDataPropagation implementation.
+- Added another interop test for GossipSubDataPropagation implementation using the nodeWorkerDataProp
+
 **Session:** 2025-12-07
 **Branch:** InterOp/Adding-interoperability-tests
 

@@ -5,11 +5,11 @@ import { Libp2p, Message, SignedMessage } from '@libp2p/interface';
 import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
-import { GossipSubPropagationMetrics } from '../metrics/interfaces/GossipSubPropagationMetrics';
-import { DataPropagationInterface } from './DataPropagationInterface';
-import { PropagatedMessage, PropagationContext } from './types';
+import { GossipSubPropagationMetrics } from '../../metrics/interfaces/GossipSubPropagationMetrics';
+import { PropagatedMessage, PropagationContext } from '../types';
+import { BroadcastPropagationInterface } from './BroadcastPropagationInterface';
 
-export class GossipSubPropagation implements DataPropagationInterface {
+export class GossipSubPropagation implements BroadcastPropagationInterface {
   private node: Libp2p;
 
   private pubsub: GossipSub;

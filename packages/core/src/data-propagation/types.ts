@@ -1,7 +1,7 @@
 import { PeerId } from '@libp2p/interface';
 
 export interface PropagatedMessage<T> {
-  /** content hash or UUID */
+  /** payload content hash or UUID */
   id: string;
   /** payload message to be sent */
   payload: T;
@@ -18,6 +18,6 @@ export interface PropagationContext {
   from: PeerId;
   /** Timestamp at which this message was received */
   receivedAt: number;
-  /** GossipSub Topic on which the message is received*/
-  topic: string;
+  /** Optional GossipSub Topic on which the message is received*/
+  topic?: string;
 }

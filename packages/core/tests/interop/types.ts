@@ -9,6 +9,7 @@ export type WorkerResult = {
   latencyP95: number;
   msgsObserved: number;
   seenMessages?: Array<{ topic: string; seen: number }>;
+  directStreamMsgsReceivedCount?: number;
 };
 
 export type expectedWorkerResult = {

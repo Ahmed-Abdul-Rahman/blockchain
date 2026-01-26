@@ -6,10 +6,10 @@ import { createHash } from 'crypto';
 import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { AuthMetrics } from '../metrics/interfaces/AuthMetrics';
+import { now, readFromStream, writeToStream } from '../utils';
 import { PeerExchangeService } from './PeerExchangeService';
 import { AUTH_PROTOCOL, NETWORK_ID } from './protocols';
 import { AuthSignMessage, AuthSignResponse, NodeKey } from './types';
-import { now, readFromStream, writeToStream } from './utils';
 
 const hash = (input: string): string => sha256(input);
 
