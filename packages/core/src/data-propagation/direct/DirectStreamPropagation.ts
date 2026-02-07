@@ -1,17 +1,18 @@
+/** biome-ignore-all lint/suspicious/noExplicitAny: <Need a generic DirectStreamPropagation Implementation not tied to any specific message type> */
 import { IncomingStreamData, Libp2p, PeerId } from '@libp2p/interface';
 import { peerIdFromString } from '@libp2p/peer-id';
 import { now, readMessagesFromStream, writeToStream } from '../../utils';
 import { PropagatedMessage, PropagationContext } from '../types';
 import { DirectPropagationInterface } from './DirectPropagationInterface';
 
-export class DirectStreamPropagation<T> implements DirectPropagationInterface<T> {
+export class DirectStreamPropagation implements DirectPropagationInterface {
   private readonly node: Libp2p;
 
   /** Procotol used for Streaming */
   private readonly protocol: string;
 
   /** Handler function that gets executed once message is received */
-  private handler?: (message: PropagatedMessage<T>, ctx: PropagationContext) => void;
+  private handler?: (message: PropagatedMessage<any>, ctx: PropagationContext) => void;
 
   /** Maximum message length that can be read */
   private readonly maxMessageBytes: number;
@@ -27,7 +28,7 @@ export class DirectStreamPropagation<T> implements DirectPropagationInterface<T>
     this.node.handle(protocol, this.handleIncomingStream.bind(this));
   }
 
-  private async handleIncomingStream({ stream, connection }: IncomingStreamData) {
+  private async handleIncomingStream<T>({ stream, connection }: IncomingStreamData) {
     if (this.stopped) return;
     try {
       await readMessagesFromStream(
@@ -43,7 +44,7 @@ export class DirectStreamPropagation<T> implements DirectPropagationInterface<T>
     }
   }
 
-  async send(peerId: PeerId | string, message: PropagatedMessage<T>): Promise<void> {
+  async send<T>(peerId: PeerId | string, message: PropagatedMessage<T>): Promise<void> {
     if (this.stopped) {
       throw new Error('DirectStreamPropagation is stopped');
     }
@@ -52,7 +53,7 @@ export class DirectStreamPropagation<T> implements DirectPropagationInterface<T>
     await writeToStream(stream, message);
   }
 
-  onReceive(handler: (message: PropagatedMessage<T>, ctx: PropagationContext) => void): void {
+  onReceive<T>(handler: (message: PropagatedMessage<T>, ctx: PropagationContext) => void): void {
     this.handler = handler;
   }
 

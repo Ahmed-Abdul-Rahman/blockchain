@@ -1,7 +1,7 @@
 # Next Steps (for Future Me)
 
-**Last session:** 2026-26-01  
-**Branch:** feature/direct-stream-propagation
+**Last session:** 2026-07-02
+**Branch:** feature/data-replication
 
 ---
 
@@ -11,15 +11,20 @@
 - Created DirectPropagationInterface and DirectStreamPropagation class for implementation.
 - Modified interop test for adding DirectStreamPropagation test
 - Renamed DataPropagationInterface to BroadcastPropagationInterface.
+- Implemented data replication strategy and replica storage strategy
+
+
+## What I am doing
+Implement data replication and data propagation mechanism between peers in the network. (This should be an in-built functionality of the core package, and implement it as a layer on top of the existing core implementation. It should be pluggable i.e replaceable with another data replication and propagation mechanism)
 
 ## What problem I was solving
 
 - Adding data propagation mechanisms
+- Adding data replicatiom mechanisms
 
 ## What to do next (in order)
-
-1. Implement data replication and data propagation mechanism between peers in the network. (This should be an in-built functionality of the core package, and implement it as a layer on top of the existing core implementation. It should be pluggable i.e replaceable with another data replication and propagation mechanism)
-2. Need to come up with better Connection Manager strategy (Maintaining min and max connections for each peer) Latest Libp2p version 3.x.x has support for autoDial and minConnections in the connection Manager config check that out.
+1. Implement Anti-Entropy data convergence mechanism 
+3. Need to come up with better Connection Manager strategy (Maintaining min and max connections for each peer) Latest Libp2p version 3.x.x has support for autoDial and minConnections in the connection Manager config check that out.
 
 ## Random Improvements/Enhancements/TODO List
 

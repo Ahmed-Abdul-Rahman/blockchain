@@ -1,7 +1,7 @@
 import { Worker } from 'node:worker_threads';
 
 export type WorkerResult = {
-  me?: string;
+  me?: string | null;
   verified: number;
   connections: number;
   ttfvpMs: number; // time-to-first-verified-peer
@@ -10,6 +10,7 @@ export type WorkerResult = {
   msgsObserved: number;
   seenMessages?: Array<{ topic: string; seen: number }>;
   directStreamMsgsReceivedCount?: number;
+  replicaCount?: number;
 };
 
 export type expectedWorkerResult = {
