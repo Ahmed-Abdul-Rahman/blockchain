@@ -2,7 +2,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sampleIndices } from '@dechat/common';
 import { delay } from 'es-toolkit';
-import { isInPercentRange } from './helper';
+import { isInPercentRange } from '../helper';
 import {
   AggregatedResult,
   RunWorkersScenario,
@@ -10,12 +10,12 @@ import {
   WorkerDataConfig,
   WorkerDetails,
   WorkerResult,
-} from './types';
+} from '../types';
 import { aggregateResults, createWorker, postMessageToWorkers, terminateWorker, terminateWorkers } from './workerUtils';
 
 const filename = fileURLToPath(import.meta.url);
-const nodeWorkerPath = resolve(dirname(filename), './nodeWorker.js');
-const nodeWorkerDataPropPath = resolve(dirname(filename), './nodeWorkerData.js');
+const nodeWorkerPath = resolve(dirname(filename), '../childThread', '/nodeWorker.js');
+const nodeWorkerDataPropPath = resolve(dirname(filename), '../childThread', './nodeWorkerData.js');
 
 export const setupScenario = (
   runWorkersScenario: RunWorkersScenario,

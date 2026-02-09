@@ -7,7 +7,7 @@ import {
   simulateBurstPeersAtStartUpWithPropagationAndReplication,
   simulatePeerChurn,
   simulateStaggeredPeersAtStartUp,
-} from './InterOpScenarios';
+} from './mainThread/InterOpScenarios';
 import { AggregatedResult, TestReport } from './types';
 
 const totalNodesArg: number = parseArg('nodes');
@@ -56,7 +56,7 @@ const printTestReport = (report: TestReport): void => {
   console.log('='.repeat(80) + '\n');
 };
 
-describe.skip('P2P Network Integration StartUp Tests', () => {
+describe('P2P Network Integration StartUp Tests', () => {
   it(`Burst startup of ${totalNodesArg ?? 12} nodes at once`, async () => {
     const totalNodes = totalNodesArg ?? 12;
     const runDurationSec = runDurationSecArg ?? 300;
@@ -142,7 +142,7 @@ describe.skip('P2P Network Integration StartUp Tests', () => {
   });
 });
 
-describe.skip('P2P Network Integration Stability Tests', () => {
+describe('P2P Network Integration Stability Tests', () => {
   it(`Peer Churn - Random peers drop and rejoin`, async () => {
     const totalNodes = totalNodesArg ?? 10;
     const runDurationSec = runDurationSecArg ?? 300;
@@ -184,7 +184,7 @@ describe.skip('P2P Network Integration Stability Tests', () => {
   });
 });
 
-describe.skip('Interop - Data Propagation Tests', () => {
+describe('Interop - Data Propagation Tests', () => {
   it(`should propagate messages to all peers without duplicates and send direct stream messages`, async () => {
     const totalNodes = totalNodesArg ?? 12;
     const runDurationSec = runDurationSecArg ?? 300;
@@ -267,6 +267,7 @@ describe('Interop - Data Replication Tests', () => {
         passed = false;
         console.log(`⚠️  Node ${index} has ${workerResult.seenMessages} expected: 22`);
       }
+      assert.ok(seenMessagesOk, `Node ${index} has unexpected number of seenMessages, expected: 22`);
       if (workerResult.directStreamMsgsReceivedCount)
         assert.ok(
           workerResult.directStreamMsgsReceivedCount >= 2 * (totalNodes - 1),
@@ -277,7 +278,11 @@ describe('Interop - Data Replication Tests', () => {
           workerResult.replicaCount === 6 * totalNodes,
           `Node ${index} has unexpected number of replicated messages, expected: ${6 * totalNodes}`,
         );
-      assert.ok(seenMessagesOk, `Node ${index} has unexpected number of seenMessages, expected: 22`);
+      if (workerResult.replicaDataDiff)
+        assert.ok(
+          workerResult.replicaDataDiff.length === 0,
+          `Node ${index} does not have complete number of replicated data, expected more: ${workerResult.replicaDataDiff.length}`,
+        );
     });
 
     const report = generateTestReport(

@@ -3,7 +3,7 @@ import { PeerId } from '@libp2p/interface';
 import { DirectPropagationInterface } from '../data-propagation/direct/DirectPropagationInterface';
 import { PropagatedMessage } from '../data-propagation/types';
 import { SimplePeerScorer } from '../networking/SimplePeerScorer';
-import { ReplicaStore } from '../replica-store/types';
+import { ReplicaStoreInterface } from '../replica-store/ReplicaStoreInterface';
 import { now } from '../utils';
 import { ContentHashStrategy } from './content-hash/types';
 import { DataReplicationInterface } from './DataReplicationInterface';
@@ -13,7 +13,7 @@ export class KReplicaContentHashReplication implements DataReplicationInterface 
   public constructor(
     private readonly selfPeerId: PeerId,
     private readonly hashStrategy: ContentHashStrategy,
-    private readonly storage: ReplicaStore,
+    private readonly storage: ReplicaStoreInterface,
     private readonly serializer: DataSerializer,
     private readonly directPropagation: DirectPropagationInterface,
     private readonly peerScorer: SimplePeerScorer,

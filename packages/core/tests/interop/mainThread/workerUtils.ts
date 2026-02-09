@@ -1,6 +1,6 @@
 import { Worker } from 'node:worker_threads';
-import { average, percentile } from './helper';
-import { AggregatedResult, WorkerData, WorkerDetails, WorkerResult } from './types';
+import { average, percentile } from '../helper';
+import { AggregatedResult, WorkerData, WorkerDetails, WorkerResult } from '../types';
 
 export const aggregateResults = (results: WorkerResult[]): AggregatedResult => {
   const connections = results.map((r) => r.connections);

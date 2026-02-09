@@ -1,7 +1,15 @@
-import { ReplicaStore } from './types';
+import { DataSerializer } from '../data-replication/types';
+import { ReplicaStoreInterface } from './ReplicaStoreInterface';
 
-export class InMemoryReplicaStore implements ReplicaStore {
-  private readonly storage = new Map<string, Uint8Array>();
+export class InMemoryReplicaStore implements ReplicaStoreInterface {
+  private readonly storage: Map<string, Uint8Array>;
+
+  serializer: DataSerializer;
+
+  constructor(dataSerailizer: DataSerializer) {
+    this.storage = new Map<string, Uint8Array>();
+    this.serializer = dataSerailizer;
+  }
 
   async has(hash: string): Promise<boolean> {
     return this.storage.has(hash);
@@ -21,6 +29,14 @@ export class InMemoryReplicaStore implements ReplicaStore {
 
   async keys(): Promise<readonly string[]> {
     return Array.from(this.storage.keys());
+  }
+
+  async values(): Promise<readonly Uint8Array[]> {
+    return Array.from(this.storage.values());
+  }
+
+  async entries(): Promise<MapIterator<[string, Uint8Array<ArrayBufferLike>]>> {
+    return this.storage.entries();
   }
 
   async size(): Promise<number> {

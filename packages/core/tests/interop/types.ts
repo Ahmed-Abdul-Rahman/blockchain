@@ -11,6 +11,7 @@ export type WorkerResult = {
   seenMessages?: Array<{ topic: string; seen: number }>;
   directStreamMsgsReceivedCount?: number;
   replicaCount?: number;
+  replicaDataDiff?: Array<unknown>;
 };
 
 export type expectedWorkerResult = {

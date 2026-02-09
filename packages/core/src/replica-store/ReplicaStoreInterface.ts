@@ -1,6 +1,6 @@
-import { ContentHash } from '../data-replication/types';
+import { ContentHash, DataSerializer } from '../data-replication/types';
 
-export interface ReplicaStore {
+export interface ReplicaStoreInterface {
   /**
    * Checks if the data associated with a specific hash exists in the store.
    * @param hash - The unique content-addressable identifier.
@@ -39,6 +39,18 @@ export interface ReplicaStore {
   keys: () => Promise<readonly ContentHash[] | AsyncIterable<ContentHash>>;
 
   /**
+   * Returns a list of all Uint8Array data currently held in the store.
+   * For very large stores, returns an AsyncIterable instead.
+   */
+  values: () => Promise<readonly Uint8Array[] | AsyncIterable<Uint8Array>>;
+
+  /**
+   * Returns a MapIterator of all entries currently held in the store.
+   * For very large stores, returns an AsyncIterable instead.
+   */
+  entries: () => Promise<MapIterator<[string, Uint8Array<ArrayBufferLike>]>>;
+
+  /**
    * Clears all entries from the store.
    * Useful for cache resets or node teardowns.
    */
@@ -53,4 +65,6 @@ export interface ReplicaStore {
    * Closes the storage engine
    */
   close: () => Promise<void>;
+
+  serializer: DataSerializer;
 }
