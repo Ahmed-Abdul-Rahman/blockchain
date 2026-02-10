@@ -7,7 +7,7 @@ import {
   simulateBurstPeersAtStartUpWithPropagationAndReplication,
   simulatePeerChurn,
   simulateStaggeredPeersAtStartUp,
-} from './mainThread/InterOpScenarios';
+} from './InterOpScenarios';
 import { AggregatedResult, TestReport } from './types';
 
 const totalNodesArg: number = parseArg('nodes');
@@ -193,7 +193,7 @@ describe('Interop - Data Propagation Tests', () => {
     const networkId = networkIdArg ?? 'benchnet-1';
     const bootstrapMultiaddrs = [];
 
-    console.log('\n🚀 Starting Burst Startup Test...');
+    console.log('\n🚀 Starting Data Propagation Test');
     console.log(`   Nodes: ${totalNodes}`);
     console.log(`   Duration: ${runDurationSec}s`);
     console.log(`   Message Rate: ${messageRate}/s\n`);
@@ -244,7 +244,7 @@ describe('Interop - Data Replication Tests', () => {
     const networkId = networkIdArg ?? 'benchnet-1';
     const bootstrapMultiaddrs = [];
 
-    console.log('\n🚀 Starting Burst Startup Test...');
+    console.log('\n🚀 Starting Data Replication Test');
     console.log(`   Nodes: ${totalNodes}`);
     console.log(`   Duration: ${runDurationSec}s`);
     console.log(`   Message Rate: ${messageRate}/s\n`);
@@ -285,13 +285,7 @@ describe('Interop - Data Replication Tests', () => {
         );
     });
 
-    const report = generateTestReport(
-      'GossipSub Data Propagation',
-      totalNodes,
-      runDurationSec,
-      aggregatedResults,
-      passed,
-    );
+    const report = generateTestReport('Data replication Test', totalNodes, runDurationSec, aggregatedResults, passed);
     printTestReport(report);
   });
 });
