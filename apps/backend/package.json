@@ -19,7 +19,7 @@
     "@dechat/common": "*",
     "@dechat/core": "*",
     "@dechat/crypto": "*",
-    "axios": "^1.7.9",
+    "axios": "^1.15.0",
     "body-parser": "^1.20.3",
     "eventid": "^2.0.1",
     "express": "^4.21.2",
