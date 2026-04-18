@@ -26,13 +26,13 @@ interface Node {
   publicKey: KeyObject | null;
 }
 
-class BlockChain {
+export class Blockchain {
   chain: Block[];
   pendingTransactions: Transaction[];
   currentNode: Node;
   networkNodes: Node[];
 
-  private static _instance: BlockChain;
+  private static _instance: Blockchain;
 
   private constructor() {
     this.chain = [];
@@ -42,7 +42,7 @@ class BlockChain {
     this.networkNodes = [];
   }
 
-  public static get Instance(): BlockChain {
+  public static get Instance(): Blockchain {
     return this._instance || (this._instance = new this());
   }
 
@@ -175,4 +175,4 @@ class BlockChain {
   }
 }
 
-export const bytecoin = BlockChain.Instance;
+export const bytecoin = Blockchain.Instance;

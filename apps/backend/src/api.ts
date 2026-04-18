@@ -1,7 +1,7 @@
-import { bytecoin } from '@dechat/blockchain';
-import axios, { AxiosResponse } from 'axios';
+import { Blockchain, bytecoin } from '@dechat/blockchain';
 import crypto, { KeyObject } from 'crypto';
 import { Request, Response } from 'express';
+import ky from 'ky';
 
 import { initiateChallenge, signMessage } from './cryptoUtils';
 
@@ -20,14 +20,16 @@ export const postTransactionBroadcast = (req: Request, res: Response): void => {
   const newTransaction = bytecoin.createNewTransaction(amount, data, senderAddress, recipientAddress);
   bytecoin.addTransactionToPendingTransactions(newTransaction);
 
-  const transactionRequestPromises: Promise<AxiosResponse>[] = [];
+  const transactionRequestPromises: Promise<unknown>[] = [];
   bytecoin.networkNodes.forEach(({ nodeAddress }) => {
     const transactionRequest = {
       method: 'post',
       url: nodeAddress + '/transaction',
       data: { newTransaction },
     };
-    transactionRequestPromises.push(axios(transactionRequest));
+    transactionRequestPromises.push(
+      ky(transactionRequest.url, { method: transactionRequest.method, json: transactionRequest.data }),
+    );
   });
 
   Promise.all(transactionRequestPromises).then(() => {
@@ -44,14 +46,16 @@ export const getMineBlock = (req: Request, res: Response): void => {
   const blockHash = bytecoin.hashBlock(previousBlockHash, currentBlockData, nonce);
   const newBlock = bytecoin.createNewBlock(nonce, previousBlockHash, blockHash);
 
-  const blocksPromises: Promise<AxiosResponse>[] = [];
+  const blocksPromises: Promise<unknown>[] = [];
   bytecoin.networkNodes.forEach(({ nodeAddress }) => {
     const receiveBlockRequest = {
       method: 'post',
       url: nodeAddress + '/receive-new-block',
       data: { newBlock },
     };
-    blocksPromises.push(axios(receiveBlockRequest));
+    blocksPromises.push(
+      ky(receiveBlockRequest.url, { method: receiveBlockRequest.method, json: receiveBlockRequest.data }),
+    );
   });
 
   Promise.all(blocksPromises)
@@ -61,7 +65,10 @@ export const getMineBlock = (req: Request, res: Response): void => {
         url: bytecoin.currentNode.nodeAddress + '/transaction/broadcast',
         data: { ...bytecoin.getMiningRewardTransaction() },
       };
-      return axios(broadcastTransactionRequest);
+      return ky(broadcastTransactionRequest.url, {
+        method: broadcastTransactionRequest.method,
+        json: broadcastTransactionRequest.data,
+      });
     })
     .then(() => {
       res.json({
@@ -102,14 +109,16 @@ export const postRegisterAndBroadcastNode = async (
       publicKey: crypto.createPublicKey(newNodePublicKey),
     });
 
-  const registerNodePromises: Promise<AxiosResponse>[] = [];
+  const registerNodePromises: Promise<unknown>[] = [];
   bytecoin.networkNodes.forEach(({ nodeAddress }) => {
     const registerNodeRequest = {
       method: 'post',
       url: nodeAddress + '/register-node',
       data: { newNodeUrl, publicKey: newNodePublicKey },
     };
-    registerNodePromises.push(axios(registerNodeRequest));
+    registerNodePromises.push(
+      ky(registerNodeRequest.url, { method: registerNodeRequest.method, json: registerNodeRequest.data }),
+    );
   });
 
   Promise.all(registerNodePromises)
@@ -121,7 +130,7 @@ export const postRegisterAndBroadcastNode = async (
           allNetworkNodes: [...bytecoin.networkNodes, bytecoin.getCurrentNode()],
         },
       };
-      return axios(bulkRegisterRequest);
+      return ky(bulkRegisterRequest.url, { method: bulkRegisterRequest.method, json: bulkRegisterRequest.data });
     })
     .then(() => {
       res.json({ note: 'New node registered with network successfully.' });
@@ -157,13 +166,13 @@ export const postRegisterNodesBulk = (req: Request, res: Response): void => {
 };
 
 export const getConsensus = (req: Request, res: Response): void => {
-  const requestPromises: Promise<AxiosResponse>[] = [];
+  const requestPromises: Promise<unknown>[] = [];
   bytecoin.networkNodes.forEach(({ nodeAddress }) => {
     const request = {
       method: 'get',
       url: nodeAddress + '/blockchain',
     };
-    requestPromises.push(axios(request));
+    requestPromises.push(ky(request.url, { method: request.method }).then((r) => r.json()));
   });
 
   Promise.all(requestPromises).then((blockchainsData) => {
@@ -171,7 +180,8 @@ export const getConsensus = (req: Request, res: Response): void => {
     let maxChainLength = currentChainLength;
     let newLongestChain = bytecoin.chain;
     let newPendingTransactions = bytecoin.pendingTransactions;
-    blockchainsData.forEach(({ data: blockchain }) => {
+    blockchainsData.forEach((blockchainInstance) => {
+      const blockchain = blockchainInstance as Blockchain;
       if (blockchain.chain.length > maxChainLength) {
         maxChainLength = blockchain.chain.length;
         newLongestChain = blockchain.chain;

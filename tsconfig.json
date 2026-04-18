@@ -2,7 +2,7 @@
   "compilerOptions": {
     "module": "ESNext",
     "target": "esnext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "outDir": "dist",
     "declaration": true,
     "sourceMap": true,
@@ -13,6 +13,7 @@
     "skipLibCheck": true,
     "noImplicitAny": false,
     "allowSyntheticDefaultImports": true,
-    "allowJs": true
+    "allowJs": true,
+    "types": ["node"]
   }
 }
