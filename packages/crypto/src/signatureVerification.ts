@@ -1,7 +1,12 @@
-import axios from 'axios';
 import crypto, { KeyObject } from 'crypto';
 import fs from 'fs';
+import ky from 'ky';
 import { Envelope } from './types';
+
+interface ChallengeResponse {
+  response: string;
+  publicKey: string;
+}
 
 export const encryptMessage = (message: string, nodePublicKey: KeyObject): string => {
   return crypto.publicEncrypt(nodePublicKey, Buffer.from(message)).toString('base64');
@@ -35,16 +40,19 @@ export const initiateChallenge = async (
 ): Promise<{ isValid: boolean; publicKey: string }> => {
   const challenge = crypto.randomBytes(32).toString('hex');
   try {
-    const response = await axios.post(`${nodeAddress}/challenge`, {
-      challenge,
-      publicKey: publicKey.export({ type: 'spki', format: 'pem' }),
-    });
+    const response = (await ky(`${nodeAddress}/challenge`, {
+      method: 'post',
+      json: {
+        challenge,
+        publicKey: publicKey.export({ type: 'spki', format: 'pem' }),
+      },
+    }).then((r) => r.json())) as ChallengeResponse;
 
     // Verify the challenge response
-    const isValid = verifySignature(challenge, response.data.response, response.data.publicKey);
+    const isValid = verifySignature(challenge, response.response, response.publicKey);
     if (isValid) {
       console.log(`Verified node: ${nodeAddress}`);
-      return { isValid: true, publicKey: response.data.publicKey };
+      return { isValid: true, publicKey: response.publicKey };
     } else {
       console.error(`Invalid response from node: ${nodeAddress}`);
       return { isValid: false, publicKey: '' };

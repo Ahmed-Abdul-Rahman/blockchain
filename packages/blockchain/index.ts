@@ -1,1 +1,1 @@
-export { bytecoin } from './src/Blockchain';
+export { Blockchain, bytecoin } from './src/Blockchain';

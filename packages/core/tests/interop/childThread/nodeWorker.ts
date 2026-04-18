@@ -1,6 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { parentPort, threadId, workerData } from 'node:worker_threads';
-import { GossipSub } from '@chainsafe/libp2p-gossipsub/dist/src';
+import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { Libp2p, Message, ServiceMap } from '@libp2p/interface';
 import { random } from 'es-toolkit';
 import { PeerExchangeService } from '../../../src/networking/PeerExchangeService';
