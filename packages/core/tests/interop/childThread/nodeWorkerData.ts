@@ -1,5 +1,5 @@
 import { parentPort, threadId, workerData } from 'node:worker_threads';
-import { GossipSub } from '@chainsafe/libp2p-gossipsub/dist/src';
+import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { sha256 } from '@dechat/crypto';
 import { Libp2p, Message, ServiceMap } from '@libp2p/interface';
 import { delay, differenceWith, random } from 'es-toolkit';

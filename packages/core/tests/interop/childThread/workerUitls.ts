@@ -1,6 +1,5 @@
-import { GossipSub } from '@chainsafe/libp2p-gossipsub/dist/src';
-import { random } from 'es-toolkit';
-import { Libp2p } from 'libp2p/dist/src';
+import { GossipSub } from '@chainsafe/libp2p-gossipsub';
+import { Libp2p } from 'libp2p';
 import { threadId, workerData } from 'worker_threads';
 import { GossipSubPropagation } from '../../../src/data-propagation/broadcast/GossipSubPropagation';
 import { DirectStreamPropagation } from '../../../src/data-propagation/direct/DirectStreamPropagation';
