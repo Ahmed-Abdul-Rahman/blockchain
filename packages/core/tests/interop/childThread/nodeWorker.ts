@@ -3,9 +3,9 @@ import { parentPort, threadId, workerData } from 'node:worker_threads';
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { Libp2p, Message, ServiceMap } from '@libp2p/interface';
 import { random } from 'es-toolkit';
-import { PeerExchangeService } from '../../src/networking/PeerExchangeService';
-import { createNode } from '../../src/node';
-import { WorkerData } from './types';
+import { PeerExchangeService } from '../../../src/networking/PeerExchangeService';
+import { createNode } from '../../../src/node';
+import { WorkerData, WorkerResult } from '../types';
 
 const percentile = (xs: number[], p: number): number => {
   if (xs.length === 0) return -1;
@@ -21,7 +21,7 @@ let peerExchangeService: PeerExchangeService | null = null;
 let checkTimer: NodeJS.Timeout | null = null;
 let selfPeerId: string | null = null;
 
-const getStatistics = (node: Libp2p<ServiceMap>, pexService: PeerExchangeService) => ({
+const getStatistics = (node: Libp2p<ServiceMap>, pexService: PeerExchangeService): WorkerResult => ({
   me: selfPeerId,
   verified: pexService.peerRegistry.getSize(),
   connections: node.getConnections().length,

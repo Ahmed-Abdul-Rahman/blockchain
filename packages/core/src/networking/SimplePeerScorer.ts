@@ -57,6 +57,16 @@ export class SimplePeerScorer {
   }
 
   /**
+   *  returns the top K peers whose score is the best in registry
+   * @returns {string[]}
+   */
+  getBestScorePeers(K: number): string[] {
+    const entries = [...this.scores.entries()].filter(([, score]) => score >= this.MIN_DIALBALE_SCORE);
+    entries.sort((a, b) => b[1] - a[1]);
+    return entries.slice(0, K).map(([peerId]) => peerId);
+  }
+
+  /**
    * soft policy: only connect to peers with score >= -2
    * @param peerId
    * @returns true if score greater than -2 otherwise false

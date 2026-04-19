@@ -14,8 +14,8 @@ import {
 import { aggregateResults, createWorker, postMessageToWorkers, terminateWorker, terminateWorkers } from './workerUtils';
 
 const filename = fileURLToPath(import.meta.url);
-const nodeWorkerPath = resolve(dirname(filename), './nodeWorker.js');
-const nodeWorkerDataPropPath = resolve(dirname(filename), './nodeWorkerDataProp.js');
+const nodeWorkerPath = resolve(dirname(filename), './childThread', './nodeWorker.js');
+const nodeWorkerDataPropPath = resolve(dirname(filename), './childThread', './nodeWorkerData.js');
 
 export const setupScenario = (
   runWorkersScenario: RunWorkersScenario,
@@ -184,6 +184,42 @@ export const simulateBurstPeersAtStartUpWithDataPropagation = (
     await delay(180_000);
     postMessageToWorkers(workers, { type: 'produce_messages' });
     await delay(130_000);
+    terminateWorkers(workers);
+    await Promise.all(terminationPromises);
+  };
+
+  const { scenarioResults } = setupScenario(scenario);
+  return scenarioResults;
+};
+
+export const simulateBurstPeersAtStartUpWithPropagationAndReplication = (
+  workerDataConfig: WorkerDataConfig,
+): Promise<AggregatedResult> => {
+  const scenario: RunWorkersScenario = async (workers, workerResults, handleComplete, handleWorkerError) => {
+    const terminationPromises: Promise<boolean>[] = [];
+    for (let i = 0; i < workerDataConfig.totalNodes; i++) {
+      const nodeSeed = `Test-StartUp-Worker-${i}`;
+      const workerData = {
+        index: i,
+        nodeSeed,
+        ...workerDataConfig,
+      } as WorkerData;
+
+      workers.push(
+        createWorker(
+          nodeWorkerDataPropPath,
+          workerData,
+          workerResults,
+          handleComplete,
+          handleWorkerError,
+          terminationPromises,
+        ),
+      );
+    }
+
+    await delay(180_000);
+    postMessageToWorkers(workers, { type: 'produce_messages_replication' });
+    await delay(180_000);
     terminateWorkers(workers);
     await Promise.all(terminationPromises);
   };
