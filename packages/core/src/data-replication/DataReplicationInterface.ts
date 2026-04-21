@@ -1,3 +1,4 @@
+import { ReplicationProtocolInterface } from './replication-protocol/ReplicationProtocolInterface';
 import { ContentHash } from './types';
 
 export interface DataReplicationInterface {
@@ -30,4 +31,9 @@ export interface DataReplicationInterface {
    * Optional eviction hook
    */
   evict?(contentHash: string): Promise<void>;
+
+  /**
+   * Replication protocol implementation to be used by this data replication
+   */
+  readonly replicationProtocol: ReplicationProtocolInterface;
 }

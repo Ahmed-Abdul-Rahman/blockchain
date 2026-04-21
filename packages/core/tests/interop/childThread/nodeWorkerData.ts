@@ -155,8 +155,17 @@ const runNode = async () => {
   const { pubsubTopic } = args;
   const onBoardingPeerTime = random(1, 10) * 1000 + random(1, 10) * 100;
 
-  const { node, pexService, nodePubsub, broadcastProp, directStream, dataReplication, replicaStore, nodeCleanUp } =
-    await configureNode(onBoardingPeerTime, DirectStreamProtocol, 12);
+  const {
+    node,
+    pexService,
+    nodePubsub,
+    broadcastProp,
+    directStream,
+    dataReplication,
+    replicaStore,
+    replicationManager,
+    nodeCleanUp,
+  } = await configureNode(onBoardingPeerTime, 12);
 
   await node.start();
 
@@ -168,18 +177,19 @@ const runNode = async () => {
   registerPubsub(pubsubTopic);
 
   broadcastProp.subscribe<GossipMessageA>(GossipPropTopicA, (message, ctx) => {
-    dataReplication.onRemoteDataReceived(message.payload, ctx.from.toString());
+    // let the replication protocol manager handle replication messages
+    replicationManager.handleIncomingBroadcast(message, ctx).catch(() => {});
     hashedMessages.set(message.id, message.payload);
   });
 
   broadcastProp.subscribe<GossipMessageB>(GossipPropTopicB, (message, ctx) => {
-    dataReplication.onRemoteDataReceived(message.payload, ctx.from.toString());
+    replicationManager.handleIncomingBroadcast(message, ctx).catch(() => {});
     hashedMessages.set(message.id, message.payload);
   });
 
-  directStream.onReceive<string>((message, ctx) => {
+  directStream.onReceive<string>(DirectStreamProtocol, (message, ctx) => {
     directStreamMsgsReceivedCount++;
-    dataReplication.onRemoteDataReceived(message.payload, ctx.from.toString());
+    replicationManager.handleIncomingDirect(message, ctx).catch(() => {});
     hashedMessages.set(message.id, message.payload);
   });
 
@@ -202,7 +212,7 @@ const runNode = async () => {
           const selfPeerId = node.peerId.toString();
           const payload = `Hello ${j} from ${selfPeerId}`;
           const id = sha256(payload);
-          directStream.send(peerId, { id, payload, from: selfPeerId, timestamp: Date.now() });
+          directStream.send(peerId, DirectStreamProtocol, { id, payload, from: selfPeerId, timestamp: Date.now() });
         });
       }
     } else if (message.type === 'produce_messages_replication') {
@@ -220,7 +230,7 @@ const runNode = async () => {
           const selfPeerId = node.peerId.toString();
           const payload = `Hello j:${j} from ${selfPeerId}`;
           const id = sha256(payload);
-          directStream.send(peerId, { id, payload, from: selfPeerId, timestamp: Date.now() });
+          directStream.send(peerId, DirectStreamProtocol, { id, payload, from: selfPeerId, timestamp: Date.now() });
           hashedMessages.set(id, payload);
           dataReplication.onLocalDataProduced(payload);
         });

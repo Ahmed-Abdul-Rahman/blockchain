@@ -5,6 +5,9 @@ import { GossipSubPropagation } from '../../../src/data-propagation/broadcast/Go
 import { DirectStreamPropagation } from '../../../src/data-propagation/direct/DirectStreamPropagation';
 import { Sha256ContentHashStrategy } from '../../../src/data-replication/content-hash/Sha256ContentHashStrategy';
 import { KReplicaContentHashReplication } from '../../../src/data-replication/KReplicaContentHashReplication';
+import { InflightRequestTracker } from '../../../src/data-replication/replication-protocol/InflightRequestTracker';
+import { ReplicationMessageProtocolManager } from '../../../src/data-replication/replication-protocol/ReplicationMessageProtocolManager';
+import { TransportSelector } from '../../../src/data-replication/replication-protocol/TransportSelector';
 import { getGenericDataSerailizer } from '../../../src/data-replication/serializers';
 import { NoopGossipMetrics } from '../../../src/metrics';
 import { PeerExchangeService } from '../../../src/networking/PeerExchangeService';
@@ -21,7 +24,6 @@ export const percentile = (xs: number[], p: number): number => {
 
 export const configureNode = async (
   onBoardingPeerTime: number,
-  directStreamProtocol: string,
   dataReplicaCount: number,
 ): Promise<{
   node: Libp2p;
@@ -32,6 +34,7 @@ export const configureNode = async (
   directStream: DirectStreamPropagation;
   replicaStore: InMemoryReplicaStore;
   dataReplication: KReplicaContentHashReplication;
+  replicationManager: ReplicationMessageProtocolManager;
   nodeCleanUp: () => void;
 }> => {
   const args = workerData as WorkerData;
@@ -47,7 +50,7 @@ export const configureNode = async (
 
   const broadcastProp = new GossipSubPropagation(node, new NoopGossipMetrics());
 
-  const directStream = new DirectStreamPropagation(node, directStreamProtocol);
+  const directStream = new DirectStreamPropagation(node);
 
   const contentHashing = new Sha256ContentHashStrategy();
 
@@ -65,6 +68,20 @@ export const configureNode = async (
     dataReplicaCount,
   );
 
+  // Replication protocol manager & inflight tracker
+  const inflight = new InflightRequestTracker({ baseDelayMs: 200, maxAttempts: 3 });
+  const transportSelector = new TransportSelector();
+
+  const replicationManager = new ReplicationMessageProtocolManager({
+    broadcast: broadcastProp,
+    direct: directStream,
+    inflightTracker: inflight,
+    transportSelector,
+  });
+
+  replicationManager.registerProtocol(dataReplication);
+  await replicationManager.start();
+
   console.log('Wroker thread: ', threadId, 'and index: ', index, ' started with peerId: ', node.peerId);
 
   return {
@@ -76,6 +93,7 @@ export const configureNode = async (
     directStream,
     replicaStore,
     dataReplication,
+    replicationManager,
     nodeCleanUp,
   };
 };

@@ -4,6 +4,30 @@ Used to keep track of what was implemented.
 
 ---
 
+**Last session:** 2026-07-02
+**Branch:** feature/data-replication
+
+---
+
+## What I did
+
+- Refactored DataPropagationInterface and split it into two categories (broadcast and direct)
+- Created DirectPropagationInterface and DirectStreamPropagation class for implementation.
+- Modified interop test for adding DirectStreamPropagation test
+- Renamed DataPropagationInterface to BroadcastPropagationInterface.
+- Implemented data replication strategy and replica storage strategy.
+- Added testcases for data replication.
+
+
+## What I was doing
+Implement data replication and data propagation mechanism between peers in the network. (This should be an in-built functionality of the core package, and implement it as a layer on top of the existing core implementation. It should be pluggable i.e replaceable with another data replication and propagation mechanism)
+
+## What problem I was solving
+
+- Adding data propagation mechanisms
+- Adding data replicatiom mechanisms
+
+
 **Session:** 2026-26-01  
 **Branch:** improvements/optimizing-code, metrics/basic-implementation, refactoring/peer-discovery
 

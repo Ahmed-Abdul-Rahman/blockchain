@@ -1,6 +1,6 @@
-## Design Principle
+# Design Principle
 
-Best Practices:
+## Best Practices:
 - Use robust discovery (DHTs or trusted bootstrap nodes).
 - Design for eventual consistency and idempotent operations.
 - Implement peer authentication and reputation systems to reduce abuse.
@@ -8,7 +8,7 @@ Best Practices:
 - Monitor network health and provide incentives for peers to stay online
 
 
-Data Replication Design choices:
+## Data Replication Design choices:
 - Storage-agnostic
 - Transport-agnostic
 - Consensus-agnostic
@@ -20,3 +20,14 @@ Conflict resolution and state convergence are delegated to higher-level protocol
 Replication decides what to store,
 Convergence ensures eventual correctness,
 ReplicaStore decides where and how data lives.
+
+### Which Data-Propagation strategy is used for replication:
+
+| Scenario            | Use Broadcast? | Use Direct? |
+| ------------------- | -------------- | ----------- |
+| New local data      | ✅ Announcement | ✅ K peers   |
+| Receiving duplicate | ❌              | ❌           |
+| Anti-entropy        | ❌              | ✅           |
+| Large payload sync  | ❌              | ✅           |
+| High churn network  | ⚠️ limited     | ✅           |
+| Stable mesh network | ✅              | ✅           |

@@ -8,6 +8,7 @@ import { now } from '../utils';
 import { ContentHashStrategy } from './content-hash/types';
 import { DataReplicationInterface } from './DataReplicationInterface';
 import { ContentHash, DataSerializer } from './types';
+import { ReplicationProtocolInterface } from './replication-protocol/ReplicationProtocolInterface';
 
 export class KReplicaContentHashReplication implements DataReplicationInterface {
   public constructor(
@@ -18,6 +19,7 @@ export class KReplicaContentHashReplication implements DataReplicationInterface 
     private readonly directPropagation: DirectPropagationInterface,
     private readonly peerScorer: SimplePeerScorer,
     private readonly replicaCount: number,
+    readonly replicationProtocol: ReplicationProtocolInterface,
   ) {}
 
   public readonly start = async (): Promise<void> => {};
@@ -56,10 +58,11 @@ export class KReplicaContentHashReplication implements DataReplicationInterface 
       timestamp: now(),
     } as PropagatedMessage<T>;
 
+    //TODO: currently sending to a dummy protocol refactor it to use replication protocol and handle it there
     await Promise.all(
       peers.map((peerId) =>
         this.directPropagation
-          .send(peerId, propagationMessage)
+          .send(peerId, 'Dummy', propagationMessage)
           .catch((error) => logger.error('Replication send failed to peer: ', peerId, ' ', error)),
       ),
     );
