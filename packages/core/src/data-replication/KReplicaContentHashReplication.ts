@@ -7,8 +7,8 @@ import { ReplicaStoreInterface } from '../replica-store/ReplicaStoreInterface';
 import { now } from '../utils';
 import { ContentHashStrategy } from './content-hash/types';
 import { DataReplicationInterface } from './DataReplicationInterface';
-import { ContentHash, DataSerializer } from './types';
 import { ReplicationProtocolInterface } from './replication-protocol/ReplicationProtocolInterface';
+import { ContentHash, DataSerializer } from './types';
 
 export class KReplicaContentHashReplication implements DataReplicationInterface {
   public constructor(

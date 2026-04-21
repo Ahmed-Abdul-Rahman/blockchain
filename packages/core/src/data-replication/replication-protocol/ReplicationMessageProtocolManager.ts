@@ -2,6 +2,8 @@ import { logger } from '@dechat/common';
 import { BroadcastPropagationInterface } from '../../data-propagation/broadcast/BroadcastPropagationInterface';
 import { DirectPropagationInterface } from '../../data-propagation/direct/DirectPropagationInterface';
 import { PropagatedMessage, PropagationContext } from '../../data-propagation/types';
+import { ReplicaStoreInterface } from '../../replica-store/ReplicaStoreInterface';
+import { ContentHashStrategy } from '../content-hash/types';
 import { InflightRequestTracker } from './InflightRequestTracker';
 import {
   ReplicationAnnounce,
@@ -12,8 +14,6 @@ import {
   ReplicationRequest,
 } from './ReplicationProtocolInterface';
 import { TransportSelector } from './TransportSelector';
-import { ContentHashStrategy } from '../content-hash/types';
-import { ReplicaStoreInterface } from '../../replica-store/ReplicaStoreInterface';
 
 export interface ReplicationManagerOptions {
   broadcast: BroadcastPropagationInterface;
