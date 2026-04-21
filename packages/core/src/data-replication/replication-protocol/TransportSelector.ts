@@ -1,9 +1,14 @@
 import { ReplicationMessageType } from './ReplicationProtocolInterface';
 
 export class TransportSelector {
-  // Enforce ANNOUNCE -> gossip, others -> direct
-  select(messageType: ReplicationMessageType): 'gossip' | 'direct' {
-    if (messageType === 'replication_announce') return 'gossip';
-    return 'direct';
-  }
+  private readonly rules: ReadonlyMap<ReplicationMessageType, 'gossip' | 'direct'> = new Map([
+    ['replication_announce', 'gossip'],
+    ['replication_request', 'direct'],
+    ['replication_content', 'direct'],
+    ['replication_error', 'direct'],
+  ]);
+
+  public readonly select = (messageType: ReplicationMessageType): 'gossip' | 'direct' => {
+    return this.rules.get(messageType) ?? 'direct';
+  };
 }

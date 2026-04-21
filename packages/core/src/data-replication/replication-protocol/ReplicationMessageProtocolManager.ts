@@ -4,6 +4,7 @@ import { DirectPropagationInterface } from '../../data-propagation/direct/Direct
 import { PropagatedMessage, PropagationContext } from '../../data-propagation/types';
 import { ReplicaStoreInterface } from '../../replica-store/ReplicaStoreInterface';
 import { ContentHashStrategy } from '../content-hash/types';
+import { ContentHash } from '../types';
 import { InflightRequestTracker } from './InflightRequestTracker';
 import {
   ReplicationAnnounce,
@@ -34,6 +35,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
   readonly directProp: DirectPropagationInterface;
   readonly broadcastProp: BroadcastPropagationInterface;
   readonly storage: ReplicaStoreInterface;
+
   maxAttempts: number = 3;
   baseDelayMs: number = 200;
 
@@ -54,6 +56,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
     let attempt = 0;
     while (true) {
       try {
+        logger.debug(`Attempt ${attempt + 1} for replication request`);
         return await fn();
       } catch (error) {
         attempt++;
@@ -75,13 +78,14 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
     };
   };
 
-  async announce(msg: ReplicationAnnounce, ctx: PropagationContext): Promise<void> {
-    const message: ReplicationAnnounce = {
+  public readonly announceToNetwork = async (hash: ContentHash): Promise<void> => {
+    const msg: ReplicationAnnounce = {
       type: 'replication_announce',
-      hash: msg.hash,
+      hash,
     };
-    await this.broadcastProp.publish(this.protocol, this.preparePayload(message));
-  }
+
+    await this.sendMessage(msg, undefined, 'topic:' + this.protocol);
+  };
 
   async onAnnounce(msg: PropagatedMessage<ReplicationAnnounce>, ctx?: PropagationContext): Promise<void> {
     const { hash } = msg.payload;
@@ -92,11 +96,11 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
 
     this.inflightTracker.acquire(hash);
     await this.executeWithRetry(async () => {
-      const request = {
+      const request: ReplicationRequest = {
         type: 'replication_request',
         hash,
       };
-      await this.directProp.send(from, this.protocol, this.preparePayload(request));
+      await this.sendMessage(request, from, this.protocol);
     })
       .catch((error) => logger.error('Request retry failed:', error))
       .finally(() => this.inflightTracker.release(hash));
@@ -113,7 +117,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
         hash,
         reason: 'not_found',
       };
-      await this.directProp.send(from, this.protocol, this.preparePayload(errorMessage));
+      await this.sendMessage(errorMessage, from, this.protocol);
       return;
     }
 
@@ -123,9 +127,9 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
       payload: data,
     };
 
-    await this.directProp
-      .send(from, this.protocol, this.preparePayload(content))
-      .catch((error) => logger.error('Failed sending content:', error));
+    await this.sendMessage(content, from, this.protocol).catch((error) =>
+      logger.error('Failed sending content:', error),
+    );
   }
 
   async onContent(msg: PropagatedMessage<ReplicationContent>, ctx?: PropagationContext): Promise<void> {
@@ -138,13 +142,23 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
     await this.storage.put(hash, msg.payload.payload);
   }
 
-  onError(msg: PropagatedMessage<ReplicationError>, ctx?: PropagationContext): Promise<void> {
-    throw new Error('Method not implemented.');
+  async onError(msg: PropagatedMessage<ReplicationError>, ctx?: PropagationContext): Promise<void> {
+    const { hash, reason } = msg.payload;
+
+    if (this.inflightTracker.isInflight(hash)) {
+      this.inflightTracker.release(hash);
+    }
+
+    logger.warn('[ReplicationError]', { hash, reason });
+  }
+  async start(): Promise<void> {
+    logger.info('[ReplicationProtocol] Started:', this.selfPeerId);
   }
 
-  async start(): Promise<void> {}
-
-  async stop(): Promise<void> {}
+  async stop(): Promise<void> {
+    await this.directProp.stop?.();
+    logger.info('[ReplicationProtocol] Stopped:', this.selfPeerId);
+  }
 
   async handleIncomingBroadcast<T>(message: PropagatedMessage<T>, ctx?: PropagationContext): Promise<void> {
     try {
@@ -194,8 +208,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
   }
 
   async sendMessage(msg: ReplicationMessage, peerId?: string, topic?: string): Promise<void> {
-    const selector = this.transportSelector ?? new TransportSelector();
-    const transport = selector.select(msg.type);
+    const transport = this.transportSelector.select(msg.type);
 
     const propagated = {
       id: msg.hash ?? '',

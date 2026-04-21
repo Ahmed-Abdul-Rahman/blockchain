@@ -43,6 +43,9 @@ export interface ReplicationProtocolInterface {
   storage: ReplicaStoreInterface;
 
   protocol: string;
+
+  announceToNetwork(hash: ContentHash): Promise<void>;
+
   /**
    * Handles an incoming replication announce message.
    * @param msg
