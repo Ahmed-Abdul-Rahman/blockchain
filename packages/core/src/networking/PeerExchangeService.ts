@@ -2,7 +2,7 @@ import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { logger } from '@dechat/common';
 import { Libp2p, Message, PeerId, Stream } from '@libp2p/interface';
 import bloomFilters from 'bloom-filters';
-import { delay } from 'es-toolkit';
+import { delay, random } from 'es-toolkit';
 import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
@@ -171,13 +171,15 @@ export class PeerExchangeService {
               addresses: this.node.getMultiaddrs().map((multiAddr) => multiAddr.toString()),
             },
           };
-          await delay(GOSSIP_INTERVAL_MS);
           await publishWithRetry(this.pubsub, PEX_TOPIC, uint8ArrayFromString(JSON.stringify(msg)), {
             retries: 7,
             baseDelay: GOSSIP_INTERVAL_MS,
           });
           logger.trace('Published peers info on pex topic');
         }
+        const baseDelay = peers.length ? GOSSIP_INTERVAL_MS : 1000;
+        const jitter = random(500); // Add random jitter to avoid thundering herd problem or sync storms across nodes
+        await delay(baseDelay + jitter); // Delay always to avoid CPU consumption when no peers present
       } catch (error: unknown) {
         logger.warn('Error occured while publishing a gossip message to a peer');
         logger.debug(error);

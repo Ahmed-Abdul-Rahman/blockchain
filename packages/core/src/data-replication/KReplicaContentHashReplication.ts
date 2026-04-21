@@ -1,7 +1,4 @@
 import { logger } from '@dechat/common';
-import { PeerId } from '@libp2p/interface';
-import { DirectPropagationInterface } from '../data-propagation/direct/DirectPropagationInterface';
-import { SimplePeerScorer } from '../networking/SimplePeerScorer';
 import { ReplicaStoreInterface } from '../replica-store/ReplicaStoreInterface';
 import { ContentHashStrategy } from './content-hash/types';
 import { DataReplicationInterface } from './DataReplicationInterface';
@@ -10,13 +7,9 @@ import { ContentHash, DataSerializer } from './types';
 
 export class KReplicaContentHashReplication implements DataReplicationInterface {
   public constructor(
-    private readonly selfPeerId: PeerId,
     private readonly hashStrategy: ContentHashStrategy,
     private readonly storage: ReplicaStoreInterface,
     private readonly serializer: DataSerializer,
-    private readonly directPropagation: DirectPropagationInterface,
-    private readonly peerScorer: SimplePeerScorer,
-    private readonly replicaCount: number,
     readonly replicationProtocol: ReplicationProtocolInterface,
   ) {}
 
@@ -28,6 +21,7 @@ export class KReplicaContentHashReplication implements DataReplicationInterface 
     await this.replicationProtocol.stop();
   };
 
+  // TODO: Implement a Score based Top-K or Hash based Deterministic selection of a peer to replicate the content
   public readonly shouldReplicate = (_hash: ContentHash, _fromPeer?: string): boolean => true;
 
   public readonly onLocalDataProduced = async <T>(data: T): Promise<void> => {
@@ -54,8 +48,19 @@ export class KReplicaContentHashReplication implements DataReplicationInterface 
     await this.replicationProtocol.announceToNetwork(hash);
   };
 
+  public readonly evict = async (hash: ContentHash): Promise<void> => {
+    await this.storage.delete(hash);
+  };
+
+  private readonly persist = async <T>(hash: ContentHash, data: T): Promise<void> => {
+    if (await this.storage.has(hash)) return;
+
+    const bytes = this.serializer.serialize(data);
+    await this.storage.put(hash, bytes);
+  };
+
   public readonly replicate = async <T>(hash: ContentHash, data: T): Promise<void> => {
-    logger.debug('[Replication] replicate() bypassed → protocol driven');
+    logger.debug('[Replication] replicate() bypassed → replication protocol driven');
     // const peers = this.peerScorer.getBestScorePeers(this.replicaCount);
 
     // const propagationMessage = {
@@ -73,16 +78,5 @@ export class KReplicaContentHashReplication implements DataReplicationInterface 
     //       .catch((error) => logger.error('Replication send failed to peer: ', peerId, ' ', error)),
     //   ),
     // );
-  };
-
-  public readonly evict = async (hash: ContentHash): Promise<void> => {
-    await this.storage.delete(hash);
-  };
-
-  private readonly persist = async <T>(hash: ContentHash, data: T): Promise<void> => {
-    if (await this.storage.has(hash)) return;
-
-    const bytes = this.serializer.serialize(data);
-    await this.storage.put(hash, bytes);
   };
 }

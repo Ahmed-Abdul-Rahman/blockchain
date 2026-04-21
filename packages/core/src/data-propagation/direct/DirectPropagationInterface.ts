@@ -14,6 +14,10 @@ export interface DirectPropagationInterface {
   onReceive<T>(protocol: string, handler: (message: PropagatedMessage<T>, ctx: PropagationContext) => void): void;
 
   /**
+   * Unregister a handler for a given protocol
+   */
+  unhandleProtocol(protocol: string): Promise<void>;
+  /**
    * Stop handling direct messages and release resources.
    * unhandle protocols, closes open streams if any, makes the instance inert
    */

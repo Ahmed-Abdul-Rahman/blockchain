@@ -225,7 +225,7 @@ describe('Interop - Data Propagation Tests', () => {
     });
 
     const report = generateTestReport(
-      'GossipSub Data Propagation',
+      'GossipSub Data and Direct Stream Data Propagation',
       totalNodes,
       runDurationSec,
       aggregatedResults,

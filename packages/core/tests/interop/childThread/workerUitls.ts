@@ -24,7 +24,6 @@ export const percentile = (xs: number[], p: number): number => {
 
 export const configureNode = async (
   onBoardingPeerTime: number,
-  dataReplicaCount: number,
 ): Promise<{
   node: Libp2p;
   nodePubsub: GossipSub;
@@ -34,7 +33,6 @@ export const configureNode = async (
   directStream: DirectStreamPropagation;
   replicaStore: InMemoryReplicaStore;
   dataReplication: KReplicaContentHashReplication;
-  replicationManager: ReplicationMessageProtocolManager;
   nodeCleanUp: () => void;
 }> => {
   const args = workerData as WorkerData;
@@ -58,29 +56,25 @@ export const configureNode = async (
 
   const replicaStore = new InMemoryReplicaStore(serializer);
 
-  const dataReplication = new KReplicaContentHashReplication(
-    node.peerId,
-    contentHashing,
-    replicaStore,
-    serializer,
-    directStream,
-    scorer,
-    dataReplicaCount,
-  );
+  const inflight = new InflightRequestTracker();
 
-  // Replication protocol manager & inflight tracker
-  const inflight = new InflightRequestTracker({ baseDelayMs: 200, maxAttempts: 3 });
   const transportSelector = new TransportSelector();
 
-  const replicationManager = new ReplicationMessageProtocolManager({
+  const replicationManager = new ReplicationMessageProtocolManager(node.peerId, {
     broadcast: broadcastProp,
     direct: directStream,
     inflightTracker: inflight,
     transportSelector,
+    storage: replicaStore,
+    hashStrategy: contentHashing,
   });
 
-  replicationManager.registerProtocol(dataReplication);
-  await replicationManager.start();
+  const dataReplication = new KReplicaContentHashReplication(
+    contentHashing,
+    replicaStore,
+    serializer,
+    replicationManager,
+  );
 
   console.log('Wroker thread: ', threadId, 'and index: ', index, ' started with peerId: ', node.peerId);
 
@@ -93,7 +87,6 @@ export const configureNode = async (
     directStream,
     replicaStore,
     dataReplication,
-    replicationManager,
     nodeCleanUp,
   };
 };

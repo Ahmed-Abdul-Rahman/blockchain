@@ -1,4 +1,5 @@
 import { logger } from '@dechat/common';
+import { PeerId } from '@libp2p/interface';
 import { BroadcastPropagationInterface } from '../../data-propagation/broadcast/BroadcastPropagationInterface';
 import { DirectPropagationInterface } from '../../data-propagation/direct/DirectPropagationInterface';
 import { PropagatedMessage, PropagationContext } from '../../data-propagation/types';
@@ -26,7 +27,7 @@ export interface ReplicationManagerOptions {
 }
 
 export class ReplicationMessageProtocolManager implements ReplicationProtocolInterface {
-  readonly selfPeerId: string;
+  readonly selfPeerId: PeerId;
   readonly hashStrategy: ContentHashStrategy;
   readonly protocol: string = 'replication_protocol_v1';
   readonly maxConcurrentUploads: number = 100;
@@ -39,7 +40,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
   maxAttempts: number = 3;
   baseDelayMs: number = 200;
 
-  constructor(selfPeerId: string, opts: ReplicationManagerOptions) {
+  constructor(selfPeerId: PeerId, opts: ReplicationManagerOptions) {
     this.selfPeerId = selfPeerId;
     this.transportSelector = opts.transportSelector;
     this.inflightTracker = opts.inflightTracker;
@@ -52,39 +53,24 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
     this.broadcastProp.subscribe('topic:' + this.protocol, this.handleIncomingBroadcast.bind(this));
   }
 
-  public readonly executeWithRetry = async <T>(fn: () => Promise<T>): Promise<T> => {
-    let attempt = 0;
-    while (true) {
-      try {
-        logger.debug(`Attempt ${attempt + 1} for replication request`);
-        return await fn();
-      } catch (error) {
-        attempt++;
-        if (attempt >= this.maxAttempts) {
-          throw error;
-        }
-        const delay = this.baseDelayMs * 2 ** (attempt - 1);
-        await new Promise((res) => setTimeout(res, delay));
-      }
-    }
-  };
+  async start(): Promise<void> {
+    logger.info('[ReplicationProtocol] Started:', this.selfPeerId);
+  }
 
-  public readonly preparePayload = <T>(payload: T): PropagatedMessage<T> => {
-    return {
-      id: this.hashStrategy.hash(payload),
-      payload,
-      from: this.selfPeerId.toString(),
-      timestamp: Date.now(),
-    };
-  };
+  async stop(): Promise<void> {
+    await this.directProp.stop?.();
+    await this.broadcastProp.unsubscribe('topic:' + this.protocol);
+    logger.info('[ReplicationProtocol] Stopped:', this.selfPeerId);
+  }
 
   public readonly announceToNetwork = async (hash: ContentHash): Promise<void> => {
     const msg: ReplicationAnnounce = {
       type: 'replication_announce',
       hash,
     };
-
-    await this.sendMessage(msg, undefined, 'topic:' + this.protocol);
+    await this.sendMessage(msg, undefined, 'topic:' + this.protocol).catch((error) =>
+      logger.error('Announcing replication hash failed: ', error),
+    );
   };
 
   async onAnnounce(msg: PropagatedMessage<ReplicationAnnounce>, ctx?: PropagationContext): Promise<void> {
@@ -117,47 +103,38 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
         hash,
         reason: 'not_found',
       };
-      await this.sendMessage(errorMessage, from, this.protocol);
+      await this.sendMessage(errorMessage, from, this.protocol).catch((error) =>
+        logger.error('Sending replication error response failed: ', error),
+      );
       return;
     }
 
     const content: ReplicationContent = {
       type: 'replication_content',
       hash: hash,
-      payload: data,
+      replicationContent: data,
     };
 
     await this.sendMessage(content, from, this.protocol).catch((error) =>
-      logger.error('Failed sending content:', error),
+      logger.error('Failed sending replication content:', error),
     );
   }
 
   async onContent(msg: PropagatedMessage<ReplicationContent>, ctx?: PropagationContext): Promise<void> {
     const { hash } = msg.payload;
     if (await this.storage.has(hash)) return;
-
     if (this.inflightTracker.isInflight(hash)) {
       this.inflightTracker.release(hash);
     }
-    await this.storage.put(hash, msg.payload.payload);
+    await this.storage.put(hash, msg.payload.replicationContent);
   }
 
   async onError(msg: PropagatedMessage<ReplicationError>, ctx?: PropagationContext): Promise<void> {
     const { hash, reason } = msg.payload;
-
     if (this.inflightTracker.isInflight(hash)) {
       this.inflightTracker.release(hash);
     }
-
     logger.warn('[ReplicationError]', { hash, reason });
-  }
-  async start(): Promise<void> {
-    logger.info('[ReplicationProtocol] Started:', this.selfPeerId);
-  }
-
-  async stop(): Promise<void> {
-    await this.directProp.stop?.();
-    logger.info('[ReplicationProtocol] Stopped:', this.selfPeerId);
   }
 
   async handleIncomingBroadcast<T>(message: PropagatedMessage<T>, ctx?: PropagationContext): Promise<void> {
@@ -187,17 +164,9 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
             break;
         }
       } else {
-        // TODO: Treat as application payload: forward to any data-replication implementations that expect payloads
-        // await (
-        //   this.protocols.map((p) =>
-        //     typeof p.onRemoteDataReceived === 'function'
-        //       ? p.onRemoteDataReceived(payload, ctx?.from?.toString?.())
-        //       : undefined,
-        //   ),
-        // );
+        logger.warn('Expected a replication protocol message, received', payload?.type);
       }
     } catch (err) {
-      // swallow errors from handler to avoid crashing propagation; future: metrics/logging
       logger.error('Error handling incoming replication message', err);
     }
   }
@@ -225,4 +194,21 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
       await this.broadcastProp.publish(topic, propagated);
     }
   }
+
+  public readonly executeWithRetry = async <T>(fn: () => Promise<T>): Promise<T> => {
+    let attempt = 0;
+    while (true) {
+      try {
+        return await fn();
+      } catch (error) {
+        logger.error(`Failed attempt ${attempt + 1} for replication request, retrying...`);
+        attempt++;
+        if (attempt >= this.maxAttempts) {
+          throw error;
+        }
+        const delay = this.baseDelayMs * 2 ** (attempt - 1);
+        await new Promise((res) => setTimeout(res, delay));
+      }
+    }
+  };
 }

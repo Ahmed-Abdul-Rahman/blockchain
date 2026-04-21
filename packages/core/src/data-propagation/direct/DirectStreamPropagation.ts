@@ -8,11 +8,8 @@ import { DirectPropagationInterface } from './DirectPropagationInterface';
 export class DirectStreamPropagation implements DirectPropagationInterface {
   private readonly node: Libp2p;
 
-  /** Handler function that gets executed once message is received */
-  private protocolHandlers: Map<
-    string,
-    (message: PropagatedMessage<any>, ctx: PropagationContext) => Promise<void> | void
-  >;
+  /** protocol handler functions that gets executed once message is received on a particular protocol*/
+  private readonly protocolHandlers: Map<string, (message: PropagatedMessage<any>, ctx: PropagationContext) => void>;
 
   /** Maximum message length that can be read */
   private readonly maxMessageBytes: number;
@@ -26,6 +23,23 @@ export class DirectStreamPropagation implements DirectPropagationInterface {
     this.protocolHandlers = new Map();
   }
 
+  private async handleIncomingStream<T>({ stream, connection }: IncomingStreamData, protocol: string) {
+    if (this.stopped) return;
+    try {
+      await readMessagesFromStream(
+        stream,
+        (message) => {
+          const receivedMessage = message as PropagatedMessage<T>;
+          const protocolHandler = this.protocolHandlers.get(protocol);
+          if (protocolHandler) protocolHandler(receivedMessage, { from: connection.remotePeer, receivedAt: now() });
+        },
+        this.maxMessageBytes,
+      );
+    } finally {
+      stream.close();
+    }
+  }
+
   async send<T>(peerId: PeerId | string, protocol: string, message: PropagatedMessage<T>): Promise<void> {
     if (this.stopped) {
       throw new Error('DirectStreamPropagation is stopped');
@@ -36,35 +50,18 @@ export class DirectStreamPropagation implements DirectPropagationInterface {
   }
 
   onReceive<T>(protocol: string, handler: (message: PropagatedMessage<T>, ctx: PropagationContext) => void): void {
+    this.node.handle(protocol, (data) => this.handleIncomingStream(data, protocol));
     this.protocolHandlers.set(protocol, handler);
-    this.node.handle(protocol, async ({ stream, connection }: IncomingStreamData) => {
-      if (this.stopped) return;
-      try {
-        await readMessagesFromStream(
-          stream,
-          (message) => {
-            const receivedMessage = message as PropagatedMessage<T>;
-            handler(receivedMessage, { from: connection.remotePeer, receivedAt: now() });
-          },
-          this.maxMessageBytes,
-        );
-      } finally {
-        stream.close();
-      }
-    });
   }
 
-  unregisterProtocol(protocol: string): void {
-    this.protocolHandlers.delete(protocol);
-    this.node.unhandle(protocol);
+  async unhandleProtocol(protocol: string): Promise<void> {
+    return await this.node.unhandle(protocol);
   }
 
   async stop(): Promise<void> {
     if (this.stopped) return;
     this.stopped = true;
-    await Promise.all(Array.from(this.protocolHandlers.keys()).map((protocol) => this.node.unhandle(protocol))).catch(
-      (err) => console.error('Error stopping DirectStreamPropagation:', err),
-    );
+    await this.node.unhandle(Array.from(this.protocolHandlers.keys()));
     this.protocolHandlers.clear();
   }
 }

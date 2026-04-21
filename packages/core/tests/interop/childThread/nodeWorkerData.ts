@@ -155,17 +155,8 @@ const runNode = async () => {
   const { pubsubTopic } = args;
   const onBoardingPeerTime = random(1, 10) * 1000 + random(1, 10) * 100;
 
-  const {
-    node,
-    pexService,
-    nodePubsub,
-    broadcastProp,
-    directStream,
-    dataReplication,
-    replicaStore,
-    replicationManager,
-    nodeCleanUp,
-  } = await configureNode(onBoardingPeerTime, 12);
+  const { node, pexService, nodePubsub, broadcastProp, directStream, dataReplication, replicaStore, nodeCleanUp } =
+    await configureNode(onBoardingPeerTime);
 
   await node.start();
 
@@ -178,18 +169,18 @@ const runNode = async () => {
 
   broadcastProp.subscribe<GossipMessageA>(GossipPropTopicA, (message, ctx) => {
     // let the replication protocol manager handle replication messages
-    replicationManager.handleIncomingBroadcast(message, ctx).catch(() => {});
+    dataReplication.onRemoteDataReceived(message, ctx.from.toString());
     hashedMessages.set(message.id, message.payload);
   });
 
   broadcastProp.subscribe<GossipMessageB>(GossipPropTopicB, (message, ctx) => {
-    replicationManager.handleIncomingBroadcast(message, ctx).catch(() => {});
+    dataReplication.onRemoteDataReceived(message, ctx.from.toString());
     hashedMessages.set(message.id, message.payload);
   });
 
   directStream.onReceive<string>(DirectStreamProtocol, (message, ctx) => {
     directStreamMsgsReceivedCount++;
-    replicationManager.handleIncomingDirect(message, ctx).catch(() => {});
+    dataReplication.onRemoteDataReceived(message, ctx.from.toString());
     hashedMessages.set(message.id, message.payload);
   });
 
