@@ -160,6 +160,9 @@ export class PeerExchangeService {
           peerId: p.peerId,
           addresses: filterAddrs(p.addresses),
         }));
+        const baseDelay = peers.length ? GOSSIP_INTERVAL_MS : 1000;
+        const jitter = random(1, 100); // Add random jitter to avoid thundering herd problem or sync storms across nodes
+        await delay(baseDelay + jitter); // Delay always to avoid CPU consumption when no peers present
         if (peers.length) {
           const msg: PEX_GOSSIP = {
             from: this.node.peerId.toString(),
@@ -177,9 +180,6 @@ export class PeerExchangeService {
           });
           logger.trace('Published peers info on pex topic');
         }
-        const baseDelay = peers.length ? GOSSIP_INTERVAL_MS : 1000;
-        const jitter = random(1, 100); // Add random jitter to avoid thundering herd problem or sync storms across nodes
-        await delay(baseDelay + jitter); // Delay always to avoid CPU consumption when no peers present
       } catch (error: unknown) {
         logger.warn('Error occured while publishing a gossip message to a peer');
         logger.debug(error);
