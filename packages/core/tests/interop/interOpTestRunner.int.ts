@@ -65,11 +65,6 @@ describe('P2P Network Integration StartUp Tests', () => {
     const networkId = networkIdArg ?? 'benchnet-1';
     const bootstrapMultiaddrs = [];
 
-    console.log('\n🚀 Starting Burst Startup Test...');
-    console.log(`   Nodes: ${totalNodes}`);
-    console.log(`   Duration: ${runDurationSec}s`);
-    console.log(`   Message Rate: ${messageRate}/s\n`);
-
     const aggregatedResults = await simulateBurstPeersAtStartUp({
       totalNodes,
       runDurationSec,
@@ -109,10 +104,6 @@ describe('P2P Network Integration StartUp Tests', () => {
     const networkId = networkIdArg ?? 'benchnet-1';
     const bootstrapMultiaddrs = [];
 
-    console.log('\n🚀 Starting Staggered Startup Test...');
-    console.log(`   Nodes: ${totalNodes}`);
-    console.log(`   Duration: ${runDurationSec}s\n`);
-
     const aggregatedResults = await simulateStaggeredPeersAtStartUp({
       totalNodes,
       runDurationSec,
@@ -151,10 +142,6 @@ describe('P2P Network Integration Stability Tests', () => {
     const networkId = networkIdArg ?? 'benchnet-1';
     const bootstrapMultiaddrs = [];
 
-    console.log('\n🚀 Starting Peer Churn Test...');
-    console.log(`   Nodes: ${totalNodes}`);
-    console.log(`   Duration: ${runDurationSec}s\n`);
-
     const aggregatedResults = await simulatePeerChurn({
       totalNodes,
       runDurationSec,
@@ -192,11 +179,6 @@ describe('Interop - Data Propagation Tests', () => {
     const pubsubTopic = pubsubTopicArg ?? '/bench/1';
     const networkId = networkIdArg ?? 'benchnet-1';
     const bootstrapMultiaddrs = [];
-
-    console.log('\n🚀 Starting Data Propagation Test');
-    console.log(`   Nodes: ${totalNodes}`);
-    console.log(`   Duration: ${runDurationSec}s`);
-    console.log(`   Message Rate: ${messageRate}/s\n`);
 
     const aggregatedResults = await simulateBurstPeersAtStartUpWithDataPropagation({
       totalNodes,
@@ -243,11 +225,6 @@ describe('Interop - Data Replication Tests', () => {
     const pubsubTopic = pubsubTopicArg ?? '/bench/1';
     const networkId = networkIdArg ?? 'benchnet-1';
     const bootstrapMultiaddrs = [];
-
-    console.log('\n🚀 Starting Data Replication Test');
-    console.log(`   Nodes: ${totalNodes}`);
-    console.log(`   Duration: ${runDurationSec}s`);
-    console.log(`   Message Rate: ${messageRate}/s\n`);
 
     const aggregatedResults = await simulateBurstPeersAtStartUpWithPropagationAndReplication({
       totalNodes,
