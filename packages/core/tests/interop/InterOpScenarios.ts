@@ -217,7 +217,7 @@ export const simulateBurstPeersAtStartUpWithPropagationAndReplication = (
       );
     }
 
-    await delay(180_000);
+    await delay(120_000);
     postMessageToWorkers(workers, { type: 'produce_messages_replication' });
     await delay(180_000);
     terminateWorkers(workers);

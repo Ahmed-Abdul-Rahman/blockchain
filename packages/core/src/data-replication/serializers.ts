@@ -55,8 +55,30 @@ export const canonicalSerialize = (value: unknown): Uint8Array => {
 
 export const getGenericDataSerailizer = (): DataSerializer => ({
   serialize: <T>(data: T): Uint8Array => canonicalSerialize(data),
-  deserialize: <T>(bytes: Uint8Array): T => {
-    const dataString = new TextDecoder().decode(bytes);
+  // biome-ignore lint/suspicious/noExplicitAny: <as the data is travelled across network it might be anything>
+  deserialize: <T>(bytes: any): T => {
+    let bufferToDecode: Uint8Array;
+
+    // 1. Standard Uint8Array (works perfectly in a single-thread scenario)
+    if (bytes instanceof Uint8Array) {
+      bufferToDecode = bytes;
+    }
+    // 2. Node.js Buffer JSON representation from Worker Threads / IPC
+    else if (bytes && bytes.type === 'Buffer' && Array.isArray(bytes.data)) {
+      bufferToDecode = new Uint8Array(bytes.data);
+    }
+    // 3. Raw ArrayBuffer
+    else if (bytes instanceof ArrayBuffer) {
+      bufferToDecode = new Uint8Array(bytes);
+    }
+    // 4. Plain array of bytes or Array-like object
+    else if (Array.isArray(bytes) || (bytes && typeof bytes.length === 'number')) {
+      bufferToDecode = new Uint8Array(bytes);
+    } else {
+      throw new TypeError(`deserialize expected a buffer-like object, received: ${typeof bytes}`);
+    }
+
+    const dataString = new TextDecoder().decode(bufferToDecode);
     try {
       return JSON.parse(dataString) as T;
     } catch {

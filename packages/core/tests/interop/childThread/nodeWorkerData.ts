@@ -1,3 +1,4 @@
+import { writeFile, writeFileSync } from 'node:fs';
 import { parentPort, threadId, workerData } from 'node:worker_threads';
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { sha256 } from '@dechat/crypto';
@@ -39,12 +40,14 @@ const getStatistics = async (
   const generated = hashedMessages.values().toArray();
   const replicated = (await replicaStore.values()).map((value) => replicaStore.serializer.deserialize(value));
 
-  const diff = differenceWith(generated, replicated, (gen, rep) => {
-    if (typeof rep === 'object') {
-      return (gen as GossipMessageA).message === (rep as GossipMessageA).message;
+  const normalize = (val: unknown): string => {
+    if (typeof val === 'object' && val !== null && 'message' in val) {
+      return (val as GossipMessageA).message;
     }
-    return gen === rep;
-  });
+    return val as string;
+  };
+
+  const diff = differenceWith(generated.map(normalize), replicated.map(normalize), (gen, rep) => gen === rep);
 
   return {
     me: selfPeerId,
@@ -169,18 +172,18 @@ const runNode = async () => {
 
   broadcastProp.subscribe<GossipMessageA>(GossipPropTopicA, (message, ctx) => {
     // let the replication protocol manager handle replication messages
-    dataReplication.onRemoteDataReceived(message, ctx.from.toString());
+    dataReplication.onRemoteDataReceived(message.payload, ctx.from.toString());
     hashedMessages.set(message.id, message.payload);
   });
 
   broadcastProp.subscribe<GossipMessageB>(GossipPropTopicB, (message, ctx) => {
-    dataReplication.onRemoteDataReceived(message, ctx.from.toString());
+    dataReplication.onRemoteDataReceived(message.payload, ctx.from.toString());
     hashedMessages.set(message.id, message.payload);
   });
 
   directStream.onReceive<string>(DirectStreamProtocol, (message, ctx) => {
     directStreamMsgsReceivedCount++;
-    dataReplication.onRemoteDataReceived(message, ctx.from.toString());
+    dataReplication.onRemoteDataReceived(message.payload, ctx.from.toString());
     hashedMessages.set(message.id, message.payload);
   });
 
@@ -208,18 +211,20 @@ const runNode = async () => {
       }
     } else if (message.type === 'produce_messages_replication') {
       for (let j = 1; j <= 2; j++) {
+        const selfPeerId = node.peerId.toString();
         for (let i = 1; i <= 2; i++) {
-          const payloadA = { message: `Hello i:${i} from: ${node.peerId.toString()}` };
+          const payloadA = {
+            message: `Node: ${threadId - 1} - Topic: ${GossipPropTopicA} - Hello ${i} from: ${selfPeerId}`,
+          };
           publisMessage(node, broadcastProp, payloadA, GossipPropTopicA);
-          await delay(random(1, 10) * 500);
-          const payloadB = `Hello i:${i} from: ${node.peerId.toString()}`;
-          publisMessage(node, broadcastProp, payloadB, GossipPropTopicB);
           dataReplication.onLocalDataProduced(payloadA);
+          await delay(random(1, 10) * 500);
+          const payloadB = `Node: ${threadId - 1} - Topic:${GossipPropTopicB} - Hello ${i} from: ${selfPeerId}`;
+          publisMessage(node, broadcastProp, payloadB, GossipPropTopicB);
           dataReplication.onLocalDataProduced(payloadB);
         }
         pexService.peerRegistry.getPeers().forEach((peerId) => {
-          const selfPeerId = node.peerId.toString();
-          const payload = `Hello j:${j} from ${selfPeerId}`;
+          const payload = `Node: ${threadId - 1} - Topic: ${DirectStreamProtocol} - Hello ${j} from: ${selfPeerId}`;
           const id = sha256(payload);
           directStream.send(peerId, DirectStreamProtocol, { id, payload, from: selfPeerId, timestamp: Date.now() });
           hashedMessages.set(id, payload);

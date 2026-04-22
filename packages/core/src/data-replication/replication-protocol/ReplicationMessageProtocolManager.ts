@@ -112,7 +112,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
     const content: ReplicationContent = {
       type: 'replication_content',
       hash: hash,
-      replicationContent: data,
+      replicationContent: Array.from(data),
     };
 
     await this.sendMessage(content, from, this.protocol).catch((error) =>
@@ -126,7 +126,8 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
     if (this.inflightTracker.isInflight(hash)) {
       this.inflightTracker.release(hash);
     }
-    await this.storage.put(hash, msg.payload.replicationContent);
+    const bytesToStore = new Uint8Array(msg.payload.replicationContent);
+    await this.storage.put(hash, bytesToStore);
   }
 
   async onError(msg: PropagatedMessage<ReplicationError>, ctx?: PropagationContext): Promise<void> {
