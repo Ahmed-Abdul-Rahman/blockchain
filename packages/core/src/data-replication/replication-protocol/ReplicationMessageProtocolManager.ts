@@ -37,6 +37,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
   readonly directProp: DirectPropagationInterface;
   readonly broadcastProp: BroadcastPropagationInterface;
   readonly storage: ReplicaStoreInterface;
+  private shouldReplicate: ((hash: ContentHash, _fromPeer?: string) => boolean) | undefined;
 
   maxAttempts: number = 3;
   baseDelayMs: number = 200;
@@ -72,12 +73,17 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
     await this.sendMessage(msg).catch((error) => logger.error('Announcing replication hash failed: ', error));
   };
 
+  public readonly setShouldReplicateFn = (shouldReplicateFn: (hash: ContentHash, _fromPeer?: string) => boolean) => {
+    this.shouldReplicate = shouldReplicateFn;
+  };
+
   async onAnnounce(msg: PropagatedMessage<ReplicationAnnounce>, ctx?: PropagationContext): Promise<void> {
     const { hash } = msg.payload;
     const { from } = msg;
 
     if (await this.storage.has(hash)) return;
     if (this.inflightTracker.isInflight(hash)) return;
+    if (this.shouldReplicate && !this.shouldReplicate(hash)) return;
 
     this.inflightTracker.acquire(hash);
     await this.executeWithRetry(async () => {
@@ -120,6 +126,8 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
   async onContent(msg: PropagatedMessage<ReplicationContent>, ctx?: PropagationContext): Promise<void> {
     const { hash } = msg.payload;
     if (await this.storage.has(hash)) return;
+    if (this.shouldReplicate && !this.shouldReplicate(hash)) return;
+
     if (this.inflightTracker.isInflight(hash)) {
       this.inflightTracker.release(hash);
     }

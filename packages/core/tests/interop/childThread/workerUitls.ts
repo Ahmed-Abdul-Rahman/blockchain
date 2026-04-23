@@ -79,6 +79,10 @@ export const configureNode = async (
     3,
   );
 
+  replicationManager.setShouldReplicateFn((contentHash, _fromPeer) =>
+    dataReplication.shouldReplicate(contentHash, _fromPeer),
+  );
+
   console.log('Wroker thread: ', threadId, 'and index: ', index, ' started with peerId: ', node.peerId);
 
   return {

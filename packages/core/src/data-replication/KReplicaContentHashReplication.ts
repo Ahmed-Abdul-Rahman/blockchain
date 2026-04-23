@@ -98,10 +98,7 @@ export class KReplicaContentHashReplication implements DataReplicationInterface 
     const hash = this.hashStrategy.hash(data);
 
     if (await this.storage.has(hash)) return;
-    if (!this.shouldReplicate(hash, fromPeer)) {
-      logger.info('Returned without replication as not close enough');
-      return;
-    }
+    if (!this.shouldReplicate(hash, fromPeer)) return;
 
     await this.persist(hash, data);
 
