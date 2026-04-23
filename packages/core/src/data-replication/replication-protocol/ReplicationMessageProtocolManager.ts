@@ -29,7 +29,8 @@ export interface ReplicationManagerOptions {
 export class ReplicationMessageProtocolManager implements ReplicationProtocolInterface {
   readonly selfPeerId: PeerId;
   readonly hashStrategy: ContentHashStrategy;
-  readonly protocol: string = '/deChat/v1/topic/replication-protocol';
+  readonly topic: string = '/deChat/v1/topic/replication-protocol';
+  readonly protocol: string = '/deChat/v1/protocol/replication-protocol';
   readonly maxConcurrentUploads: number = 100;
   readonly transportSelector: TransportSelector;
   readonly inflightTracker: InflightRequestTracker;
@@ -50,7 +51,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
     this.storage = opts.storage;
 
     this.directProp.onReceive(this.protocol, this.handleIncomingDirect.bind(this));
-    this.broadcastProp.subscribe(this.protocol, this.handleIncomingBroadcast.bind(this));
+    this.broadcastProp.subscribe(this.topic, this.handleIncomingBroadcast.bind(this));
   }
 
   async start(): Promise<void> {
@@ -59,7 +60,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
 
   async stop(): Promise<void> {
     await this.directProp.stop?.();
-    await this.broadcastProp.unsubscribe('topic:' + this.protocol);
+    await this.broadcastProp.unsubscribe(this.topic);
     logger.info('[ReplicationProtocol] Stopped:', this.selfPeerId);
   }
 
@@ -68,9 +69,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
       type: 'replication_announce',
       hash,
     };
-    await this.sendMessage(msg, undefined, 'topic:' + this.protocol).catch((error) =>
-      logger.error('Announcing replication hash failed: ', error),
-    );
+    await this.sendMessage(msg).catch((error) => logger.error('Announcing replication hash failed: ', error));
   };
 
   async onAnnounce(msg: PropagatedMessage<ReplicationAnnounce>, ctx?: PropagationContext): Promise<void> {
@@ -86,7 +85,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
         type: 'replication_request',
         hash,
       };
-      await this.sendMessage(request, from, this.protocol);
+      await this.sendMessage(request, from);
     })
       .catch((error) => logger.error('Request retry failed:', error))
       .finally(() => this.inflightTracker.release(hash));
@@ -103,7 +102,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
         hash,
         reason: 'not_found',
       };
-      await this.sendMessage(errorMessage, from, this.protocol).catch((error) =>
+      await this.sendMessage(errorMessage, from).catch((error) =>
         logger.error('Sending replication error response failed: ', error),
       );
       return;
@@ -115,9 +114,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
       replicationContent: Array.from(data),
     };
 
-    await this.sendMessage(content, from, this.protocol).catch((error) =>
-      logger.error('Failed sending replication content:', error),
-    );
+    await this.sendMessage(content, from).catch((error) => logger.error('Failed sending replication content:', error));
   }
 
   async onContent(msg: PropagatedMessage<ReplicationContent>, ctx?: PropagationContext): Promise<void> {
@@ -177,7 +174,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
     await this.handleIncomingBroadcast(message, ctx);
   }
 
-  async sendMessage(msg: ReplicationMessage, peerId?: string, topic?: string): Promise<void> {
+  async sendMessage(msg: ReplicationMessage, peerId?: string): Promise<void> {
     const transport = this.transportSelector.select(msg.type);
 
     const propagated = {
@@ -191,8 +188,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
       if (!peerId) throw new Error('direct transport requires peerId');
       await this.directProp.send(peerId, this.protocol, propagated);
     } else {
-      if (!topic) throw new Error('gossip transport requires topic');
-      await this.broadcastProp.publish(topic, propagated);
+      await this.broadcastProp.publish(this.topic, propagated);
     }
   }
 

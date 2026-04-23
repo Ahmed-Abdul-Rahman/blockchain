@@ -23,11 +23,6 @@ export interface DataReplicationInterface {
   shouldReplicate(hash: ContentHash, fromPeerId?: string): boolean;
 
   /**
-   * Replicates data to other peers
-   */
-  replicate<T>(hash: ContentHash, data: T): Promise<void>;
-
-  /**
    * Optional eviction hook
    */
   evict?(contentHash: string): Promise<void>;

@@ -70,10 +70,13 @@ export const configureNode = async (
   });
 
   const dataReplication = new KReplicaContentHashReplication(
+    node.peerId.toString(),
+    () => pexService.peerRegistry.getPeers(),
     contentHashing,
     replicaStore,
     serializer,
     replicationManager,
+    3,
   );
 
   console.log('Wroker thread: ', threadId, 'and index: ', index, ' started with peerId: ', node.peerId);

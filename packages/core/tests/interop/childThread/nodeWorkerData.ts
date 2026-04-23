@@ -154,7 +154,7 @@ const sendLoop = async () => {
 
 const runNode = async () => {
   const args = workerData as WorkerData;
-  const { pubsubTopic } = args;
+  const { pubsubTopic, index } = args;
   const onBoardingPeerTime = random(1, 10) * 1000 + random(1, 10) * 100;
 
   const { node, pexService, nodePubsub, broadcastProp, directStream, dataReplication, replicaStore, nodeCleanUp } =
@@ -213,17 +213,17 @@ const runNode = async () => {
         const selfPeerId = node.peerId.toString();
         for (let i = 1; i <= 2; i++) {
           const payloadA = {
-            message: `Node: ${threadId - 1} - Topic: ${GossipPropTopicA} - Hello ${i} from: ${selfPeerId}`,
+            message: `Node: ${index} - Topic: ${GossipPropTopicA} - Hello ${i} from: ${selfPeerId}`,
           };
           publisMessage(node, broadcastProp, payloadA, GossipPropTopicA);
           dataReplication.onLocalDataProduced(payloadA);
           await delay(random(1, 10) * 500);
-          const payloadB = `Node: ${threadId - 1} - Topic:${GossipPropTopicB} - Hello ${i} from: ${selfPeerId}`;
+          const payloadB = `Node: ${index} - Topic:${GossipPropTopicB} - Hello ${i} from: ${selfPeerId}`;
           publisMessage(node, broadcastProp, payloadB, GossipPropTopicB);
           dataReplication.onLocalDataProduced(payloadB);
         }
         pexService.peerRegistry.getPeers().forEach((peerId) => {
-          const payload = `Node: ${threadId - 1} - Topic: ${DirectStreamProtocol} - Hello ${j} from: ${selfPeerId}`;
+          const payload = `Node: ${index} - Topic: ${DirectStreamProtocol} - Hello ${j} from: ${selfPeerId}`;
           const id = sha256(payload);
           directStream.send(peerId, DirectStreamProtocol, { id, payload, from: selfPeerId, timestamp: Date.now() });
           hashedMessages.set(id, payload);
