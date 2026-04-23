@@ -29,7 +29,7 @@ export interface ReplicationManagerOptions {
 export class ReplicationMessageProtocolManager implements ReplicationProtocolInterface {
   readonly selfPeerId: PeerId;
   readonly hashStrategy: ContentHashStrategy;
-  readonly protocol: string = 'replication_protocol_v1';
+  readonly protocol: string = '/deChat/v1/topic/replication-protocol';
   readonly maxConcurrentUploads: number = 100;
   readonly transportSelector: TransportSelector;
   readonly inflightTracker: InflightRequestTracker;
@@ -50,7 +50,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
     this.storage = opts.storage;
 
     this.directProp.onReceive(this.protocol, this.handleIncomingDirect.bind(this));
-    this.broadcastProp.subscribe('topic:' + this.protocol, this.handleIncomingBroadcast.bind(this));
+    this.broadcastProp.subscribe(this.protocol, this.handleIncomingBroadcast.bind(this));
   }
 
   async start(): Promise<void> {

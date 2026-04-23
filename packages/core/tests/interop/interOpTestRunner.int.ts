@@ -195,7 +195,11 @@ describe('Interop - Data Propagation Tests', () => {
     let passed = true;
 
     workerResults.forEach((workerResult, index) => {
-      const seenMessagesOk = workerResult.seenMessages?.reduce((prevSeen, { seen }) => seen == 22 && prevSeen, true);
+      const seenMessagesOk = workerResult.seenMessages?.reduce(
+        (prevSeen, { topic, seen }) =>
+          topic === '/deChat/v1/replication-protocol' ? seen === 72 && prevSeen : seen === 22 && prevSeen,
+        true,
+      );
       if (!seenMessagesOk) {
         passed = false;
         console.log(`⚠️  Node ${index} has ${workerResult.seenMessages} expected: 22`);
@@ -238,8 +242,18 @@ describe('Interop - Data Replication Tests', () => {
     });
 
     const { workerResults } = aggregatedResults;
+    let passed = true;
 
     workerResults.forEach((workerResult, index) => {
+      const seenMessagesOk = workerResult.seenMessages?.reduce(
+        (prevSeen, { topic, seen }) =>
+          topic === '/deChat/v1/topic/replication-protocol' ? seen === 72 && prevSeen : seen === 22 && prevSeen,
+        true,
+      );
+      if (!seenMessagesOk) {
+        passed = false;
+        console.log(`⚠️  Node ${index} has ${workerResult.seenMessages} expected: 22`);
+      }
       if (workerResult.directStreamMsgsReceivedCount) {
         assert.ok(
           workerResult.directStreamMsgsReceivedCount >= 2 * (totalNodes - 1),
@@ -260,7 +274,7 @@ describe('Interop - Data Replication Tests', () => {
       }
     });
 
-    const report = generateTestReport('Data replication Test', totalNodes, runDurationSec, aggregatedResults, true);
+    const report = generateTestReport('Data replication Test', totalNodes, runDurationSec, aggregatedResults, passed);
     printTestReport(report);
   });
 });

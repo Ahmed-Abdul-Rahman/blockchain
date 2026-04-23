@@ -1,4 +1,3 @@
-import { writeFile, writeFileSync } from 'node:fs';
 import { parentPort, threadId, workerData } from 'node:worker_threads';
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { sha256 } from '@dechat/crypto';
@@ -14,9 +13,9 @@ type GossipMessageA = { message: string };
 
 type GossipMessageB = string;
 
-const GossipPropTopicA = '/deChat/v1/test-chat-a';
-const GossipPropTopicB = '/deChat/v1/test-chat-b';
-const DirectStreamProtocol = '/deChat/v1/direct';
+const GossipPropTopicA = '/deChat/v1/topic/test-chat-a';
+const GossipPropTopicB = '/deChat/v1/topic/test-chat-b';
+const DirectStreamProtocol = '/deChat/v1/protocol/direct';
 const latencies: number[] = [];
 
 let terminateThread = false;
