@@ -4,6 +4,8 @@ import { calculateXorDistance, toHashBigInt } from '@dechat/crypto';
 import { ReplicaStoreInterface } from '../replica-store/ReplicaStoreInterface';
 import { ContentHashStrategy } from './content-hash/types';
 import { DataReplicationInterface } from './DataReplicationInterface';
+import { InflightRequestTracker } from './replication-protocol/InflightRequestTracker';
+import { ReplicationEngineDelegate } from './replication-protocol/ReplicationEngineDelegateInterface';
 import { ReplicationProtocolInterface } from './replication-protocol/ReplicationProtocolInterface';
 import { ContentHash, DataSerializer } from './types';
 
@@ -12,17 +14,21 @@ interface PeerDistance {
   distance: bigint;
 }
 
-export class KReplicaContentHashReplication implements DataReplicationInterface {
+export class KReplicaContentHashReplication implements DataReplicationInterface, ReplicationEngineDelegate {
+  private inflightTracker: InflightRequestTracker;
+
   public constructor(
-    private readonly selfPeerId: string,
-    private readonly getKnownPeers: () => string[],
-    private readonly hashStrategy: ContentHashStrategy,
-    private readonly storage: ReplicaStoreInterface,
-    private readonly serializer: DataSerializer,
+    private selfPeerId: string,
+    private getKnownPeers: () => string[],
+    private hashStrategy: ContentHashStrategy,
+    private storage: ReplicaStoreInterface,
+    private serializer: DataSerializer,
     readonly replicationProtocol: ReplicationProtocolInterface,
-    private readonly kReplicaCount: number,
+    readonly maxAttempts: number = 3,
+    readonly baseDelayMs: number = 200,
+    readonly kReplicaCount: number = 20,
   ) {
-    this.replicationProtocol.registerShouldReplicateCallback(this.shouldReplicate.bind(this));
+    this.inflightTracker = new InflightRequestTracker();
   }
 
   public readonly start = async (): Promise<void> => {
@@ -43,7 +49,6 @@ export class KReplicaContentHashReplication implements DataReplicationInterface 
   public readonly shouldReplicate = (hash: ContentHash, _fromPeer?: string): boolean => {
     const knownPeers = this.getKnownPeers();
     const totalNetworkView = knownPeers.length + 1;
-
     // If the network size is smaller than our target replica count, everyone replicates
     if (totalNetworkView <= this.kReplicaCount) return true;
 
@@ -56,17 +61,9 @@ export class KReplicaContentHashReplication implements DataReplicationInterface 
     for (const peerId of knownPeers) {
       const peerBigInt = toHashBigInt(peerId);
       const peerDistance = calculateXorDistance(peerBigInt, contentBigInt);
-
-      if (peerDistance < selfDistance) {
-        closerPeersCount++;
-      }
-
-      // Early exit: We are outside the top K closest replicas
-      if (closerPeersCount >= this.kReplicaCount) {
-        return false;
-      }
+      if (peerDistance < selfDistance) closerPeersCount++;
+      if (closerPeersCount >= this.kReplicaCount) return false;
     }
-
     return true;
   };
 
@@ -76,8 +73,6 @@ export class KReplicaContentHashReplication implements DataReplicationInterface 
     if (await this.storage.has(hash)) return;
 
     await this.persist(hash, data);
-
-    // ANNOUNCE instead of direct send
     await this.replicationProtocol.announceToNetwork(hash);
   };
 
@@ -88,8 +83,6 @@ export class KReplicaContentHashReplication implements DataReplicationInterface 
     if (!this.shouldReplicate(hash, fromPeer)) return;
 
     await this.persist(hash, data);
-
-    // propagate further (gossip-style spread)
     await this.replicationProtocol.announceToNetwork(hash);
   };
 
@@ -146,10 +139,7 @@ export class KReplicaContentHashReplication implements DataReplicationInterface 
 
         if (response.type === 'replication_content') {
           const rawBytes = new Uint8Array(response.replicationContent);
-
-          // UNCONDITIONAL STORAGE: We requested it, so we keep it.
-          await this.storage.put(hash, rawBytes);
-
+          await this.storage.put(hash, rawBytes); // We requested it, so we keep it.
           logger.info(`Successfully retrieved missing data ${hash} via DHT iterative routing.`);
           return this.serializer.deserialize<T>(rawBytes);
         }
@@ -172,4 +162,98 @@ export class KReplicaContentHashReplication implements DataReplicationInterface 
     logger.warn(`Iterative lookup exhausted for ${hash}. Data not found after ${attempts} hops.`);
     return null;
   }
+
+  async onPeerAnnounced(hash: string, peerId: string, handleAnnounce: () => Promise<void>): Promise<void> {
+    if (await this.storage.has(hash)) return;
+    if (this.inflightTracker.isInflight(hash)) return;
+    if (!this.shouldReplicate(hash)) return;
+
+    this.inflightTracker.acquire(hash);
+    await this.executeWithRetry(async () => {
+      return handleAnnounce();
+    })
+      .catch((error) => logger.error('Replication request retry failed:', error))
+      .finally(() => this.inflightTracker.release(hash));
+  }
+
+  async onPeerRequested(
+    hash: string,
+    peerId: string,
+  ): Promise<{ found: true; data: Uint8Array } | { found: false; closerPeers: string[] }> {
+    const data = await this.storage.get(hash);
+    if (data) {
+      return { found: true, data };
+    }
+
+    const contentBigInt = toHashBigInt(hash);
+    const closerPeers = this.getKnownPeers()
+      .map((id) => ({ peerId: id, distance: calculateXorDistance(toHashBigInt(id), contentBigInt) }))
+      .sort((a, b) => (a.distance < b.distance ? -1 : 1))
+      .slice(0, 3)
+      .map((p) => p.peerId);
+
+    return { found: false, closerPeers };
+  }
+
+  async onPeerDeliveredContent(hash: string, data: Uint8Array, peerId: string): Promise<void> {
+    if (await this.storage.has(hash)) return;
+    if (!this.shouldReplicate(hash)) return;
+    if (this.inflightTracker.isInflight(hash)) {
+      this.inflightTracker.release(hash);
+    }
+    await this.storage.put(hash, data);
+  }
+
+  async onPeerReportedError(
+    hash: string,
+    reason: string,
+    closerPeers: string[] | undefined,
+    peerId: string,
+  ): Promise<void> {
+    if (this.inflightTracker.isInflight(hash)) {
+      this.inflightTracker.release(hash);
+    }
+    logger.debug(`Passive replication error from ${peerId}`, { hash, reason });
+  }
+
+  public readonly executeWithRetry = async <T>(fn: () => Promise<T>): Promise<T> => {
+    let attempt = 0;
+    while (true) {
+      try {
+        return await fn();
+      } catch (error) {
+        logger.error(`Failed attempt ${attempt + 1} for replication request, retrying...`);
+        attempt++;
+        if (attempt >= this.maxAttempts) {
+          throw error;
+        }
+        const delay = this.baseDelayMs * 2 ** (attempt - 1);
+        await new Promise((res) => setTimeout(res, delay));
+      }
+    }
+  };
 }
+
+export const createReplicationEngine = (
+  selfPeerId: string,
+  getKnownPeers: () => string[],
+  hashStrategy: ContentHashStrategy,
+  storage: ReplicaStoreInterface,
+  serializer: DataSerializer,
+  replicationProtocol: ReplicationProtocolInterface,
+  replicaCount: number = 3,
+): KReplicaContentHashReplication => {
+  const engine = new KReplicaContentHashReplication(
+    selfPeerId,
+    getKnownPeers,
+    hashStrategy,
+    storage,
+    serializer,
+    replicationProtocol,
+    replicaCount,
+  );
+
+  replicationProtocol.setDelegate(engine);
+
+  return engine;
+};

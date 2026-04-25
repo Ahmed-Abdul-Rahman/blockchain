@@ -2,6 +2,7 @@ import { PropagatedMessage, PropagationContext } from '../../data-propagation/ty
 import { ReplicaStoreInterface } from '../../replica-store/ReplicaStoreInterface';
 import { ContentHashStrategy } from '../content-hash/types';
 import { ContentHash } from '../types';
+import { ReplicationEngineDelegate } from './ReplicationEngineDelegateInterface';
 
 export type ReplicationMessageType =
   | 'replication_announce'
@@ -42,44 +43,11 @@ export type ReplicationMessage = ReplicationAnnounce | ReplicationRequest | Repl
  * Implementations (e.g. KReplicaContentHashReplication) implement this.
  */
 export interface ReplicationProtocolInterface {
-  hashStrategy: ContentHashStrategy;
-
-  storage: ReplicaStoreInterface;
-
   protocol: string;
 
   announceToNetwork(hash: ContentHash): Promise<void>;
 
   requestDataAndAwaitResponse(hash: string, targetPeerId: string): Promise<ReplicationContent | ReplicationError>;
-
-  registerShouldReplicateCallback(shouldReplicateCallback: (hash: ContentHash, _fromPeer?: string) => boolean): void;
-  /**
-   * Handles an incoming replication announce message.
-   * @param msg
-   * @param ctx
-   */
-  onAnnounce(msg: PropagatedMessage<ReplicationAnnounce>, ctx?: PropagationContext): Promise<void>;
-
-  /**
-   * Handles an incoming replication request message.
-   * @param msg
-   * @param ctx
-   */
-  onRequest(msg: PropagatedMessage<ReplicationRequest>, ctx?: PropagationContext): Promise<void>;
-
-  /**
-   * Handles an incoming replication content message.
-   * @param msg
-   * @param ctx
-   */
-  onContent(msg: PropagatedMessage<ReplicationContent>, ctx?: PropagationContext): Promise<void>;
-
-  /**
-   * Handles an incoming replication error message.
-   * @param msg
-   * @param ctx
-   */
-  onError(msg: PropagatedMessage<ReplicationError>, ctx?: PropagationContext): Promise<void>;
 
   /**
    * Starts the replication protocol.
@@ -92,4 +60,37 @@ export interface ReplicationProtocolInterface {
    * @returns A promise that resolves when the protocol is stopped.
    */
   stop(): Promise<void>;
+
+  /**
+   * Injects the replication engine to handle business logic.
+   */
+  setDelegate(delegate: ReplicationEngineDelegate): void;
+
+  /**
+   * Handles an incoming replication announce message.
+   * @param msg
+   * @param ctx
+   */
+  handleAnnounce(msg: PropagatedMessage<ReplicationAnnounce>, ctx?: PropagationContext): Promise<void>;
+
+  /**
+   * Handles an incoming replication request message.
+   * @param msg
+   * @param ctx
+   */
+  handleRequest(msg: PropagatedMessage<ReplicationRequest>, ctx?: PropagationContext): Promise<void>;
+
+  /**
+   * Handles an incoming replication content message.
+   * @param msg
+   * @param ctx
+   */
+  handleContent(msg: PropagatedMessage<ReplicationContent>, ctx?: PropagationContext): Promise<void>;
+
+  /**
+   * Handles an incoming replication error message.
+   * @param msg
+   * @param ctx
+   */
+  handleError(msg: PropagatedMessage<ReplicationError>, ctx?: PropagationContext): Promise<void>;
 }

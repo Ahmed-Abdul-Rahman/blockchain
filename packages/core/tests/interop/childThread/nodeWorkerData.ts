@@ -161,8 +161,17 @@ const runNode = async () => {
   const { pubsubTopic, index } = args;
   const onBoardingPeerTime = random(1, 10) * 1000 + random(1, 10) * 100;
 
-  const { node, pexService, nodePubsub, broadcastProp, directStream, dataReplication, replicaStore, nodeCleanUp } =
-    await configureNode(onBoardingPeerTime);
+  const {
+    node,
+    pexService,
+    nodePubsub,
+    broadcastProp,
+    directStream,
+    dataReplication,
+    replicaStore,
+    contentHasher,
+    nodeCleanUp,
+  } = await configureNode(onBoardingPeerTime);
 
   await node.start();
 
@@ -238,7 +247,7 @@ const runNode = async () => {
       const hashes: string[] = [];
       for (let i = 0; i < 3; i++) {
         const payload = { target: `Iterative Fetch Target Data ${i}`, ts: Date.now(), from: selfPeerId };
-        const hash = dataReplication.replicationProtocol.hashStrategy.hash(payload);
+        const hash = contentHasher.hash(payload);
         await dataReplication.onLocalDataProduced(payload);
         hashes.push(hash);
       }
