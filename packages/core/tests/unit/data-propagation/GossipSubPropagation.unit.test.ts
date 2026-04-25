@@ -1,6 +1,6 @@
 /** biome-ignore-all lint/suspicious/noExplicitAny: <its a test file> */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GossipSubPropagation } from '../../../dist';
+import { GossipSubPropagation } from '../../../src/data-propagation/broadcast/GossipSubPropagation';
 import { NoopGossipMetrics } from '../../../src/metrics';
 
 describe('GossipSubPropagation', () => {
