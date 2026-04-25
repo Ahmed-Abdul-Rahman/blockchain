@@ -235,13 +235,13 @@ const runNode = async () => {
           publisMessage(node, broadcastProp, payloadB, GossipPropTopicB);
           dataReplication.onLocalDataProduced(payloadB);
         }
+        const payload = `Node: ${index} - Topic: ${DirectStreamProtocol} - Hello ${j} from: ${selfPeerId}`;
         pexService.peerRegistry.getPeers().forEach((peerId) => {
-          const payload = `Node: ${index} - Topic: ${DirectStreamProtocol} - Hello ${j} from: ${selfPeerId}`;
           const id = sha256(payload);
           directStream.send(peerId, DirectStreamProtocol, { id, payload, from: selfPeerId, timestamp: Date.now() });
           hashedMessages.set(id, payload);
-          dataReplication.onLocalDataProduced(payload);
         });
+        dataReplication.onLocalDataProduced(payload);
       }
     } else if (message.type === 'inject_seed_data') {
       const hashes: string[] = [];

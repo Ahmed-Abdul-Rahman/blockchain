@@ -24,9 +24,9 @@ export class KReplicaContentHashReplication implements DataReplicationInterface,
     private storage: ReplicaStoreInterface,
     private serializer: DataSerializer,
     readonly replicationProtocol: ReplicationProtocolInterface,
+    readonly kReplicaCount: number = 20,
     readonly maxAttempts: number = 3,
     readonly baseDelayMs: number = 200,
-    readonly kReplicaCount: number = 20,
   ) {
     this.inflightTracker = new InflightRequestTracker();
   }
