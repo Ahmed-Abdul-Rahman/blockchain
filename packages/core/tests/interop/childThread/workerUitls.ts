@@ -67,6 +67,7 @@ export const configureNode = async (
     transportSelector,
     storage: replicaStore,
     hashStrategy: contentHashing,
+    getKnownPeers: () => pexService.peerRegistry.getPeers(),
   });
 
   const dataReplication = new KReplicaContentHashReplication(
@@ -77,10 +78,6 @@ export const configureNode = async (
     serializer,
     replicationManager,
     3,
-  );
-
-  replicationManager.setShouldReplicateFn((contentHash, _fromPeer) =>
-    dataReplication.shouldReplicate(contentHash, _fromPeer),
   );
 
   console.log('Wroker thread: ', threadId, 'and index: ', index, ' started with peerId: ', node.peerId);

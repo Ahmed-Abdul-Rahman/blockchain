@@ -29,6 +29,10 @@ export interface ReplicationError {
   type: 'replication_error';
   hash: ContentHash;
   reason: 'not_found' | 'overloaded';
+  /** * Routing hint: If not_found, return the PeerIds of the closest nodes
+   * the answering peer knows about.
+   */
+  closerPeers?: string[];
 }
 
 export type ReplicationMessage = ReplicationAnnounce | ReplicationRequest | ReplicationContent | ReplicationError;
@@ -46,6 +50,9 @@ export interface ReplicationProtocolInterface {
 
   announceToNetwork(hash: ContentHash): Promise<void>;
 
+  requestDataAndAwaitResponse(hash: string, targetPeerId: string): Promise<ReplicationContent | ReplicationError>;
+
+  registerShouldReplicateCallback(shouldReplicateCallback: (hash: ContentHash, _fromPeer?: string) => boolean): void;
   /**
    * Handles an incoming replication announce message.
    * @param msg

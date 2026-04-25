@@ -1,10 +1,16 @@
-import { createHash } from 'node:crypto';
+import { PriorityQueue } from '@datastructures-js/priority-queue';
 import { logger } from '@dechat/common';
+import { calculateXorDistance, toHashBigInt } from '@dechat/crypto';
 import { ReplicaStoreInterface } from '../replica-store/ReplicaStoreInterface';
 import { ContentHashStrategy } from './content-hash/types';
 import { DataReplicationInterface } from './DataReplicationInterface';
 import { ReplicationProtocolInterface } from './replication-protocol/ReplicationProtocolInterface';
 import { ContentHash, DataSerializer } from './types';
+
+interface PeerDistance {
+  peerId: string;
+  distance: bigint;
+}
 
 export class KReplicaContentHashReplication implements DataReplicationInterface {
   public constructor(
@@ -15,7 +21,9 @@ export class KReplicaContentHashReplication implements DataReplicationInterface 
     private readonly serializer: DataSerializer,
     readonly replicationProtocol: ReplicationProtocolInterface,
     private readonly kReplicaCount: number,
-  ) {}
+  ) {
+    this.replicationProtocol.registerShouldReplicateCallback(this.shouldReplicate.bind(this));
+  }
 
   public readonly start = async (): Promise<void> => {
     await this.replicationProtocol.start();
@@ -23,27 +31,6 @@ export class KReplicaContentHashReplication implements DataReplicationInterface 
 
   public readonly stop = async (): Promise<void> => {
     await this.replicationProtocol.stop();
-  };
-
-  /**
-   * Converts a string input to a 256-bit numeric representation using SHA-256.
-   * This projects PeerIds and ContentHashes into the exact same logical keyspace.
-   * * @param input - The string identifier to hash (e.g., PeerId or ContentHash)
-   * @returns {bigint} The numeric representation of the SHA-256 hash.
-   */
-  private readonly toHashBigInt = (input: string): bigint => {
-    const hexHash = createHash('sha256').update(input).digest('hex');
-    return BigInt(`0x${hexHash}`);
-  };
-
-  /**
-   * Calculates the XOR distance between a peer's hash and the content's hash.
-   * * @param peerHashBigInt - The SHA-256 hash of the peer ID parsed as a BigInt.
-   * @param contentHashBigInt - The SHA-256 hash of the content parsed as a BigInt.
-   * @returns {bigint} The absolute XOR distance.
-   */
-  private readonly calculateXorDistance = (peerHashBigInt: bigint, contentHashBigInt: bigint): bigint => {
-    return peerHashBigInt ^ contentHashBigInt;
   };
 
   /**
@@ -60,15 +47,15 @@ export class KReplicaContentHashReplication implements DataReplicationInterface 
     // If the network size is smaller than our target replica count, everyone replicates
     if (totalNetworkView <= this.kReplicaCount) return true;
 
-    const contentBigInt = this.toHashBigInt(hash);
-    const selfBigInt = this.toHashBigInt(this.selfPeerId);
-    const selfDistance = this.calculateXorDistance(selfBigInt, contentBigInt);
+    const contentBigInt = toHashBigInt(hash);
+    const selfBigInt = toHashBigInt(this.selfPeerId);
+    const selfDistance = calculateXorDistance(selfBigInt, contentBigInt);
 
     let closerPeersCount = 0;
 
     for (const peerId of knownPeers) {
-      const peerBigInt = this.toHashBigInt(peerId);
-      const peerDistance = this.calculateXorDistance(peerBigInt, contentBigInt);
+      const peerBigInt = toHashBigInt(peerId);
+      const peerDistance = calculateXorDistance(peerBigInt, contentBigInt);
 
       if (peerDistance < selfDistance) {
         closerPeersCount++;
@@ -116,4 +103,73 @@ export class KReplicaContentHashReplication implements DataReplicationInterface 
     const bytes = this.serializer.serialize(data);
     await this.storage.put(hash, bytes);
   };
+
+  /**
+   * Performs an iterative Kademlia-style network lookup to fetch missing data.
+   * Uses a Priority Queue to efficiently traverse the network toward the target hash.
+   * @param hash - The content hash of the missing data
+   */
+  public async requestMissingData<T>(hash: ContentHash): Promise<T | null> {
+    if (await this.storage.has(hash)) {
+      const rawBytes = await this.storage.get(hash);
+      if (rawBytes) return this.serializer.deserialize<T>(rawBytes);
+      return null;
+    }
+
+    const contentBigInt = toHashBigInt(hash);
+    const visitedPeers = new Set<string>([this.selfPeerId]);
+
+    // Initialize PQ with custom bigint comparator
+    const pq = new PriorityQueue<PeerDistance>((a, b) => {
+      if (a.distance < b.distance) return -1;
+      if (a.distance > b.distance) return 1;
+      return 0;
+    });
+
+    // Enqueue locally known peers
+    for (const peerId of this.getKnownPeers()) {
+      pq.enqueue({ peerId, distance: calculateXorDistance(toHashBigInt(peerId), contentBigInt) });
+    }
+
+    let attempts = 0;
+    const MAX_HOPS = 20; // Safety bound for network traversal
+
+    while (!pq.isEmpty() && attempts < MAX_HOPS) {
+      const target = pq.dequeue();
+      if (!target || visitedPeers.has(target.peerId)) continue;
+
+      visitedPeers.add(target.peerId);
+      attempts++;
+
+      try {
+        const response = await this.replicationProtocol.requestDataAndAwaitResponse(hash, target.peerId);
+
+        if (response.type === 'replication_content') {
+          const rawBytes = new Uint8Array(response.replicationContent);
+
+          // UNCONDITIONAL STORAGE: We requested it, so we keep it.
+          await this.storage.put(hash, rawBytes);
+
+          logger.info(`Successfully retrieved missing data ${hash} via DHT iterative routing.`);
+          return this.serializer.deserialize<T>(rawBytes);
+        }
+
+        if (response.type === 'replication_error' && response.closerPeers) {
+          for (const newPeerId of response.closerPeers) {
+            if (!visitedPeers.has(newPeerId)) {
+              pq.enqueue({
+                peerId: newPeerId,
+                distance: calculateXorDistance(toHashBigInt(newPeerId), contentBigInt),
+              });
+            }
+          }
+        }
+      } catch (error) {
+        logger.warn(`Failed to fetch ${hash} from peer ${target.peerId}`, error);
+      }
+    }
+
+    logger.warn(`Iterative lookup exhausted for ${hash}. Data not found after ${attempts} hops.`);
+    return null;
+  }
 }

@@ -1,4 +1,5 @@
 import { logger } from '@dechat/common';
+import { calculateXorDistance, toHashBigInt } from '@dechat/crypto';
 import { PeerId } from '@libp2p/interface';
 import { BroadcastPropagationInterface } from '../../data-propagation/broadcast/BroadcastPropagationInterface';
 import { DirectPropagationInterface } from '../../data-propagation/direct/DirectPropagationInterface';
@@ -24,6 +25,7 @@ export interface ReplicationManagerOptions {
   hashStrategy: ContentHashStrategy;
   transportSelector: TransportSelector;
   storage: ReplicaStoreInterface;
+  getKnownPeers: () => string[];
 }
 
 export class ReplicationMessageProtocolManager implements ReplicationProtocolInterface {
@@ -37,6 +39,17 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
   readonly directProp: DirectPropagationInterface;
   readonly broadcastProp: BroadcastPropagationInterface;
   readonly storage: ReplicaStoreInterface;
+  private readonly getKnownPeers: () => string[];
+  /** Maps correlation keys (hash:peerId) to Promise resolvers */
+  private pendingRequests: Map<
+    string,
+    {
+      resolve: (msg: ReplicationContent | ReplicationError) => void;
+      reject: (reason?: unknown) => void;
+      timer: NodeJS.Timeout;
+    }
+  >;
+
   private shouldReplicate: ((hash: ContentHash, _fromPeer?: string) => boolean) | undefined;
 
   maxAttempts: number = 3;
@@ -50,6 +63,9 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
     this.broadcastProp = opts.broadcast;
     this.hashStrategy = opts.hashStrategy;
     this.storage = opts.storage;
+    this.getKnownPeers = opts.getKnownPeers;
+
+    this.pendingRequests = new Map();
 
     this.directProp.onReceive(this.protocol, this.handleIncomingDirect.bind(this));
     this.broadcastProp.subscribe(this.topic, this.handleIncomingBroadcast.bind(this));
@@ -73,9 +89,9 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
     await this.sendMessage(msg).catch((error) => logger.error('Announcing replication hash failed: ', error));
   };
 
-  public readonly setShouldReplicateFn = (shouldReplicateFn: (hash: ContentHash, _fromPeer?: string) => boolean) => {
-    this.shouldReplicate = shouldReplicateFn;
-  };
+  public registerShouldReplicateCallback(shouldReplicateCallback: (hash: ContentHash, _fromPeer?: string) => boolean) {
+    this.shouldReplicate = shouldReplicateCallback;
+  }
 
   async onAnnounce(msg: PropagatedMessage<ReplicationAnnounce>, ctx?: PropagationContext): Promise<void> {
     const { hash } = msg.payload;
@@ -103,10 +119,21 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
     const data = await this.storage.get(hash);
 
     if (!data) {
+      const contentBigInt = toHashBigInt(hash);
+      const closerPeers = this.getKnownPeers()
+        .map((peerId) => ({
+          peerId,
+          distance: calculateXorDistance(toHashBigInt(peerId), contentBigInt),
+        }))
+        .sort((a, b) => (a.distance < b.distance ? -1 : 1))
+        .slice(0, 3)
+        .map((p) => p.peerId);
+
       const errorMessage: ReplicationError = {
         type: 'replication_error',
         hash,
         reason: 'not_found',
+        closerPeers,
       };
       await this.sendMessage(errorMessage, from).catch((error) =>
         logger.error('Sending replication error response failed: ', error),
@@ -125,6 +152,11 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
 
   async onContent(msg: PropagatedMessage<ReplicationContent>, ctx?: PropagationContext): Promise<void> {
     const { hash } = msg.payload;
+    const peerIdStr = ctx?.from.toString() ?? msg.from;
+
+    const isExplicitRequest = this.resolvePendingRequest(hash, peerIdStr, msg.payload);
+    if (isExplicitRequest) return;
+
     if (await this.storage.has(hash)) return;
     if (this.shouldReplicate && !this.shouldReplicate(hash)) return;
 
@@ -137,10 +169,60 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
 
   async onError(msg: PropagatedMessage<ReplicationError>, ctx?: PropagationContext): Promise<void> {
     const { hash, reason } = msg.payload;
+    const peerIdStr = ctx?.from.toString() ?? msg.from;
+
+    this.resolvePendingRequest(hash, peerIdStr, msg.payload);
+
     if (this.inflightTracker.isInflight(hash)) {
       this.inflightTracker.release(hash);
     }
     logger.warn('[ReplicationError]', { hash, reason });
+  }
+
+  /**
+   * Helper to resolve correlated incoming direct messages
+   */
+  private resolvePendingRequest(hash: string, peerId: string, payload: ReplicationContent | ReplicationError): boolean {
+    const key = `${hash}:${peerId}`;
+    const pending = this.pendingRequests.get(key);
+    if (pending) {
+      clearTimeout(pending.timer);
+      pending.resolve(payload);
+      this.pendingRequests.delete(key);
+      return true; // Intercepted: This was an active fetch
+    }
+    return false; // Not intercepted: This was a passive gossip push
+  }
+
+  /**
+   * Sends a request to a peer and waits for a CONTENT or ERROR response.
+   * Uses a correlation ID of `hash:targetPeerId` and a 5-second timeout.
+   * @param hash - Target content hash
+   * @param targetPeerId - Peer to request from
+   * @returns Promise resolving to the peer's explicit response
+   */
+  public requestDataAndAwaitResponse(
+    hash: string,
+    targetPeerId: string,
+  ): Promise<ReplicationContent | ReplicationError> {
+    return new Promise((resolve, reject) => {
+      const key = `${hash}:${targetPeerId}`;
+
+      const timer = setTimeout(() => {
+        this.pendingRequests.delete(key);
+        reject(new Error(`Timeout waiting for data ${hash} from peer ${targetPeerId}`));
+      }, 7000);
+
+      this.pendingRequests.set(key, { resolve, reject, timer });
+
+      const request: ReplicationRequest = { type: 'replication_request', hash };
+
+      this.sendMessage(request, targetPeerId).catch((error) => {
+        clearTimeout(timer);
+        this.pendingRequests.delete(key);
+        reject(error);
+      });
+    });
   }
 
   async handleIncomingBroadcast<T>(message: PropagatedMessage<T>, ctx?: PropagationContext): Promise<void> {

@@ -12,6 +12,7 @@ export type WorkerResult = {
   directStreamMsgsReceivedCount?: number;
   replicaCount?: number;
   replicaDataDiff?: Array<unknown>;
+  hasTargetData?: boolean; // Indicates if the node successfully fetched the target DHT hashes
 };
 
 export type expectedWorkerResult = {

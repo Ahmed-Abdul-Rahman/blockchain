@@ -25,6 +25,7 @@ let ttfvp: number | null = null;
 let checkTimer: NodeJS.Timeout | null = null;
 let selfPeerId: string | null = null;
 let directStreamMsgsReceivedCount = 0;
+let targetHashesToFetch: string[] | null = null;
 
 const hashedMessages = new Map<string, unknown>();
 
@@ -63,6 +64,9 @@ const getStatistics = async (
     directStreamMsgsReceivedCount,
     replicaCount: await replicaStore.size(),
     replicaDataDiff: diff,
+    hasTargetData: targetHashesToFetch
+      ? (await Promise.all(targetHashesToFetch.map((h) => replicaStore.has(h)))).every(Boolean)
+      : undefined,
   };
 };
 
@@ -229,6 +233,20 @@ const runNode = async () => {
           hashedMessages.set(id, payload);
           dataReplication.onLocalDataProduced(payload);
         });
+      }
+    } else if (message.type === 'inject_seed_data') {
+      const hashes: string[] = [];
+      for (let i = 0; i < 3; i++) {
+        const payload = { target: `Iterative Fetch Target Data ${i}`, ts: Date.now(), from: selfPeerId };
+        const hash = dataReplication.replicationProtocol.hashStrategy.hash(payload);
+        await dataReplication.onLocalDataProduced(payload);
+        hashes.push(hash);
+      }
+      parentPort?.postMessage({ type: 'target_hash_generated', hashes });
+    } else if (message.type === 'fetch_target_data') {
+      targetHashesToFetch = message.hashes;
+      for (const hash of targetHashesToFetch || []) {
+        await dataReplication.requestMissingData(hash);
       }
     } else if (message.type === 'terminate') {
       terminateThread = true;

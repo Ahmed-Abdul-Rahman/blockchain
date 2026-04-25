@@ -5,6 +5,7 @@ import {
   simulateBurstPeersAtStartUp,
   simulateBurstPeersAtStartUpWithDataPropagation,
   simulateBurstPeersAtStartUpWithPropagationAndReplication,
+  simulateIterativeDataFetch,
   simulatePeerChurn,
   simulateStaggeredPeersAtStartUp,
 } from './InterOpScenarios';
@@ -56,7 +57,7 @@ const printTestReport = (report: TestReport): void => {
   console.log('='.repeat(80) + '\n');
 };
 
-describe.skip('P2P Network Integration StartUp Tests', () => {
+describe('P2P Network Integration StartUp Tests', () => {
   it(`Burst startup of ${totalNodesArg ?? 12} nodes at once`, async () => {
     const totalNodes = totalNodesArg ?? 12;
     const runDurationSec = runDurationSecArg ?? 300;
@@ -133,7 +134,7 @@ describe.skip('P2P Network Integration StartUp Tests', () => {
   });
 });
 
-describe.skip('P2P Network Integration Stability Tests', () => {
+describe('P2P Network Integration Stability Tests', () => {
   it(`Peer Churn - Random peers drop and rejoin`, async () => {
     const totalNodes = totalNodesArg ?? 10;
     const runDurationSec = runDurationSecArg ?? 300;
@@ -270,6 +271,41 @@ describe('Interop - Data Replication Tests', () => {
     });
 
     const report = generateTestReport('Data replication Test', totalNodes, runDurationSec, aggregatedResults, passed);
+    printTestReport(report);
+  });
+});
+
+describe('Interop - DHT Routing and Iterative Fetching', () => {
+  it(`should successfully fetch missing data from the K-closest peers via iterative routing`, async () => {
+    const totalNodes = totalNodesArg ?? 12;
+    const runDurationSec = runDurationSecArg ?? 300;
+    const messageRate = messageRateArg ?? 5;
+    const pubsubTopic = pubsubTopicArg ?? '/bench/1';
+    const networkId = networkIdArg ?? 'benchnet-1';
+    const bootstrapMultiaddrs = [];
+
+    const aggregatedResults = await simulateIterativeDataFetch({
+      totalNodes,
+      runDurationSec,
+      messageRate,
+      pubsubTopic,
+      networkId,
+      bootstrapMultiaddrs,
+    });
+
+    const { workerResults } = aggregatedResults;
+    const fetchNodeResult = workerResults.find((r) => r.hasTargetData !== undefined);
+
+    let passed = true;
+
+    if (!fetchNodeResult || !fetchNodeResult.hasTargetData) {
+      passed = false;
+      console.log(`⚠️ Fetching Node failed to retrieve all missing hashes via DHT.`);
+    }
+
+    assert.ok(fetchNodeResult?.hasTargetData, `Node failed to iteratively fetch target data`);
+
+    const report = generateTestReport('DHT Iterative Fetch', totalNodes, runDurationSec, aggregatedResults, passed);
     printTestReport(report);
   });
 });
