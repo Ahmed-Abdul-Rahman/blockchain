@@ -108,7 +108,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
         type: 'replication_error',
         hash,
         reason: 'not_found',
-        closerPeers: result.closerPeers,
+        closestPeers: result.closestPeers,
       };
       await this.sendMessage(errorMessage, from).catch((error) =>
         logger.error('Sending replication error response failed: ', error),
@@ -129,13 +129,13 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
   }
 
   async handleError(msg: PropagatedMessage<ReplicationError>, ctx?: PropagationContext): Promise<void> {
-    const { hash, reason, closerPeers } = msg.payload;
+    const { hash, reason, closestPeers } = msg.payload;
     const peerIdStr = ctx?.from?.toString() ?? msg.from;
 
     const isExplicitRequest = this.resolvePendingRequest(hash, peerIdStr, msg.payload);
 
     if (!isExplicitRequest && this.delegate) {
-      await this.delegate.onPeerReportedError(hash, reason, closerPeers, peerIdStr);
+      await this.delegate.onPeerReportedError(hash, reason, closestPeers, peerIdStr);
     }
   }
 

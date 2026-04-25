@@ -33,7 +33,7 @@ export interface ReplicationError {
   /** * Routing hint: If not_found, return the PeerIds of the closest nodes
    * the answering peer knows about.
    */
-  closerPeers?: string[];
+  closestPeers?: string[];
 }
 
 export type ReplicationMessage = ReplicationAnnounce | ReplicationRequest | ReplicationContent | ReplicationError;

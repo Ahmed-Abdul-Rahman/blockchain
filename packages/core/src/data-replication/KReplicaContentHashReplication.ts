@@ -24,7 +24,7 @@ export class KReplicaContentHashReplication implements DataReplicationInterface,
     private storage: ReplicaStoreInterface,
     private serializer: DataSerializer,
     readonly replicationProtocol: ReplicationProtocolInterface,
-    readonly kReplicaCount: number = 20,
+    readonly kReplicaCount: number = 3,
     readonly maxAttempts: number = 3,
     readonly baseDelayMs: number = 200,
   ) {
@@ -50,19 +50,20 @@ export class KReplicaContentHashReplication implements DataReplicationInterface,
     const knownPeers = this.getKnownPeers();
     const totalNetworkView = knownPeers.length + 1;
     // If the network size is smaller than our target replica count, everyone replicates
-    if (totalNetworkView <= this.kReplicaCount) return true;
+    const target = Math.min(this.kReplicaCount, 3);
+    if (totalNetworkView <= target) return true;
 
     const contentBigInt = toHashBigInt(hash);
     const selfBigInt = toHashBigInt(this.selfPeerId);
     const selfDistance = calculateXorDistance(selfBigInt, contentBigInt);
 
-    let closerPeersCount = 0;
+    let closestPeersCount = 0;
 
     for (const peerId of knownPeers) {
       const peerBigInt = toHashBigInt(peerId);
       const peerDistance = calculateXorDistance(peerBigInt, contentBigInt);
-      if (peerDistance < selfDistance) closerPeersCount++;
-      if (closerPeersCount >= this.kReplicaCount) return false;
+      if (peerDistance < selfDistance) closestPeersCount++;
+      if (closestPeersCount >= this.kReplicaCount) return false;
     }
     return true;
   };
@@ -144,8 +145,8 @@ export class KReplicaContentHashReplication implements DataReplicationInterface,
           return this.serializer.deserialize<T>(rawBytes);
         }
 
-        if (response.type === 'replication_error' && response.closerPeers) {
-          for (const newPeerId of response.closerPeers) {
+        if (response.type === 'replication_error' && response.closestPeers) {
+          for (const newPeerId of response.closestPeers) {
             if (!visitedPeers.has(newPeerId)) {
               pq.enqueue({
                 peerId: newPeerId,
@@ -179,20 +180,20 @@ export class KReplicaContentHashReplication implements DataReplicationInterface,
   async onPeerRequested(
     hash: string,
     peerId: string,
-  ): Promise<{ found: true; data: Uint8Array } | { found: false; closerPeers: string[] }> {
+  ): Promise<{ found: true; data: Uint8Array } | { found: false; closestPeers: string[] }> {
     const data = await this.storage.get(hash);
     if (data) {
       return { found: true, data };
     }
 
     const contentBigInt = toHashBigInt(hash);
-    const closerPeers = this.getKnownPeers()
+    const closestPeers = this.getKnownPeers()
       .map((id) => ({ peerId: id, distance: calculateXorDistance(toHashBigInt(id), contentBigInt) }))
       .sort((a, b) => (a.distance < b.distance ? -1 : 1))
       .slice(0, 3)
       .map((p) => p.peerId);
 
-    return { found: false, closerPeers };
+    return { found: false, closestPeers };
   }
 
   async onPeerDeliveredContent(hash: string, data: Uint8Array, peerId: string): Promise<void> {
@@ -207,7 +208,7 @@ export class KReplicaContentHashReplication implements DataReplicationInterface,
   async onPeerReportedError(
     hash: string,
     reason: string,
-    closerPeers: string[] | undefined,
+    closestPeers: string[] | undefined,
     peerId: string,
   ): Promise<void> {
     if (this.inflightTracker.isInflight(hash)) {

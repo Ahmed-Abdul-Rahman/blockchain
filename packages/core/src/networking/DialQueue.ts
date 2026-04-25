@@ -109,31 +109,44 @@ export class DialQueue {
     return setInterval(async () => {
       if (this.isQueueRunning) return;
       this.isQueueRunning = true;
-      const target = this.getTargetConnections();
+      try {
+        const target = this.getTargetConnections();
+        const activeConnections = this.getConnections();
+        const connectedPeerIds = new Set(activeConnections.map((connection) => connection.remotePeer.toString()));
+        let currentCount = connectedPeerIds.size;
 
-      while (this.getConnections().length < target) {
-        const peerInfo = this.dialQueue.shift();
-        try {
+        while (currentCount < target && this.dialQueue.length > 0) {
+          const peerInfo = this.dialQueue.shift();
           if (!peerInfo) break;
+          const peerIdStr = peerInfo.peerId;
+
           if (
-            !this.scorer.isDialable(peerInfo.peerId) ||
-            this.node.peerId.equals(peerInfo.peerId) ||
-            this.getRemotePeerConnections(peerInfo.peerId).length > 1
+            !this.scorer.isDialable(peerIdStr) ||
+            this.node.peerId.equals(peerIdStr) ||
+            this.getRemotePeerConnections(peerIdStr).length > 1
           )
             continue;
-          this.metrics.dialAttempt();
-          await this.node.dial(peerIdFromString(peerInfo.peerId));
-          this.metrics.dialSucceeded();
-        } catch (error) {
-          // If the dialing failed consistently maybe for twice or thrice remove this peer from registry
-          logger.warn('Error occured while dialing a peer in queue');
-          logger.debug(error);
-          this.metrics.dialFailed('error');
+
+          try {
+            this.metrics.dialAttempt();
+            await this.node.dial(peerIdFromString(peerIdStr));
+            this.metrics.dialSucceeded();
+            connectedPeerIds.add(peerIdStr);
+            currentCount++;
+          } catch (error) {
+            // TODO: If the dialing failed consistently maybe for twice or thrice remove this peer from registry
+            logger.warn(`Failed to dial peer ${peerIdStr} `, error);
+            logger.debug(error);
+            this.metrics.dialFailed('error');
+          }
         }
+        logger.debug('Total unique connections with remotePeers: ', currentCount);
+        this.metrics.targetConnectionsComputed(target);
+      } catch (error) {
+        logger.error('Critical error in DialQueue loop: ', error);
+      } finally {
+        this.isQueueRunning = false;
       }
-      logger.debug('Total unique connections with remotePeers: ', this.getConnections().length);
-      this.isQueueRunning = false;
-      this.metrics.targetConnectionsComputed(target);
     }, this.intervalMs);
   }
 

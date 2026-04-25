@@ -9,7 +9,10 @@ export class DirectStreamPropagation implements DirectPropagationInterface {
   private readonly node: Libp2p;
 
   /** protocol handler functions that gets executed once message is received on a particular protocol*/
-  private readonly protocolHandlers: Map<string, (message: PropagatedMessage<any>, ctx: PropagationContext) => void>;
+  private readonly protocolHandlers: Map<
+    string,
+    (message: PropagatedMessage<any>, ctx: PropagationContext) => Promise<void> | void
+  >;
 
   /** Maximum message length that can be read */
   private readonly maxMessageBytes: number;
@@ -49,7 +52,10 @@ export class DirectStreamPropagation implements DirectPropagationInterface {
     await writeToStream(stream, message);
   }
 
-  onReceive<T>(protocol: string, handler: (message: PropagatedMessage<T>, ctx: PropagationContext) => void): void {
+  onReceive<T>(
+    protocol: string,
+    handler: (message: PropagatedMessage<T>, ctx: PropagationContext) => Promise<void> | void,
+  ): void {
     this.node.handle(protocol, (data) => this.handleIncomingStream(data, protocol));
     this.protocolHandlers.set(protocol, handler);
   }

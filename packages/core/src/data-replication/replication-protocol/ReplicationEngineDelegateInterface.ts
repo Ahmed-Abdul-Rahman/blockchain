@@ -14,7 +14,7 @@ export interface ReplicationEngineDelegate {
   onPeerRequested(
     hash: string,
     peerId: string,
-  ): Promise<{ found: true; data: Uint8Array } | { found: false; closerPeers: string[] }>;
+  ): Promise<{ found: true; data: Uint8Array } | { found: false; closestPeers: string[] }>;
 
   /**
    * Triggered when a peer pushes content to us outside of an active RPC request.
@@ -24,5 +24,5 @@ export interface ReplicationEngineDelegate {
   /**
    * Triggered when a peer reports an error outside of an active RPC request.
    */
-  onPeerReportedError(hash: string, reason: string, closerPeers: string[] | undefined, peerId: string): Promise<void>;
+  onPeerReportedError(hash: string, reason: string, closestPeers: string[] | undefined, peerId: string): Promise<void>;
 }

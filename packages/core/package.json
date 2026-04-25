@@ -13,6 +13,7 @@
     "fixBuild": "tsc-esm-fix --target dist --ext .js",
     "clean": "rm -rf dist",
     "test": "vitest run **/*.unit.test.ts",
+    "test:coverage": "vitest run --coverage",
     "test:int": "NODE_ENV=perf LOG_LEVEL=INFO node --trace-warnings dist/tests/interop/interOpTestRunner.int.js",
     "sim": "NODE_ENV=perf node dist/tests/interop/initiateTest.js --nodes 3 --duration 30",
     "sim:peak": "NODE_OPTIONS='--max-old-space-size=4096' NODE_ENV=perf node dist/tests/interop/SimulateMultiNode.int.js --nodes 50 --duration 1500"

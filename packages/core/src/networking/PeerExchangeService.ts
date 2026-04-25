@@ -13,6 +13,7 @@ import {
   MAX_PEX_MSGS_PER_MIN,
   MAX_SHARED_PEERS,
   PEER_SCORE_DECAY_INTERVAL,
+  SEEN_PEERS_BLOOM_FILTER_TTL_MS,
 } from './configurations';
 import { DialQueue } from './DialQueue';
 import { PeerRegistry } from './PeerRegistry';
@@ -47,6 +48,8 @@ export class PeerExchangeService {
   /** Interval Id of the peer scorer decay interval */
   private peerScoreDecayInterval: NodeJS.Timeout | null = null;
 
+  private bloomFilterResetInterval: NodeJS.Timeout | null = null;
+
   constructor(
     node: Libp2p,
     scorer: SimplePeerScorer,
@@ -73,6 +76,8 @@ export class PeerExchangeService {
     this.pubsub.subscribe(PEX_TOPIC);
     this.gossipListener = (event: CustomEvent<Message>) => this.onGossip(event);
     this.pubsub.addEventListener('message', this.gossipListener);
+
+    this.startBloomFilterRotation();
   }
 
   /**
@@ -113,6 +118,17 @@ export class PeerExchangeService {
     }
     this.peersSeen.add(peerId);
     return true;
+  }
+
+  /**
+   * Periodically resets the Bloom filter to prevent it from becoming stale.
+   * This allows the node to re-dial peers it hasn't seen in a long time.
+   */
+  private startBloomFilterRotation(): void {
+    this.bloomFilterResetInterval = setInterval(() => {
+      logger.info('Rotating seen peers Bloom filter to allow re-dialing');
+      this.peersSeen = new bloomFilters.ScalableBloomFilter(1000, 0.01);
+    }, SEEN_PEERS_BLOOM_FILTER_TTL_MS);
   }
 
   /**
@@ -314,9 +330,15 @@ export class PeerExchangeService {
     this.dialQ.stop();
     this.peerRegistry.cleanUp();
     this.pubsub.removeEventListener('message', this.gossipListener);
+
     if (this.peerScoreDecayInterval) {
       clearInterval(this.peerScoreDecayInterval);
       this.peerScoreDecayInterval = null;
+    }
+
+    if (this.bloomFilterResetInterval) {
+      clearInterval(this.bloomFilterResetInterval);
+      this.bloomFilterResetInterval = null;
     }
   }
 }

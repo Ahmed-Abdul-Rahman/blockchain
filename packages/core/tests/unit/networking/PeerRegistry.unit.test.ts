@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { NoopPeerRegistryMetrics } from '../../src/metrics/noop/NoopPeerRegistryMetrics';
-import { PeerRegistry } from '../../src/networking/PeerRegistry';
+import { NoopPeerRegistryMetrics } from '../../../src/metrics/noop/NoopPeerRegistryMetrics';
+import { PeerRegistry } from '../../../src/networking/PeerRegistry';
 
 describe('PeerRegistry', () => {
   it('adds, dedups addresses and TTLs entries', () => {

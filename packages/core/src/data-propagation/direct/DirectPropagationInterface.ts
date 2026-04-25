@@ -11,7 +11,10 @@ export interface DirectPropagationInterface {
    * Register a handler for inbound direct messages.
    * Only one handler is expected per instance.
    */
-  onReceive<T>(protocol: string, handler: (message: PropagatedMessage<T>, ctx: PropagationContext) => void): void;
+  onReceive<T>(
+    protocol: string,
+    handler: (message: PropagatedMessage<T>, ctx: PropagationContext) => Promise<void> | void,
+  ): void;
 
   /**
    * Unregister a handler for a given protocol
