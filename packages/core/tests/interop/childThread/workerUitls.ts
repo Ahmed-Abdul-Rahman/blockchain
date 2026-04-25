@@ -4,8 +4,11 @@ import { threadId, workerData } from 'worker_threads';
 import { GossipSubPropagation } from '../../../src/data-propagation/broadcast/GossipSubPropagation';
 import { DirectStreamPropagation } from '../../../src/data-propagation/direct/DirectStreamPropagation';
 import { Sha256ContentHashStrategy } from '../../../src/data-replication/content-hash/Sha256ContentHashStrategy';
-import { KReplicaContentHashReplication } from '../../../src/data-replication/KReplicaContentHashReplication';
-import { InflightRequestTracker } from '../../../src/data-replication/replication-protocol/InflightRequestTracker';
+import { ContentHashStrategy } from '../../../src/data-replication/content-hash/types';
+import {
+  createReplicationEngine,
+  KReplicaContentHashReplication,
+} from '../../../src/data-replication/KReplicaContentHashReplication';
 import { ReplicationMessageProtocolManager } from '../../../src/data-replication/replication-protocol/ReplicationMessageProtocolManager';
 import { TransportSelector } from '../../../src/data-replication/replication-protocol/TransportSelector';
 import { getGenericDataSerailizer } from '../../../src/data-replication/serializers';
@@ -32,6 +35,7 @@ export const configureNode = async (
   broadcastProp: GossipSubPropagation;
   directStream: DirectStreamPropagation;
   replicaStore: InMemoryReplicaStore;
+  contentHasher: ContentHashStrategy;
   dataReplication: KReplicaContentHashReplication;
   nodeCleanUp: () => void;
 }> => {
@@ -50,30 +54,24 @@ export const configureNode = async (
 
   const directStream = new DirectStreamPropagation(node);
 
-  const contentHashing = new Sha256ContentHashStrategy();
+  const contentHasher = new Sha256ContentHashStrategy();
 
   const serializer = getGenericDataSerailizer();
 
   const replicaStore = new InMemoryReplicaStore(serializer);
-
-  const inflight = new InflightRequestTracker();
 
   const transportSelector = new TransportSelector();
 
   const replicationManager = new ReplicationMessageProtocolManager(node.peerId, {
     broadcast: broadcastProp,
     direct: directStream,
-    inflightTracker: inflight,
     transportSelector,
-    storage: replicaStore,
-    hashStrategy: contentHashing,
-    getKnownPeers: () => pexService.peerRegistry.getPeers(),
   });
 
-  const dataReplication = new KReplicaContentHashReplication(
+  const dataReplication = createReplicationEngine(
     node.peerId.toString(),
     () => pexService.peerRegistry.getPeers(),
-    contentHashing,
+    contentHasher,
     replicaStore,
     serializer,
     replicationManager,
@@ -90,6 +88,7 @@ export const configureNode = async (
     broadcastProp,
     directStream,
     replicaStore,
+    contentHasher,
     dataReplication,
     nodeCleanUp,
   };
