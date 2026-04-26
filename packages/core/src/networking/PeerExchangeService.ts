@@ -2,7 +2,7 @@ import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { logger } from '@dechat/common';
 import { Libp2p, Message, PeerId, Stream } from '@libp2p/interface';
 import bloomFilters from 'bloom-filters';
-import { delay } from 'es-toolkit';
+import { delay, random } from 'es-toolkit';
 import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
@@ -13,6 +13,7 @@ import {
   MAX_PEX_MSGS_PER_MIN,
   MAX_SHARED_PEERS,
   PEER_SCORE_DECAY_INTERVAL,
+  SEEN_PEERS_BLOOM_FILTER_TTL_MS,
 } from './configurations';
 import { DialQueue } from './DialQueue';
 import { PeerRegistry } from './PeerRegistry';
@@ -47,6 +48,8 @@ export class PeerExchangeService {
   /** Interval Id of the peer scorer decay interval */
   private peerScoreDecayInterval: NodeJS.Timeout | null = null;
 
+  private bloomFilterResetInterval: NodeJS.Timeout | null = null;
+
   constructor(
     node: Libp2p,
     scorer: SimplePeerScorer,
@@ -73,6 +76,8 @@ export class PeerExchangeService {
     this.pubsub.subscribe(PEX_TOPIC);
     this.gossipListener = (event: CustomEvent<Message>) => this.onGossip(event);
     this.pubsub.addEventListener('message', this.gossipListener);
+
+    this.startBloomFilterRotation();
   }
 
   /**
@@ -113,6 +118,17 @@ export class PeerExchangeService {
     }
     this.peersSeen.add(peerId);
     return true;
+  }
+
+  /**
+   * Periodically resets the Bloom filter to prevent it from becoming stale.
+   * This allows the node to re-dial peers it hasn't seen in a long time.
+   */
+  private startBloomFilterRotation(): void {
+    this.bloomFilterResetInterval = setInterval(() => {
+      logger.info('Rotating seen peers Bloom filter to allow re-dialing');
+      this.peersSeen = new bloomFilters.ScalableBloomFilter(1000, 0.01);
+    }, SEEN_PEERS_BLOOM_FILTER_TTL_MS);
   }
 
   /**
@@ -160,6 +176,9 @@ export class PeerExchangeService {
           peerId: p.peerId,
           addresses: filterAddrs(p.addresses),
         }));
+        const baseDelay = peers.length ? GOSSIP_INTERVAL_MS : 1000;
+        const jitter = random(1, 100); // Add random jitter to avoid thundering herd problem or sync storms across nodes
+        await delay(baseDelay + jitter); // Delay always to avoid CPU consumption when no peers present
         if (peers.length) {
           const msg: PEX_GOSSIP = {
             from: this.node.peerId.toString(),
@@ -171,7 +190,6 @@ export class PeerExchangeService {
               addresses: this.node.getMultiaddrs().map((multiAddr) => multiAddr.toString()),
             },
           };
-          await delay(GOSSIP_INTERVAL_MS);
           await publishWithRetry(this.pubsub, PEX_TOPIC, uint8ArrayFromString(JSON.stringify(msg)), {
             retries: 7,
             baseDelay: GOSSIP_INTERVAL_MS,
@@ -312,9 +330,15 @@ export class PeerExchangeService {
     this.dialQ.stop();
     this.peerRegistry.cleanUp();
     this.pubsub.removeEventListener('message', this.gossipListener);
+
     if (this.peerScoreDecayInterval) {
       clearInterval(this.peerScoreDecayInterval);
       this.peerScoreDecayInterval = null;
+    }
+
+    if (this.bloomFilterResetInterval) {
+      clearInterval(this.bloomFilterResetInterval);
+      this.bloomFilterResetInterval = null;
     }
   }
 }

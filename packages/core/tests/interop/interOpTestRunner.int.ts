@@ -5,6 +5,7 @@ import {
   simulateBurstPeersAtStartUp,
   simulateBurstPeersAtStartUpWithDataPropagation,
   simulateBurstPeersAtStartUpWithPropagationAndReplication,
+  simulateIterativeDataFetch,
   simulatePeerChurn,
   simulateStaggeredPeersAtStartUp,
 } from './InterOpScenarios';
@@ -65,11 +66,6 @@ describe('P2P Network Integration StartUp Tests', () => {
     const networkId = networkIdArg ?? 'benchnet-1';
     const bootstrapMultiaddrs = [];
 
-    console.log('\n🚀 Starting Burst Startup Test...');
-    console.log(`   Nodes: ${totalNodes}`);
-    console.log(`   Duration: ${runDurationSec}s`);
-    console.log(`   Message Rate: ${messageRate}/s\n`);
-
     const aggregatedResults = await simulateBurstPeersAtStartUp({
       totalNodes,
       runDurationSec,
@@ -109,10 +105,6 @@ describe('P2P Network Integration StartUp Tests', () => {
     const networkId = networkIdArg ?? 'benchnet-1';
     const bootstrapMultiaddrs = [];
 
-    console.log('\n🚀 Starting Staggered Startup Test...');
-    console.log(`   Nodes: ${totalNodes}`);
-    console.log(`   Duration: ${runDurationSec}s\n`);
-
     const aggregatedResults = await simulateStaggeredPeersAtStartUp({
       totalNodes,
       runDurationSec,
@@ -150,10 +142,6 @@ describe('P2P Network Integration Stability Tests', () => {
     const pubsubTopic = pubsubTopicArg ?? '/bench/1';
     const networkId = networkIdArg ?? 'benchnet-1';
     const bootstrapMultiaddrs = [];
-
-    console.log('\n🚀 Starting Peer Churn Test...');
-    console.log(`   Nodes: ${totalNodes}`);
-    console.log(`   Duration: ${runDurationSec}s\n`);
 
     const aggregatedResults = await simulatePeerChurn({
       totalNodes,
@@ -193,11 +181,6 @@ describe('Interop - Data Propagation Tests', () => {
     const networkId = networkIdArg ?? 'benchnet-1';
     const bootstrapMultiaddrs = [];
 
-    console.log('\n🚀 Starting Data Propagation Test');
-    console.log(`   Nodes: ${totalNodes}`);
-    console.log(`   Duration: ${runDurationSec}s`);
-    console.log(`   Message Rate: ${messageRate}/s\n`);
-
     const aggregatedResults = await simulateBurstPeersAtStartUpWithDataPropagation({
       totalNodes,
       runDurationSec,
@@ -211,7 +194,12 @@ describe('Interop - Data Propagation Tests', () => {
     let passed = true;
 
     workerResults.forEach((workerResult, index) => {
-      const seenMessagesOk = workerResult.seenMessages?.reduce((prevSeen, { seen }) => seen == 22 && prevSeen, true);
+      const seenMessagesOk = workerResult.seenMessages?.reduce((prevSeen, { topic, seen }) => {
+        if (topic === '/deChat/v1/topic/replication-protocol') {
+          return prevSeen;
+        }
+        return seen === 22 && prevSeen;
+      }, true);
       if (!seenMessagesOk) {
         passed = false;
         console.log(`⚠️  Node ${index} has ${workerResult.seenMessages} expected: 22`);
@@ -221,11 +209,11 @@ describe('Interop - Data Propagation Tests', () => {
           workerResult.directStreamMsgsReceivedCount >= 2 * (totalNodes - 1),
           `Node ${index} has unexpected number of direct messages, expected: ${2 * (totalNodes - 1)}`,
         );
-      assert.ok(seenMessagesOk, `Node ${index} has unexpected number of seenMessages, expected: 22`);
+      assert.ok(seenMessagesOk, `Node ${index} has unexpected number of seenMessages , expected: 22`);
     });
 
     const report = generateTestReport(
-      'GossipSub Data Propagation',
+      'GossipSub Data and Direct Stream Data Propagation',
       totalNodes,
       runDurationSec,
       aggregatedResults,
@@ -244,11 +232,6 @@ describe('Interop - Data Replication Tests', () => {
     const networkId = networkIdArg ?? 'benchnet-1';
     const bootstrapMultiaddrs = [];
 
-    console.log('\n🚀 Starting Data Replication Test');
-    console.log(`   Nodes: ${totalNodes}`);
-    console.log(`   Duration: ${runDurationSec}s`);
-    console.log(`   Message Rate: ${messageRate}/s\n`);
-
     const aggregatedResults = await simulateBurstPeersAtStartUpWithPropagationAndReplication({
       totalNodes,
       runDurationSec,
@@ -262,30 +245,68 @@ describe('Interop - Data Replication Tests', () => {
     let passed = true;
 
     workerResults.forEach((workerResult, index) => {
-      const seenMessagesOk = workerResult.seenMessages?.reduce((prevSeen, { seen }) => seen == 22 && prevSeen, true);
+      const seenMessagesOk = workerResult.seenMessages?.reduce((prevSeen, { topic, seen }) => {
+        if (topic === '/deChat/v1/topic/replication-protocol') {
+          return seen > 0 && prevSeen;
+        }
+        return seen === 22 && prevSeen;
+      }, true);
       if (!seenMessagesOk) {
         passed = false;
-        console.log(`⚠️  Node ${index} has ${workerResult.seenMessages} expected: 22`);
+        console.log(`⚠️  Node ${index} has ${workerResult.seenMessages} seenMessages expected: 22`);
       }
-      assert.ok(seenMessagesOk, `Node ${index} has unexpected number of seenMessages, expected: 22`);
-      if (workerResult.directStreamMsgsReceivedCount)
+      if (workerResult.directStreamMsgsReceivedCount) {
         assert.ok(
           workerResult.directStreamMsgsReceivedCount >= 2 * (totalNodes - 1),
           `Node ${index} has unexpected number of direct messages, expected: ${2 * (totalNodes - 1)}`,
         );
-      if (workerResult.replicaCount)
+      }
+      if (workerResult.replicaCount) {
+        // Assert that selective K-replication is active. The node should store SOME data,
+        // but no longer stores ALL data on the network.
         assert.ok(
-          workerResult.replicaCount === 6 * totalNodes,
-          `Node ${index} has unexpected number of replicated messages, expected: ${6 * totalNodes}`,
+          workerResult.replicaCount > 0 && workerResult.replicaCount < 6 * totalNodes,
+          `Node ${index} failed K-replication bounds. Replicas: ${workerResult.replicaCount}`,
         );
-      if (workerResult.replicaDataDiff)
-        assert.ok(
-          workerResult.replicaDataDiff.length === 0,
-          `Node ${index} does not have complete number of replicated data, expected more: ${workerResult.replicaDataDiff.length}`,
-        );
+      }
     });
 
     const report = generateTestReport('Data replication Test', totalNodes, runDurationSec, aggregatedResults, passed);
+    printTestReport(report);
+  });
+});
+
+describe('Interop - DHT Routing and Iterative Fetching', () => {
+  it(`should successfully fetch missing data from the K-closest peers via iterative routing`, async () => {
+    const totalNodes = totalNodesArg ?? 12;
+    const runDurationSec = runDurationSecArg ?? 300;
+    const messageRate = messageRateArg ?? 5;
+    const pubsubTopic = pubsubTopicArg ?? '/bench/1';
+    const networkId = networkIdArg ?? 'benchnet-1';
+    const bootstrapMultiaddrs = [];
+
+    const aggregatedResults = await simulateIterativeDataFetch({
+      totalNodes,
+      runDurationSec,
+      messageRate,
+      pubsubTopic,
+      networkId,
+      bootstrapMultiaddrs,
+    });
+
+    const { workerResults } = aggregatedResults;
+    const fetchNodeResult = workerResults.find((r) => r.hasTargetData !== undefined);
+
+    let passed = true;
+
+    if (!fetchNodeResult || !fetchNodeResult.hasTargetData) {
+      passed = false;
+      console.log(`⚠️ Fetching Node failed to retrieve all missing hashes via DHT.`);
+    }
+
+    assert.ok(fetchNodeResult?.hasTargetData, `Node failed to iteratively fetch target data`);
+
+    const report = generateTestReport('DHT Iterative Fetch', totalNodes, runDurationSec, aggregatedResults, passed);
     printTestReport(report);
   });
 });

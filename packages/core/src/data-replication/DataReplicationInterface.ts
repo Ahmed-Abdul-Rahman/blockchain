@@ -1,3 +1,4 @@
+import { ReplicationProtocolInterface } from './replication-protocol/ReplicationProtocolInterface';
 import { ContentHash } from './types';
 
 export interface DataReplicationInterface {
@@ -22,12 +23,12 @@ export interface DataReplicationInterface {
   shouldReplicate(hash: ContentHash, fromPeerId?: string): boolean;
 
   /**
-   * Replicates data to other peers
-   */
-  replicate<T>(hash: ContentHash, data: T): Promise<void>;
-
-  /**
    * Optional eviction hook
    */
   evict?(contentHash: string): Promise<void>;
+
+  /**
+   * Replication protocol implementation to be used by this data replication
+   */
+  readonly replicationProtocol: ReplicationProtocolInterface;
 }

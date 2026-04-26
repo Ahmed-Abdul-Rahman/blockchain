@@ -8,11 +8,11 @@ import { DirectPropagationInterface } from './DirectPropagationInterface';
 export class DirectStreamPropagation implements DirectPropagationInterface {
   private readonly node: Libp2p;
 
-  /** Procotol used for Streaming */
-  private readonly protocol: string;
-
-  /** Handler function that gets executed once message is received */
-  private handler?: (message: PropagatedMessage<any>, ctx: PropagationContext) => void;
+  /** protocol handler functions that gets executed once message is received on a particular protocol*/
+  private readonly protocolHandlers: Map<
+    string,
+    (message: PropagatedMessage<any>, ctx: PropagationContext) => Promise<void> | void
+  >;
 
   /** Maximum message length that can be read */
   private readonly maxMessageBytes: number;
@@ -20,22 +20,21 @@ export class DirectStreamPropagation implements DirectPropagationInterface {
   /** Flag to stop the protocol handling */
   private stopped = false;
 
-  constructor(node: Libp2p, protocol: string, maxMessageBytes: number = 256 * 1024) {
+  constructor(node: Libp2p, maxMessageBytes: number = 256 * 1024) {
     this.node = node;
-    this.protocol = protocol;
     this.maxMessageBytes = maxMessageBytes;
-
-    this.node.handle(protocol, this.handleIncomingStream.bind(this));
+    this.protocolHandlers = new Map();
   }
 
-  private async handleIncomingStream<T>({ stream, connection }: IncomingStreamData) {
+  private async handleIncomingStream<T>({ stream, connection }: IncomingStreamData, protocol: string) {
     if (this.stopped) return;
     try {
       await readMessagesFromStream(
         stream,
         (message) => {
           const receivedMessage = message as PropagatedMessage<T>;
-          if (this.handler) this.handler(receivedMessage, { from: connection.remotePeer, receivedAt: now() });
+          const protocolHandler = this.protocolHandlers.get(protocol);
+          if (protocolHandler) protocolHandler(receivedMessage, { from: connection.remotePeer, receivedAt: now() });
         },
         this.maxMessageBytes,
       );
@@ -44,23 +43,31 @@ export class DirectStreamPropagation implements DirectPropagationInterface {
     }
   }
 
-  async send<T>(peerId: PeerId | string, message: PropagatedMessage<T>): Promise<void> {
+  async send<T>(peerId: PeerId | string, protocol: string, message: PropagatedMessage<T>): Promise<void> {
     if (this.stopped) {
       throw new Error('DirectStreamPropagation is stopped');
     }
     const receiverPeerId = typeof peerId === 'string' ? peerIdFromString(peerId) : peerId;
-    const stream = await this.node.dialProtocol(receiverPeerId, this.protocol);
+    const stream = await this.node.dialProtocol(receiverPeerId, protocol);
     await writeToStream(stream, message);
   }
 
-  onReceive<T>(handler: (message: PropagatedMessage<T>, ctx: PropagationContext) => void): void {
-    this.handler = handler;
+  onReceive<T>(
+    protocol: string,
+    handler: (message: PropagatedMessage<T>, ctx: PropagationContext) => Promise<void> | void,
+  ): void {
+    this.node.handle(protocol, (data) => this.handleIncomingStream(data, protocol));
+    this.protocolHandlers.set(protocol, handler);
+  }
+
+  async unhandleProtocol(protocol: string): Promise<void> {
+    return await this.node.unhandle(protocol);
   }
 
   async stop(): Promise<void> {
     if (this.stopped) return;
     this.stopped = true;
-    this.handler = undefined;
-    this.node.unhandle(this.protocol);
+    await this.node.unhandle(Array.from(this.protocolHandlers.keys()));
+    this.protocolHandlers.clear();
   }
 }

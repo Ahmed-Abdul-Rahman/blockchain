@@ -32,10 +32,10 @@ export const writeToStream = async (stream: Stream, message: unknown): Promise<v
 /**
  * Reads a single message from stream
  * @param stream
- * @param maxDataLength - Max size in bytes. Defaults to 4MB if undefined.
+ * @param maxDataLength - Max size in bytes. Defaults to 4MB.
  * @returns
  */
-export const readFromStream = async (stream: Stream, maxDataLength?: number): Promise<unknown> => {
+export const readFromStream = async (stream: Stream, maxDataLength: number = 4 * 1024 * 1024): Promise<unknown> => {
   if (!stream) {
     logger.info('Cannot read from stream as it is null');
     return;

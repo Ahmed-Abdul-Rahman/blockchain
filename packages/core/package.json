@@ -12,7 +12,9 @@
     "build": "tsc -p tsconfig.json && tsc-alias --resolve-full-paths",
     "fixBuild": "tsc-esm-fix --target dist --ext .js",
     "clean": "rm -rf dist",
+    "test:file": "vitest run",
     "test": "vitest run **/*.unit.test.ts",
+    "test:coverage": "vitest run --coverage",
     "test:int": "NODE_ENV=perf LOG_LEVEL=INFO node --trace-warnings dist/tests/interop/interOpTestRunner.int.js",
     "sim": "NODE_ENV=perf node dist/tests/interop/initiateTest.js --nodes 3 --duration 30",
     "sim:peak": "NODE_OPTIONS='--max-old-space-size=4096' NODE_ENV=perf node dist/tests/interop/SimulateMultiNode.int.js --nodes 50 --duration 1500"
@@ -21,6 +23,7 @@
     "@chainsafe/libp2p-gossipsub": "^14.1.0",
     "@chainsafe/libp2p-noise": "^16.0.1",
     "@chainsafe/libp2p-yamux": "^7.0.1",
+    "@datastructures-js/priority-queue": "^6.3.5",
     "@dechat/common": "*",
     "@dechat/crypto": "*",
     "@libp2p/bootstrap": "^11.0.47",
@@ -36,6 +39,7 @@
     "it-map": "^3.1.1",
     "it-pipe": "^3.0.1",
     "it-pushable": "^3.2.3",
+    "level": "^8.0.0",
     "libp2p": "^2.5.0",
     "lru-cache": "^11.2.4"
   },

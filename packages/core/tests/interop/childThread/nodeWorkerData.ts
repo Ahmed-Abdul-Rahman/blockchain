@@ -5,7 +5,7 @@ import { Libp2p, Message, ServiceMap } from '@libp2p/interface';
 import { delay, differenceWith, random } from 'es-toolkit';
 import { GossipSubPropagation } from '../../../src/data-propagation/broadcast/GossipSubPropagation';
 import { PeerExchangeService } from '../../../src/networking/PeerExchangeService';
-import { InMemoryReplicaStore } from '../../../src/replica-store/InMemoryReplicationStorage';
+import { InMemoryReplicaStore } from '../../../src/replica-store/InMemoryReplicaStore';
 import { WorkerData, WorkerResult } from '../types';
 import { configureNode, percentile } from './workerUitls';
 
@@ -13,9 +13,9 @@ type GossipMessageA = { message: string };
 
 type GossipMessageB = string;
 
-const GossipPropTopicA = '/deChat/v1/test-chat-a';
-const GossipPropTopicB = '/deChat/v1/test-chat-b';
-const DirectStreamProtocol = '/deChat/v1/direct';
+const GossipPropTopicA = '/deChat/v1/topic/test-chat-a';
+const GossipPropTopicB = '/deChat/v1/topic/test-chat-b';
+const DirectStreamProtocol = '/deChat/v1/protocol/direct';
 const latencies: number[] = [];
 
 let terminateThread = false;
@@ -25,6 +25,7 @@ let ttfvp: number | null = null;
 let checkTimer: NodeJS.Timeout | null = null;
 let selfPeerId: string | null = null;
 let directStreamMsgsReceivedCount = 0;
+let targetHashesToFetch: string[] | null = null;
 
 const hashedMessages = new Map<string, unknown>();
 
@@ -39,12 +40,14 @@ const getStatistics = async (
   const generated = hashedMessages.values().toArray();
   const replicated = (await replicaStore.values()).map((value) => replicaStore.serializer.deserialize(value));
 
-  const diff = differenceWith(generated, replicated, (gen, rep) => {
-    if (typeof rep === 'object') {
-      return (gen as GossipMessageA).message === (rep as GossipMessageA).message;
+  const normalize = (val: unknown): string => {
+    if (typeof val === 'object' && val !== null && 'message' in val) {
+      return (val as GossipMessageA).message;
     }
-    return gen === rep;
-  });
+    return val as string;
+  };
+
+  const diff = differenceWith(generated.map(normalize), replicated.map(normalize), (gen, rep) => gen === rep);
 
   return {
     me: selfPeerId,
@@ -61,6 +64,9 @@ const getStatistics = async (
     directStreamMsgsReceivedCount,
     replicaCount: await replicaStore.size(),
     replicaDataDiff: diff,
+    hasTargetData: targetHashesToFetch
+      ? (await Promise.all(targetHashesToFetch.map((h) => replicaStore.has(h)))).every(Boolean)
+      : undefined,
   };
 };
 
@@ -152,11 +158,20 @@ const sendLoop = async () => {
 
 const runNode = async () => {
   const args = workerData as WorkerData;
-  const { pubsubTopic } = args;
+  const { pubsubTopic, index } = args;
   const onBoardingPeerTime = random(1, 10) * 1000 + random(1, 10) * 100;
 
-  const { node, pexService, nodePubsub, broadcastProp, directStream, dataReplication, replicaStore, nodeCleanUp } =
-    await configureNode(onBoardingPeerTime, DirectStreamProtocol, 12);
+  const {
+    node,
+    pexService,
+    nodePubsub,
+    broadcastProp,
+    directStream,
+    dataReplication,
+    replicaStore,
+    contentHasher,
+    nodeCleanUp,
+  } = await configureNode(onBoardingPeerTime);
 
   await node.start();
 
@@ -168,6 +183,7 @@ const runNode = async () => {
   registerPubsub(pubsubTopic);
 
   broadcastProp.subscribe<GossipMessageA>(GossipPropTopicA, (message, ctx) => {
+    // let the replication protocol manager handle replication messages
     dataReplication.onRemoteDataReceived(message.payload, ctx.from.toString());
     hashedMessages.set(message.id, message.payload);
   });
@@ -177,7 +193,7 @@ const runNode = async () => {
     hashedMessages.set(message.id, message.payload);
   });
 
-  directStream.onReceive<string>((message, ctx) => {
+  directStream.onReceive<string>(DirectStreamProtocol, (message, ctx) => {
     directStreamMsgsReceivedCount++;
     dataReplication.onRemoteDataReceived(message.payload, ctx.from.toString());
     hashedMessages.set(message.id, message.payload);
@@ -202,28 +218,44 @@ const runNode = async () => {
           const selfPeerId = node.peerId.toString();
           const payload = `Hello ${j} from ${selfPeerId}`;
           const id = sha256(payload);
-          directStream.send(peerId, { id, payload, from: selfPeerId, timestamp: Date.now() });
+          directStream.send(peerId, DirectStreamProtocol, { id, payload, from: selfPeerId, timestamp: Date.now() });
         });
       }
     } else if (message.type === 'produce_messages_replication') {
       for (let j = 1; j <= 2; j++) {
+        const selfPeerId = node.peerId.toString();
         for (let i = 1; i <= 2; i++) {
-          const payloadA = { message: `Hello i:${i} from: ${node.peerId.toString()}` };
+          const payloadA = {
+            message: `Node: ${index} - Topic: ${GossipPropTopicA} - Hello ${i} from: ${selfPeerId}`,
+          };
           publisMessage(node, broadcastProp, payloadA, GossipPropTopicA);
-          await delay(random(1, 10) * 500);
-          const payloadB = `Hello i:${i} from: ${node.peerId.toString()}`;
-          publisMessage(node, broadcastProp, payloadB, GossipPropTopicB);
           dataReplication.onLocalDataProduced(payloadA);
+          await delay(random(1, 10) * 500);
+          const payloadB = `Node: ${index} - Topic:${GossipPropTopicB} - Hello ${i} from: ${selfPeerId}`;
+          publisMessage(node, broadcastProp, payloadB, GossipPropTopicB);
           dataReplication.onLocalDataProduced(payloadB);
         }
+        const payload = `Node: ${index} - Topic: ${DirectStreamProtocol} - Hello ${j} from: ${selfPeerId}`;
         pexService.peerRegistry.getPeers().forEach((peerId) => {
-          const selfPeerId = node.peerId.toString();
-          const payload = `Hello j:${j} from ${selfPeerId}`;
           const id = sha256(payload);
-          directStream.send(peerId, { id, payload, from: selfPeerId, timestamp: Date.now() });
+          directStream.send(peerId, DirectStreamProtocol, { id, payload, from: selfPeerId, timestamp: Date.now() });
           hashedMessages.set(id, payload);
-          dataReplication.onLocalDataProduced(payload);
         });
+        dataReplication.onLocalDataProduced(payload);
+      }
+    } else if (message.type === 'inject_seed_data') {
+      const hashes: string[] = [];
+      for (let i = 0; i < 3; i++) {
+        const payload = { target: `Iterative Fetch Target Data ${i}`, ts: Date.now(), from: selfPeerId };
+        const hash = contentHasher.hash(payload);
+        await dataReplication.onLocalDataProduced(payload);
+        hashes.push(hash);
+      }
+      parentPort?.postMessage({ type: 'target_hash_generated', hashes });
+    } else if (message.type === 'fetch_target_data') {
+      targetHashesToFetch = message.hashes;
+      for (const hash of targetHashesToFetch || []) {
+        await dataReplication.requestMissingData(hash);
       }
     } else if (message.type === 'terminate') {
       terminateThread = true;

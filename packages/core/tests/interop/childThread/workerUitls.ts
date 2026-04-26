@@ -4,13 +4,19 @@ import { threadId, workerData } from 'worker_threads';
 import { GossipSubPropagation } from '../../../src/data-propagation/broadcast/GossipSubPropagation';
 import { DirectStreamPropagation } from '../../../src/data-propagation/direct/DirectStreamPropagation';
 import { Sha256ContentHashStrategy } from '../../../src/data-replication/content-hash/Sha256ContentHashStrategy';
-import { KReplicaContentHashReplication } from '../../../src/data-replication/KReplicaContentHashReplication';
+import { ContentHashStrategy } from '../../../src/data-replication/content-hash/types';
+import {
+  createReplicationEngine,
+  KReplicaContentHashReplication,
+} from '../../../src/data-replication/KReplicaContentHashReplication';
+import { ReplicationMessageProtocolManager } from '../../../src/data-replication/replication-protocol/ReplicationMessageProtocolManager';
+import { TransportSelector } from '../../../src/data-replication/replication-protocol/TransportSelector';
 import { getGenericDataSerailizer } from '../../../src/data-replication/serializers';
 import { NoopGossipMetrics } from '../../../src/metrics';
 import { PeerExchangeService } from '../../../src/networking/PeerExchangeService';
 import { SimplePeerScorer } from '../../../src/networking/SimplePeerScorer';
 import { createNode } from '../../../src/node';
-import { InMemoryReplicaStore } from '../../../src/replica-store/InMemoryReplicationStorage';
+import { InMemoryReplicaStore } from '../../../src/replica-store/InMemoryReplicaStore';
 import { WorkerData } from '../types';
 
 export const percentile = (xs: number[], p: number): number => {
@@ -21,8 +27,6 @@ export const percentile = (xs: number[], p: number): number => {
 
 export const configureNode = async (
   onBoardingPeerTime: number,
-  directStreamProtocol: string,
-  dataReplicaCount: number,
 ): Promise<{
   node: Libp2p;
   nodePubsub: GossipSub;
@@ -31,6 +35,7 @@ export const configureNode = async (
   broadcastProp: GossipSubPropagation;
   directStream: DirectStreamPropagation;
   replicaStore: InMemoryReplicaStore;
+  contentHasher: ContentHashStrategy;
   dataReplication: KReplicaContentHashReplication;
   nodeCleanUp: () => void;
 }> => {
@@ -47,22 +52,30 @@ export const configureNode = async (
 
   const broadcastProp = new GossipSubPropagation(node, new NoopGossipMetrics());
 
-  const directStream = new DirectStreamPropagation(node, directStreamProtocol);
+  const directStream = new DirectStreamPropagation(node);
 
-  const contentHashing = new Sha256ContentHashStrategy();
+  const contentHasher = new Sha256ContentHashStrategy();
 
   const serializer = getGenericDataSerailizer();
 
   const replicaStore = new InMemoryReplicaStore(serializer);
 
-  const dataReplication = new KReplicaContentHashReplication(
-    node.peerId,
-    contentHashing,
+  const transportSelector = new TransportSelector();
+
+  const replicationManager = new ReplicationMessageProtocolManager(node.peerId, {
+    broadcast: broadcastProp,
+    direct: directStream,
+    transportSelector,
+  });
+
+  const dataReplication = createReplicationEngine(
+    node.peerId.toString(),
+    () => pexService.peerRegistry.getPeers(),
+    contentHasher,
     replicaStore,
     serializer,
-    directStream,
-    scorer,
-    dataReplicaCount,
+    replicationManager,
+    3,
   );
 
   console.log('Wroker thread: ', threadId, 'and index: ', index, ' started with peerId: ', node.peerId);
@@ -75,6 +88,7 @@ export const configureNode = async (
     broadcastProp,
     directStream,
     replicaStore,
+    contentHasher,
     dataReplication,
     nodeCleanUp,
   };

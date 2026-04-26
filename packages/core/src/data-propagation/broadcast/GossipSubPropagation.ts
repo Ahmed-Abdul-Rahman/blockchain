@@ -21,7 +21,10 @@ export class GossipSubPropagation implements BroadcastPropagationInterface {
   private gossipListener: (event: CustomEvent<Message>) => void;
 
   /** Handler function that gets executed when a message is received on the corresponding topics */
-  private topicsConfig: Map<string, (message: PropagatedMessage<any>, ctx: PropagationContext) => Promise<void> | void>;
+  private topicsHandlers: Map<
+    string,
+    (message: PropagatedMessage<any>, ctx: PropagationContext) => Promise<void> | void
+  >;
 
   /** Maximum seen messages a topic can have */
   private MAX_SEEN_MSGS_PER_TOPIC: number;
@@ -41,7 +44,7 @@ export class GossipSubPropagation implements BroadcastPropagationInterface {
   ) {
     this.node = node;
     this.pubsub = this.node.services.pubsub as GossipSub;
-    this.topicsConfig = new Map();
+    this.topicsHandlers = new Map();
     this.seenMessages = new Map();
     this.MAX_SEEN_MSGS_PER_TOPIC = maxSeenMsgsPerTopic;
     this.MSGS_TTL_MIN = msgsTtlMin;
@@ -50,7 +53,7 @@ export class GossipSubPropagation implements BroadcastPropagationInterface {
     this.gossipListener = (event: CustomEvent<Message>) => {
       const topic = event.detail.topic;
       const data = event.detail.data;
-      const handler = this.topicsConfig.get(topic);
+      const handler = this.topicsHandlers.get(topic);
 
       if (!handler || !data || data.length > this.MAX_MSG_BYTES) return;
 
@@ -95,7 +98,7 @@ export class GossipSubPropagation implements BroadcastPropagationInterface {
   }
 
   async publish<T>(topic: string, message: PropagatedMessage<T>): Promise<void> {
-    const handler = this.topicsConfig.get(topic);
+    const handler = this.topicsHandlers.get(topic);
     if (!handler) throw new Error(`Cannot publish to unregistered topic "${topic}"`);
 
     const data = uint8ArrayFromString(JSON.stringify(message));
@@ -108,18 +111,18 @@ export class GossipSubPropagation implements BroadcastPropagationInterface {
     handler: (message: PropagatedMessage<T>, ctx: PropagationContext) => Promise<void> | void,
   ): void {
     this.pubsub.subscribe(topic);
-    this.topicsConfig.set(topic, handler);
+    this.topicsHandlers.set(topic, handler);
   }
 
   unsubscribe(topic: string, purgeData = false): void {
     this.pubsub.unsubscribe(topic);
-    this.topicsConfig.delete(topic);
+    this.topicsHandlers.delete(topic);
     if (purgeData) this.seenMessages.delete(topic);
   }
 
   stop(): void {
     this.pubsub.removeEventListener('message', this.gossipListener);
-    this.topicsConfig.keys().forEach((key) => this.unsubscribe(key));
+    this.topicsHandlers.keys().forEach((key) => this.unsubscribe(key));
   }
 
   clearMessages(topic?: string): void {

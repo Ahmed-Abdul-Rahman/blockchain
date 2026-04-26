@@ -1,2 +1,2 @@
 export { loadOrGenerateKeypair } from './src/signatureVerification';
-export { generateIdProtocolPrefix, sha256 } from './src/utils';
+export { calculateXorDistance, generateIdProtocolPrefix, sha256, toHashBigInt } from './src/utils';

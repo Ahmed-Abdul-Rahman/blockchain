@@ -10,7 +10,16 @@ import { PeerDiscovery } from '@libp2p/interface';
 import { MulticastDNSComponents, mdns } from '@libp2p/mdns';
 import { tcp } from '@libp2p/tcp';
 import { createLibp2p, Libp2p } from 'libp2p';
-import { BasicAuthMetrics, BasicDialQueueMetrics, BasicPeerExchangeMetrics, BasicPeerRegistryMetrics } from './metrics';
+import {
+  BasicAuthMetrics,
+  BasicDialQueueMetrics,
+  BasicPeerExchangeMetrics,
+  BasicPeerRegistryMetrics,
+  NoopAuthMetrics,
+  NoopDialQueueMetrics,
+  NoopPeerExchangeMetrics,
+  NoopPeerRegistryMetrics,
+} from './metrics';
 import { genEd25519KeyPair, installAuthServer } from './networking/auth';
 import { DialQueue } from './networking/DialQueue';
 import { PeerDiscoveryManager } from './networking/PeerDiscoveryManager';
@@ -21,12 +30,20 @@ import { NodeKey } from './networking/types';
 import { NodeComponents, NodeOptions } from './types';
 
 export const getMetricsInstances = (enableMetrics = false) => {
-  const dialMetrics = new BasicDialQueueMetrics();
-  const authMetrics = new BasicAuthMetrics();
-  const pexMetrics = new BasicPeerExchangeMetrics();
-  const peerRegistryMetrics = new BasicPeerRegistryMetrics();
-
-  return { dialMetrics, authMetrics, pexMetrics, peerRegistryMetrics };
+  if (enableMetrics) {
+    return {
+      dialMetrics: new BasicDialQueueMetrics(),
+      authMetrics: new BasicAuthMetrics(),
+      pexMetrics: new BasicPeerExchangeMetrics(),
+      peerRegistryMetrics: new BasicPeerRegistryMetrics(),
+    };
+  }
+  return {
+    dialMetrics: new NoopDialQueueMetrics(),
+    authMetrics: new NoopAuthMetrics(),
+    pexMetrics: new NoopPeerExchangeMetrics(),
+    peerRegistryMetrics: new NoopPeerRegistryMetrics(),
+  };
 };
 
 export const createLibp2pNode = async (

@@ -15,3 +15,23 @@ export const generateIdProtocolPrefix = (hash: string): string => {
 };
 
 export const generateTimestamp = (): string => new Date().toISOString();
+
+/**
+ * Converts a string input to a 256-bit numeric representation using SHA-256.
+ * * @param input - The string identifier to hash (e.g., PeerId or ContentHash)
+ * @returns {bigint} The numeric representation of the SHA-256 hash.
+ */
+export const toHashBigInt = (input: string): bigint => {
+  const hexHash = createHash('sha256').update(input).digest('hex');
+  return BigInt(`0x${hexHash}`);
+};
+
+/**
+ * Calculates the XOR distance between a's hash and the b's hash.
+ * * @param a - The SHA-256 hash parsed as a BigInt.
+ * @param b - The SHA-256 hash parsed as a BigInt.
+ * @returns {bigint} The absolute XOR distance.
+ */
+export const calculateXorDistance = (a: bigint, b: bigint): bigint => {
+  return a ^ b;
+};

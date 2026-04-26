@@ -18,6 +18,8 @@ export class PeerRegistry {
   /** Debugging purpose interval Id for logging stored peers */
   private logIntervalId: NodeJS.Timeout | null = null;
 
+  private cleanupIntervalId: NodeJS.Timeout | null = null;
+
   constructor(
     selfPeerId: string,
     private readonly metrics: PeerRegistryMetrics,
@@ -26,6 +28,8 @@ export class PeerRegistry {
     this.selfPeerId = selfPeerId;
     this.peerRegistry = new Map();
     this.maxSize = maxSize;
+
+    this.startCleanupTimer();
 
     if (process.env.NODE_ENV !== 'production') {
       this.logIntervalId = this.logRegistryData();
@@ -132,13 +136,44 @@ export class PeerRegistry {
       for (const [key, value] of this.peerRegistry) {
         logger.trace('peer: ', key, ' lastRequested: ', value.lastUpdated);
       }
-    }, 30_000);
+    }, 120_000);
+  }
+
+  /**
+   * Periodically removes stale peer entries from the registry to manage memory.
+   */
+  private startCleanupTimer(): void {
+    const interval = Math.min(PEER_ENTRY_TTL_MS, 20 * 60_000);
+    this.cleanupIntervalId = setInterval(() => {
+      const cutOff = now() - PEER_ENTRY_TTL_MS;
+      let removedCount = 0;
+
+      for (const [peerId, value] of this.peerRegistry) {
+        if (value.lastUpdated < cutOff) {
+          this.peerRegistry.delete(peerId);
+          removedCount++;
+        }
+      }
+
+      if (removedCount > 0) {
+        logger.info(`Cleaned up ${removedCount} stale peers from registry`);
+        // Report each removal to metrics for accurate tracking
+        for (let i = 0; i < removedCount; i++) {
+          this.metrics.peerRemoved('expired');
+        }
+        this.metrics.registrySize(this.peerRegistry.size);
+      }
+    }, interval);
   }
 
   cleanUp(): void {
     if (this.logIntervalId) {
       clearInterval(this.logIntervalId);
       this.logIntervalId = null;
+    }
+    if (this.cleanupIntervalId) {
+      clearInterval(this.cleanupIntervalId);
+      this.cleanupIntervalId = null;
     }
   }
 }
