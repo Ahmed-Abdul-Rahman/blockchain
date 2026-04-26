@@ -32,12 +32,10 @@ export class KReplicaContentHashReplication implements DataReplicationInterface,
   }
 
   public readonly start = async (): Promise<void> => {
-    await this.replicationProtocol.start();
+    this.replicationProtocol.setDelegate(this);
   };
 
-  public readonly stop = async (): Promise<void> => {
-    await this.replicationProtocol.stop();
-  };
+  public readonly stop = async (): Promise<void> => {};
 
   /**
    * Decides if this node should persist the data based on the Kademlia XOR distance metric.

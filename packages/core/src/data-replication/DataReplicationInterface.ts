@@ -1,10 +1,8 @@
+import { Startable } from '@libp2p/interface';
 import { ReplicationProtocolInterface } from './replication-protocol/ReplicationProtocolInterface';
 import { ContentHash } from './types';
 
-export interface DataReplicationInterface {
-  start(): Promise<void>;
-  stop(): Promise<void>;
-
+export interface DataReplicationInterface extends Startable {
   /**
    * // TODO: implement batching, accept a list of dataItems and replicate each item efficiently and non-blocking
    * Called when local node produces new data

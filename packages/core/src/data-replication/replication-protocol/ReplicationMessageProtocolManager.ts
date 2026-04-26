@@ -63,8 +63,6 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
   }
 
   async stop(): Promise<void> {
-    await this.directProp.stop?.();
-    await this.broadcastProp.unsubscribe(this.topic);
     logger.info('[ReplicationProtocol] Stopped:', this.selfPeerId);
   }
 

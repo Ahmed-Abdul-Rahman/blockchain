@@ -90,6 +90,8 @@ export class GossipSubPropagation implements BroadcastPropagationInterface {
     this.pubsub.addEventListener('message', this.gossipListener);
   }
 
+  start(): void | Promise<void> {}
+
   private initializeSeenCache(): LRUCache<string, true> {
     return new LRUCache({
       max: this.MAX_SEEN_MSGS_PER_TOPIC,

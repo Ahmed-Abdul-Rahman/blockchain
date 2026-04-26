@@ -1,7 +1,9 @@
 export type PeerInfoLite = { peerId: string; addresses: string[] };
 
 export type GET_PEERS_MSG = { type: 'GET_PEERS'; want?: number };
+
 export type PEX_PEER_LIST = { type: 'PEER_LIST'; peers: PeerInfoLite[] };
+
 export type PEX_GOSSIP = {
   /** PeerId of the origin peer */
   from: string;

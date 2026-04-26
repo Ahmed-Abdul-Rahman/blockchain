@@ -26,6 +26,8 @@ export class DirectStreamPropagation implements DirectPropagationInterface {
     this.protocolHandlers = new Map();
   }
 
+  start(): void | Promise<void> {}
+
   private async handleIncomingStream<T>({ stream, connection }: IncomingStreamData, protocol: string) {
     if (this.stopped) return;
     try {

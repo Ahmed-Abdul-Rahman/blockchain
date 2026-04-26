@@ -1,22 +1,22 @@
 import { logger } from '@dechat/common';
-import { Libp2p, PeerId, PeerInfo } from '@libp2p/interface';
-import { debounce, random } from 'es-toolkit';
+import { Libp2p, PeerId, PeerInfo, Startable } from '@libp2p/interface';
+import { debounce } from 'es-toolkit';
+import { DeChatComponents, DeChatFactory } from '../types';
 import { runAuthClient } from './auth';
 import { PeerExchangeService } from './PeerExchangeService';
 import { shouldDialNewPeer } from './shouldDial';
 
-export class PeerDiscoveryManager {
+export class PeerDiscoveryManager implements Startable {
   private node: Libp2p;
 
-  private pexService: PeerExchangeService;
+  pexService: PeerExchangeService;
 
   private nodeKey: { secret: Uint8Array; pub: Uint8Array };
 
+  private config: DeChatComponents['config']['discovery'];
+
   /** Used to avoid duplicate authentication with peers */
   private authenticatingPeers: Set<string>;
-
-  /** Time to wait before onboarding the peer to the network */
-  private onBoardingPeerTime: number;
 
   /** Debounced Function to handle burst of sudden peer discoveries */
   private onBoardNewPeerDebounced: Function;
@@ -24,29 +24,24 @@ export class PeerDiscoveryManager {
   /** Peer Discovery Listener function */
   private peerDiscoveryListener: (event: CustomEvent<PeerInfo>) => void;
 
-  constructor(
-    node: Libp2p,
-    nodeKey: { secret: Uint8Array; pub: Uint8Array },
-    pexService: PeerExchangeService,
-    onBoardingPeerTime?: number,
-  ) {
-    this.node = node;
-    this.nodeKey = nodeKey;
-    this.pexService = pexService;
-    this.onBoardingPeerTime = onBoardingPeerTime ?? this.generateRandomOnBoardingTime();
+  constructor(components: DeChatComponents) {
+    this.node = components.libp2p;
+    this.config = components.config.discovery;
+    this.nodeKey = components.config.discovery.nodeKey;
+    this.pexService = components.pexService;
 
     this.authenticatingPeers = new Set<string>();
 
     this.onBoardNewPeerDebounced = debounce(
       (event: CustomEvent<PeerInfo>) => this.onBoardNewPeer(event),
-      this.onBoardingPeerTime,
+      this.config.onBoardingPeerTime,
     );
 
     this.peerDiscoveryListener = (event: CustomEvent<PeerInfo>) => this.peerDiscoveryHandler(event);
   }
 
-  private generateRandomOnBoardingTime() {
-    return random(1, 10) * 1000 + random(1, 10) * 100;
+  start(): Promise<void> | void {
+    this.registerPeerDiscovery();
   }
 
   private async requestAndDialPeers(peerId: PeerId): Promise<void> {
@@ -96,11 +91,15 @@ export class PeerDiscoveryManager {
     }
   }
 
-  registerPeerDiscovery(): void {
+  private registerPeerDiscovery(): void {
     this.node.addEventListener('peer:discovery', this.peerDiscoveryListener);
   }
 
-  cleanUp() {
+  stop() {
     this.node.removeEventListener('peer:discovery', this.peerDiscoveryListener);
   }
 }
+
+export const peerDiscoveryManager = (): DeChatFactory<PeerDiscoveryManager> => {
+  return (components) => new PeerDiscoveryManager(components);
+};
