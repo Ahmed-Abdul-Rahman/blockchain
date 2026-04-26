@@ -12,6 +12,7 @@
     "build": "tsc -p tsconfig.json && tsc-alias --resolve-full-paths",
     "fixBuild": "tsc-esm-fix --target dist --ext .js",
     "clean": "rm -rf dist",
+    "test:file": "vitest run",
     "test": "vitest run **/*.unit.test.ts",
     "test:coverage": "vitest run --coverage",
     "test:int": "NODE_ENV=perf LOG_LEVEL=INFO node --trace-warnings dist/tests/interop/interOpTestRunner.int.js",

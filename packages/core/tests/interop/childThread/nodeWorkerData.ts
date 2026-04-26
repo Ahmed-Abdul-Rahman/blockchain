@@ -5,7 +5,7 @@ import { Libp2p, Message, ServiceMap } from '@libp2p/interface';
 import { delay, differenceWith, random } from 'es-toolkit';
 import { GossipSubPropagation } from '../../../src/data-propagation/broadcast/GossipSubPropagation';
 import { PeerExchangeService } from '../../../src/networking/PeerExchangeService';
-import { InMemoryReplicaStore } from '../../../src/replica-store/InMemoryReplicationStorage';
+import { InMemoryReplicaStore } from '../../../src/replica-store/InMemoryReplicaStore';
 import { WorkerData, WorkerResult } from '../types';
 import { configureNode, percentile } from './workerUitls';
 

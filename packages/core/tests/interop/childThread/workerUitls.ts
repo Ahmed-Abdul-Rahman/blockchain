@@ -16,7 +16,7 @@ import { NoopGossipMetrics } from '../../../src/metrics';
 import { PeerExchangeService } from '../../../src/networking/PeerExchangeService';
 import { SimplePeerScorer } from '../../../src/networking/SimplePeerScorer';
 import { createNode } from '../../../src/node';
-import { InMemoryReplicaStore } from '../../../src/replica-store/InMemoryReplicationStorage';
+import { InMemoryReplicaStore } from '../../../src/replica-store/InMemoryReplicaStore';
 import { WorkerData } from '../types';
 
 export const percentile = (xs: number[], p: number): number => {
