@@ -14,16 +14,16 @@ describe('ReplicationMessageProtocolManager', () => {
 
   beforeEach(() => {
     mockDirectStreamPropagation = {
-      // Fixed: Changed from registerHandler to onReceive
       onReceive: vi.fn(),
-      sendMessage: vi.fn().mockResolvedValue(undefined),
+      // FIX: The interface expects 'send', not 'sendMessage'
+      send: vi.fn().mockResolvedValue(undefined),
     };
     mockBroadcastPropagation = {
       subscribe: vi.fn(),
       publish: vi.fn().mockResolvedValue(undefined),
     };
     mockTransportSelector = {
-      selectOptimalTransport: vi.fn().mockReturnValue('direct'),
+      select: vi.fn().mockReturnValue('direct'), // Fixed mock method name as well
     };
     mockDelegate = {
       onPeerAnnounced: vi.fn().mockResolvedValue(undefined),
@@ -37,12 +37,13 @@ describe('ReplicationMessageProtocolManager', () => {
       strategies: {
         direct: mockDirectStreamPropagation,
         broadcast: mockBroadcastPropagation,
-        transportSelector: mockTransportSelector,
       } as any,
     };
 
     protocolManager = new ReplicationMessageProtocolManager(mockComponents as DeChatComponents);
     protocolManager.setDelegate(mockDelegate);
+    // Inject transport selector for the test
+    (protocolManager as any).transportSelector = mockTransportSelector;
   });
 
   afterEach(() => {
@@ -52,25 +53,29 @@ describe('ReplicationMessageProtocolManager', () => {
   it('routes replication_request to the delegate and sends back content if found', async () => {
     mockDelegate.onPeerRequested.mockResolvedValueOnce({ found: true, data: new Uint8Array([1, 2, 3]) });
 
+    // FIX: Pass the properly formatted PropagatedMessage
     await (protocolManager as any).handleIncomingDirect(
-      { type: 'replication_request', contentHash: 'hash-1' },
-      'remote-peer',
+      { payload: { type: 'replication_request', hash: 'hash-1' }, from: 'remote-peer' },
+      { from: 'remote-peer' },
     );
 
     expect(mockDelegate.onPeerRequested).toHaveBeenCalledWith('hash-1', 'remote-peer');
-    expect(mockDirectStreamPropagation.sendMessage).toHaveBeenCalledWith(
+
+    // FIX: Expect 'send' instead of 'sendMessage'
+    expect(mockDirectStreamPropagation.send).toHaveBeenCalledWith(
       'remote-peer',
-      expect.objectContaining({ type: 'replication_content' }),
       expect.any(String), // protocol string
+      expect.objectContaining({ payload: expect.objectContaining({ type: 'replication_content' }) }),
     );
   });
 
   it('resolves pending explicit requests intercepting passive routing', async () => {
     const requestPromise = protocolManager.requestDataAndAwaitResponse('hash-2', 'target-peer');
 
+    // FIX: Wrap inside 'payload' to match PropagatedMessage
     await (protocolManager as any).handleIncomingDirect(
-      { type: 'replication_content', contentHash: 'hash-2', replicationContent: [9, 9] },
-      'target-peer',
+      { payload: { type: 'replication_content', hash: 'hash-2', replicationContent: [9, 9] }, from: 'target-peer' },
+      { from: 'target-peer' },
     );
 
     const response = await requestPromise;

@@ -24,21 +24,22 @@ describe('GossipSubPropagation', () => {
 
     mockComponents = {
       libp2p: mockNode as any,
-      // Added missing config structure for broadcast
       config: {
         strategies: {
           propagation: {
-            broadcast: {},
+            broadcast: {
+              maxSeenMsgsPerTopic: 10000,
+              msgsTtlMin: 10 * 60 * 1000,
+              maxMsgBytes: 64 * 1024,
+            },
           },
         },
       } as any,
-      // Added missing metrics property
       metrics: {
         gossipSubPropMetrics: {
-          messagesPublished: vi.fn(),
-          messagesReceived: vi.fn(),
-          duplicatesDropped: vi.fn(),
-          invalidMessagesDropped: vi.fn(),
+          messagePublished: vi.fn(),
+          messageReceived: vi.fn(),
+          messageDropped: vi.fn(),
         },
       } as any,
     };
@@ -60,7 +61,6 @@ describe('GossipSubPropagation', () => {
     const topic = 'test-topic';
     const message = { id: 'msg1', payload: 'hello', from: 'peerA', timestamp: Date.now() };
 
-    // Need to subscribe first so topic is registered
     propagation.subscribe(topic, vi.fn());
 
     await propagation.publish(topic, message);
@@ -71,13 +71,13 @@ describe('GossipSubPropagation', () => {
     const handler = vi.fn();
     propagation.subscribe('test-topic', handler);
 
-    // Get the registered internal callback
     const listener = mockPubsub.addEventListener.mock.calls.find((c: any) => c[0] === 'message')[1];
 
     const fakeEvent = new CustomEvent('message', {
       detail: {
         topic: 'test-topic',
-        data: new TextEncoder().encode(JSON.stringify({ test: 'data' })),
+        // FIX: Provide a valid PropagatedMessage with an 'id'
+        data: new TextEncoder().encode(JSON.stringify({ id: 'msg1', payload: 'data' })),
       },
     });
 
@@ -86,11 +86,10 @@ describe('GossipSubPropagation', () => {
 
     // Call again to verify deduplication works
     listener(fakeEvent);
-    expect(handler).toHaveBeenCalledTimes(1); // Should not increase
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 
   it('should clear messages cache', () => {
-    // Basic verification that the method exists and can be called without error
     propagation.clearMessages();
     expect(true).toBe(true);
   });

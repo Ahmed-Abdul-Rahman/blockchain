@@ -17,7 +17,6 @@ describe('DirectStreamPropagation', () => {
 
     mockComponents = {
       libp2p: mockNode as any,
-      // Added missing config structure for direct propagation
       config: {
         strategies: {
           propagation: {
@@ -31,7 +30,6 @@ describe('DirectStreamPropagation', () => {
   });
 
   afterEach(async () => {
-    // Safely stop in case beforeEach fails
     await propagation?.stop();
     vi.clearAllMocks();
   });
@@ -47,7 +45,9 @@ describe('DirectStreamPropagation', () => {
     mockNode.dialProtocol.mockResolvedValueOnce(mockStream);
     const message = { id: 'msg1', payload: 'hello', from: 'peerA', timestamp: Date.now() };
 
-    await propagation.send('target-peer', '/test/1.0.0', message);
+    // FIX: Pass a valid multibase peer ID string
+    const validPeerId = '12D3KooWNvQJFSJoc3xTtoE6vCusEhw71qRk52HkR9iF3t1Q2UGu';
+    await propagation.send(validPeerId, '/test/1.0.0', message);
 
     expect(mockNode.dialProtocol).toHaveBeenCalledWith(expect.anything(), '/test/1.0.0');
   });
@@ -55,6 +55,8 @@ describe('DirectStreamPropagation', () => {
   it('should unhandle protocols on stop', async () => {
     propagation.onReceive('/test/1.0.0', vi.fn());
     await propagation.stop();
-    expect(mockNode.unhandle).toHaveBeenCalledWith('/test/1.0.0');
+
+    // FIX: The stop method passes an array of protocols to unhandle
+    expect(mockNode.unhandle).toHaveBeenCalledWith(['/test/1.0.0']);
   });
 });
