@@ -1,4 +1,5 @@
 import { merge, random } from 'es-toolkit';
+import { PartialDeep } from 'type-fest';
 import { DeChatConfig } from './types';
 
 export const DECHAT_DEFAULTS: DeChatConfig = {
@@ -45,7 +46,9 @@ export const DECHAT_DEFAULTS: DeChatConfig = {
   },
 };
 
-// Deep merge user overrides with defaults
-export const resolveConfig = (userOpts?: Partial<DeChatConfig>): DeChatConfig => {
+/**
+ *   Deep merge user overrides with defaults
+ */
+export const resolveConfig = (userOpts?: PartialDeep<DeChatConfig>): DeChatConfig => {
   return userOpts ? merge(DECHAT_DEFAULTS, userOpts) : DECHAT_DEFAULTS;
 };

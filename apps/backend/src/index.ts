@@ -108,8 +108,22 @@ app.post(CHALLENGE, postChallengeRateLimiter, postChallenge.bind(null, privateKe
 server.listen(0, async () => {
   const { address, port } = server.address() as AddressInfo;
   const nodeSeed = `BackendNode-${nodeEventId}-${port}`;
-  const { node } = await createNode(infoHash, nodeSeed, { onBoardingPeerTime: Math.random() * 10 * 1000 });
-  await node.start();
+  // 1. Pass the nested configuration
+  const engine = await createNode(infoHash, nodeSeed, {
+    network: {
+      listenAddrs: ['/ip4/0.0.0.0/tcp/0'],
+    },
+    discovery: {
+      enableMdns: true,
+      onBoardingPeerTime: 5000,
+    },
+  });
+
+  // 2. Destructure from the components container
+  const node = engine.components.libp2p;
+
+  // 3. Don't forget to explicitly start the engine!
+  await engine.start();
   // const networkNode = await createNetworkNode(networkNodeConfig);
   // await networkNode.start();
   bytecoin.setCurrentNode(`http://${address}:${port}`, node.peerId.toString(), publicKey);

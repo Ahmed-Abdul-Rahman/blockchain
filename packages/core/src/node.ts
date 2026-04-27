@@ -10,6 +10,7 @@ import { MultiaddrConnection, PeerDiscovery, PeerId, Startable } from '@libp2p/i
 import { MulticastDNSComponents, mdns } from '@libp2p/mdns';
 import { tcp } from '@libp2p/tcp';
 import { createLibp2p, Libp2p } from 'libp2p';
+import { PartialDeep } from 'type-fest';
 import { resolveConfig } from './config/defaults';
 import { DeChatConfig } from './config/types';
 import {
@@ -124,7 +125,7 @@ export const createLibp2pNode = async (
 export const createNode = async (
   infoHash: string,
   nodeSeed: string,
-  userOpts?: Partial<DeChatConfig>,
+  userOpts?: PartialDeep<DeChatConfig>,
   strategies?: DeChatStrategies,
 ): Promise<{ components: DeChatComponents; start: () => Promise<void>; stop: () => Promise<void> }> => {
   const config = resolveConfig(userOpts);
