@@ -13,13 +13,16 @@ import { createLibp2p, Libp2p } from 'libp2p';
 import { PartialDeep } from 'type-fest';
 import { resolveConfig } from './config/defaults';
 import { DeChatConfig } from './config/types';
+import { getGenericDataSerailizer } from './data-replication/serializers';
 import {
   BasicAuthMetrics,
   BasicDialQueueMetrics,
+  BasicGossipSubPropagationMetrics,
   BasicPeerExchangeMetrics,
   BasicPeerRegistryMetrics,
   NoopAuthMetrics,
   NoopDialQueueMetrics,
+  NoopGossipMetrics,
   NoopPeerExchangeMetrics,
   NoopPeerRegistryMetrics,
 } from './metrics';
@@ -39,6 +42,7 @@ export const getMetricsInstances = (enableMetrics: boolean | undefined) => {
       pexService: new BasicPeerExchangeMetrics(),
       dialQueue: new BasicDialQueueMetrics(),
       authMetrics: new BasicAuthMetrics(),
+      gossipSubPropMetrics: new BasicGossipSubPropagationMetrics(),
     };
   }
   return {
@@ -46,6 +50,7 @@ export const getMetricsInstances = (enableMetrics: boolean | undefined) => {
     pexService: new NoopPeerExchangeMetrics(),
     dialQueue: new NoopDialQueueMetrics(),
     authMetrics: new NoopAuthMetrics(),
+    gossipSubPropMetrics: new NoopGossipMetrics(),
   };
 };
 
@@ -197,6 +202,7 @@ export const createNode = async (
   components.dialQueue = dialQueue()(components as DeChatComponents);
   components.pexService = peerExchangeService()(components as DeChatComponents);
   components.peerDiscovery = peerDiscoveryManager()(components as DeChatComponents);
+  components.serializer = getGenericDataSerailizer();
 
   if (strategies) {
     if (strategies.broadcast) components.strategies!.broadcast = strategies.broadcast(components as DeChatComponents);

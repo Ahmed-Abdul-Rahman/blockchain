@@ -1,8 +1,11 @@
 import { logger } from '@dechat/common';
 import { PeerId } from '@libp2p/interface';
 import { BroadcastPropagationInterface } from '../../data-propagation/broadcast/BroadcastPropagationInterface';
+import { gossipSubPropagation } from '../../data-propagation/broadcast/GossipSubPropagation';
 import { DirectPropagationInterface } from '../../data-propagation/direct/DirectPropagationInterface';
+import { directStreamPropagation } from '../../data-propagation/direct/DirectStreamPropagation';
 import { PropagatedMessage, PropagationContext } from '../../data-propagation/types';
+import { DeChatComponents, DeChatFactory } from '../../types';
 import { ContentHash } from '../types';
 import { ReplicationEngineDelegate } from './ReplicationEngineDelegateInterface';
 import {
@@ -13,19 +16,15 @@ import {
   ReplicationProtocolInterface,
   ReplicationRequest,
 } from './ReplicationProtocolInterface';
-import { TransportSelector } from './TransportSelector';
-
-export interface ReplicationManagerOptions {
-  broadcast: BroadcastPropagationInterface;
-  direct: DirectPropagationInterface;
-  transportSelector: TransportSelector;
-}
+import { TransportSelector, transportSelector } from './TransportSelector';
 
 export class ReplicationMessageProtocolManager implements ReplicationProtocolInterface {
   readonly selfPeerId: PeerId;
   readonly topic: string = '/deChat/v1/topic/replication-protocol';
   readonly protocol: string = '/deChat/v1/protocol/replication-protocol';
-  readonly maxConcurrentUploads: number = 100;
+
+  // TODO: add a limit to maximum concurrent replication you can upload/send to other peers
+  // readonly maxConcurrentUploads: number = 100;
   readonly transportSelector: TransportSelector;
   readonly directProp: DirectPropagationInterface;
   readonly broadcastProp: BroadcastPropagationInterface;
@@ -42,11 +41,11 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
 
   private delegate?: ReplicationEngineDelegate;
 
-  constructor(selfPeerId: PeerId, opts: ReplicationManagerOptions) {
-    this.selfPeerId = selfPeerId;
-    this.transportSelector = opts.transportSelector;
-    this.directProp = opts.direct;
-    this.broadcastProp = opts.broadcast;
+  constructor(components: DeChatComponents) {
+    this.selfPeerId = components.libp2p.peerId;
+    this.transportSelector = transportSelector();
+    this.directProp = components.strategies.direct ?? directStreamPropagation()(components);
+    this.broadcastProp = components.strategies.broadcast ?? gossipSubPropagation()(components);
 
     this.pendingRequests = new Map();
 
@@ -239,3 +238,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
     }
   }
 }
+
+export const replicationMessageProtocolManager = (): DeChatFactory<ReplicationMessageProtocolManager> => {
+  return (components) => new ReplicationMessageProtocolManager(components);
+};

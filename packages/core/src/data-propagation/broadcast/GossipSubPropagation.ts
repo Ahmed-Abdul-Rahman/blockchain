@@ -6,6 +6,7 @@ import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { GossipSubPropagationMetrics } from '../../metrics/interfaces/GossipSubPropagationMetrics';
+import { DeChatComponents, DeChatFactory } from '../../types';
 import { PropagatedMessage, PropagationContext } from '../types';
 import { BroadcastPropagationInterface } from './BroadcastPropagationInterface';
 
@@ -26,36 +27,24 @@ export class GossipSubPropagation implements BroadcastPropagationInterface {
     (message: PropagatedMessage<any>, ctx: PropagationContext) => Promise<void> | void
   >;
 
-  /** Maximum seen messages a topic can have */
-  private MAX_SEEN_MSGS_PER_TOPIC: number;
+  private config: DeChatComponents['config']['strategies']['propagation']['broadcast'];
 
-  /** Messages Time to live in minutes */
-  private MSGS_TTL_MIN: number;
+  readonly metrics: GossipSubPropagationMetrics;
 
-  /** Maximum message bytes allowed for a message */
-  private MAX_MSG_BYTES: number;
-
-  constructor(
-    node: Libp2p,
-    private readonly metrics: GossipSubPropagationMetrics,
-    maxSeenMsgsPerTopic = 10_000,
-    msgsTtlMin = 10 * 60 * 1000,
-    maxMsgBytes = 64 * 1024,
-  ) {
-    this.node = node;
+  constructor(components: DeChatComponents) {
+    this.node = components.libp2p;
+    this.config = components.config.strategies.propagation.broadcast;
+    this.metrics = components.metrics.gossipSubPropMetrics;
     this.pubsub = this.node.services.pubsub as GossipSub;
     this.topicsHandlers = new Map();
     this.seenMessages = new Map();
-    this.MAX_SEEN_MSGS_PER_TOPIC = maxSeenMsgsPerTopic;
-    this.MSGS_TTL_MIN = msgsTtlMin;
-    this.MAX_MSG_BYTES = maxMsgBytes;
 
     this.gossipListener = (event: CustomEvent<Message>) => {
       const topic = event.detail.topic;
       const data = event.detail.data;
       const handler = this.topicsHandlers.get(topic);
 
-      if (!handler || !data || data.length > this.MAX_MSG_BYTES) return;
+      if (!handler || !data || data.length > this.config.maxMsgBytes) return;
 
       try {
         const msg = JSON.parse(uint8ArrayToString(data)) as PropagatedMessage<any>;
@@ -94,8 +83,8 @@ export class GossipSubPropagation implements BroadcastPropagationInterface {
 
   private initializeSeenCache(): LRUCache<string, true> {
     return new LRUCache({
-      max: this.MAX_SEEN_MSGS_PER_TOPIC,
-      ttl: this.MSGS_TTL_MIN,
+      max: this.config.maxSeenMsgsPerTopic,
+      ttl: this.config.msgsTtlMin,
     });
   }
 
@@ -136,3 +125,7 @@ export class GossipSubPropagation implements BroadcastPropagationInterface {
     return new Map(this.seenMessages);
   }
 }
+
+export const gossipSubPropagation = (): DeChatFactory<GossipSubPropagation> => {
+  return (components) => new GossipSubPropagation(components);
+};

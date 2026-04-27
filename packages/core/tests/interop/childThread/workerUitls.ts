@@ -1,22 +1,26 @@
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { Libp2p } from 'libp2p';
 import { threadId, workerData } from 'worker_threads';
-import { GossipSubPropagation } from '../../../src/data-propagation/broadcast/GossipSubPropagation';
-import { DirectStreamPropagation } from '../../../src/data-propagation/direct/DirectStreamPropagation';
-import { Sha256ContentHashStrategy } from '../../../src/data-replication/content-hash/Sha256ContentHashStrategy';
+import {
+  GossipSubPropagation,
+  gossipSubPropagation,
+} from '../../../src/data-propagation/broadcast/GossipSubPropagation';
+import {
+  DirectStreamPropagation,
+  directStreamPropagation,
+} from '../../../src/data-propagation/direct/DirectStreamPropagation';
+import { contentHashStrategy } from '../../../src/data-replication/content-hash/Sha256ContentHashStrategy';
 import { ContentHashStrategy } from '../../../src/data-replication/content-hash/types';
 import {
-  createReplicationEngine,
   KReplicaContentHashReplication,
+  kReplicaContentHashReplication,
 } from '../../../src/data-replication/KReplicaContentHashReplication';
-import { ReplicationMessageProtocolManager } from '../../../src/data-replication/replication-protocol/ReplicationMessageProtocolManager';
-import { TransportSelector } from '../../../src/data-replication/replication-protocol/TransportSelector';
-import { getGenericDataSerailizer } from '../../../src/data-replication/serializers';
-import { NoopGossipMetrics } from '../../../src/metrics';
+import { replicationMessageProtocolManager } from '../../../src/data-replication/replication-protocol/ReplicationMessageProtocolManager';
 import { PeerExchangeService } from '../../../src/networking/PeerExchangeService';
 import { SimplePeerScorer } from '../../../src/networking/SimplePeerScorer';
 import { createNode } from '../../../src/node';
 import { InMemoryReplicaStore } from '../../../src/replica-store/InMemoryReplicaStore';
+import { replicaStore } from '../../../src/replica-store/ReplicaStoreInterface';
 import { WorkerData } from '../types';
 
 export const percentile = (xs: number[], p: number): number => {
@@ -58,27 +62,12 @@ export const configureNode = async (
       discovery: { enableMdns: true, onBoardingPeerTime },
     },
     {
-      // Inject strategies using the components container (c)
-      broadcast: (c) => new GossipSubPropagation(c.libp2p, new NoopGossipMetrics()),
-      direct: (c) => new DirectStreamPropagation(c.libp2p),
-      replicaStore: () => new InMemoryReplicaStore(getGenericDataSerailizer()),
-      contentHasher: () => new Sha256ContentHashStrategy(),
-      replicationProtocol: (c) =>
-        new ReplicationMessageProtocolManager(c.libp2p.peerId, {
-          broadcast: c.strategies.broadcast!,
-          direct: c.strategies.direct!,
-          transportSelector: new TransportSelector(),
-        }),
-      dataReplication: (c) =>
-        createReplicationEngine(
-          c.libp2p.peerId.toString(),
-          () => c.pexService.peerRegistry.getPeers(), // Correctly bound to the injected PEX service
-          c.strategies.contentHasher!,
-          c.strategies.replicaStore!,
-          getGenericDataSerailizer(),
-          c.strategies.replicationProtocol!,
-          3,
-        ) as unknown as KReplicaContentHashReplication, // Typecast since factory natively returns DataReplicationInterface
+      broadcast: gossipSubPropagation(),
+      direct: directStreamPropagation(),
+      replicaStore: replicaStore('IN_MEMORY'),
+      contentHasher: contentHashStrategy(),
+      replicationProtocol: replicationMessageProtocolManager(),
+      dataReplication: kReplicaContentHashReplication(),
     },
   );
 

@@ -1,12 +1,17 @@
 import { PriorityQueue } from '@datastructures-js/priority-queue';
 import { logger } from '@dechat/common';
 import { calculateXorDistance, toHashBigInt } from '@dechat/crypto';
+import { inMemoryReplicaStore } from '../replica-store/InMemoryReplicaStore';
 import { ReplicaStoreInterface } from '../replica-store/ReplicaStoreInterface';
+import { DeChatComponents, DeChatFactory } from '../types';
+import { contentHashStrategy } from './content-hash/Sha256ContentHashStrategy';
 import { ContentHashStrategy } from './content-hash/types';
 import { DataReplicationInterface } from './DataReplicationInterface';
 import { InflightRequestTracker } from './replication-protocol/InflightRequestTracker';
 import { ReplicationEngineDelegate } from './replication-protocol/ReplicationEngineDelegateInterface';
+import { replicationMessageProtocolManager } from './replication-protocol/ReplicationMessageProtocolManager';
 import { ReplicationProtocolInterface } from './replication-protocol/ReplicationProtocolInterface';
+import { getGenericDataSerailizer } from './serializers';
 import { ContentHash, DataSerializer } from './types';
 
 interface PeerDistance {
@@ -17,17 +22,29 @@ interface PeerDistance {
 export class KReplicaContentHashReplication implements DataReplicationInterface, ReplicationEngineDelegate {
   private inflightTracker: InflightRequestTracker;
 
-  public constructor(
-    private selfPeerId: string,
-    private getKnownPeers: () => string[],
-    private hashStrategy: ContentHashStrategy,
-    private storage: ReplicaStoreInterface,
-    private serializer: DataSerializer,
-    readonly replicationProtocol: ReplicationProtocolInterface,
-    readonly kReplicaCount: number = 3,
-    readonly maxAttempts: number = 3,
-    readonly baseDelayMs: number = 200,
-  ) {
+  private config: DeChatComponents['config']['strategies']['replication'];
+
+  private selfPeerId: string;
+
+  private getKnownPeers: () => string[];
+
+  private storage: ReplicaStoreInterface;
+
+  private hashStrategy: ContentHashStrategy;
+
+  private serializer: DataSerializer;
+
+  readonly replicationProtocol: ReplicationProtocolInterface;
+
+  public constructor(components: DeChatComponents) {
+    this.selfPeerId = components.libp2p.peerId.toString();
+    this.config = components.config.strategies.replication;
+    this.serializer = getGenericDataSerailizer();
+    this.getKnownPeers = () => components.peerRegistry.getPeers();
+    this.hashStrategy = components.strategies.contentHasher ?? contentHashStrategy()(components);
+    this.storage = components.strategies.replicaStore ?? inMemoryReplicaStore()(components);
+    this.replicationProtocol =
+      components.strategies.replicationProtocol ?? replicationMessageProtocolManager()(components);
     this.inflightTracker = new InflightRequestTracker();
   }
 
@@ -48,7 +65,7 @@ export class KReplicaContentHashReplication implements DataReplicationInterface,
     const knownPeers = this.getKnownPeers();
     const totalNetworkView = knownPeers.length + 1;
     // If the network size is smaller than our target replica count, everyone replicates
-    const target = Math.min(this.kReplicaCount, 3);
+    const target = Math.min(this.config.kReplicaCount, 3);
     if (totalNetworkView <= target) return true;
 
     const contentBigInt = toHashBigInt(hash);
@@ -61,7 +78,7 @@ export class KReplicaContentHashReplication implements DataReplicationInterface,
       const peerBigInt = toHashBigInt(peerId);
       const peerDistance = calculateXorDistance(peerBigInt, contentBigInt);
       if (peerDistance < selfDistance) closestPeersCount++;
-      if (closestPeersCount >= this.kReplicaCount) return false;
+      if (closestPeersCount >= this.config.kReplicaCount) return false;
     }
     return true;
   };
@@ -223,36 +240,16 @@ export class KReplicaContentHashReplication implements DataReplicationInterface,
       } catch (error) {
         logger.error(`Failed attempt ${attempt + 1} for replication request, retrying...`);
         attempt++;
-        if (attempt >= this.maxAttempts) {
+        if (attempt >= this.config.maxAttempts) {
           throw error;
         }
-        const delay = this.baseDelayMs * 2 ** (attempt - 1);
+        const delay = this.config.baseDelayMs * 2 ** (attempt - 1);
         await new Promise((res) => setTimeout(res, delay));
       }
     }
   };
 }
 
-export const createReplicationEngine = (
-  selfPeerId: string,
-  getKnownPeers: () => string[],
-  hashStrategy: ContentHashStrategy,
-  storage: ReplicaStoreInterface,
-  serializer: DataSerializer,
-  replicationProtocol: ReplicationProtocolInterface,
-  replicaCount: number = 3,
-): KReplicaContentHashReplication => {
-  const engine = new KReplicaContentHashReplication(
-    selfPeerId,
-    getKnownPeers,
-    hashStrategy,
-    storage,
-    serializer,
-    replicationProtocol,
-    replicaCount,
-  );
-
-  replicationProtocol.setDelegate(engine);
-
-  return engine;
+export const kReplicaContentHashReplication = (): DeChatFactory<KReplicaContentHashReplication> => {
+  return (components) => new KReplicaContentHashReplication(components);
 };

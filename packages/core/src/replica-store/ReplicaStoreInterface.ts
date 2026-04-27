@@ -1,6 +1,11 @@
 import { ContentHash, DataSerializer } from '../data-replication/types';
+import { DeChatFactory } from '../types';
+import { InMemoryReplicaStore, inMemoryReplicaStore } from './InMemoryReplicaStore';
+import { levelDbReplicaStore } from './LevelDbReplicaStore';
 
 export interface ReplicaStoreInterface {
+  serializer: DataSerializer;
+
   /**
    * Checks if the data associated with a specific hash exists in the store.
    * @param hash - The unique content-addressable identifier.
@@ -65,6 +70,9 @@ export interface ReplicaStoreInterface {
    * Closes the storage engine
    */
   close: () => Promise<void>;
-
-  serializer: DataSerializer;
 }
+
+export const replicaStore = (storeType: 'IN_MEMORY' | 'LEVEL_DB'): DeChatFactory<ReplicaStoreInterface> => {
+  if (storeType === 'LEVEL_DB') return levelDbReplicaStore();
+  return inMemoryReplicaStore();
+};

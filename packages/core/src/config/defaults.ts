@@ -41,6 +41,27 @@ export const DECHAT_DEFAULTS: DeChatConfig = {
     intervalMs: 10_000,
     buffer: 5,
   },
+  strategies: {
+    propagation: {
+      direct: {
+        maxMessageBytes: 256 * 1024,
+      },
+      broadcast: {
+        maxSeenMsgsPerTopic: 10_000,
+        msgsTtlMin: 10 * 60 * 1000,
+        maxMsgBytes: 64 * 1024,
+      },
+    },
+    replication: {
+      kReplicaCount: 3,
+      maxAttempts: 3,
+      baseDelayMs: 200,
+    },
+    store: {
+      type: 'IN_MEMORY',
+      dbPath: './levelDB',
+    },
+  },
   metrics: {
     enabled: false,
   },

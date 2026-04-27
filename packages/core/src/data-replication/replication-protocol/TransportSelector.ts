@@ -1,3 +1,4 @@
+import { DeChatFactory } from '../../types';
 import { ReplicationMessageType } from './ReplicationProtocolInterface';
 
 export class TransportSelector {
@@ -12,3 +13,5 @@ export class TransportSelector {
     return this.rules.get(messageType) ?? 'direct';
   };
 }
+
+export const transportSelector = (): TransportSelector => new TransportSelector();

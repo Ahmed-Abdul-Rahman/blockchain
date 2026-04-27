@@ -77,6 +77,40 @@ export interface DeChatConfig {
     /** Buffer number used to calculate the number of target connections to be acheived and maintained*/
     buffer: number;
   };
+  strategies: {
+    propagation: {
+      direct: {
+        /** Maximum message length that can be read */
+        maxMessageBytes: number;
+      };
+      broadcast: {
+        /** Maximum seen messages a topic can have */
+        maxSeenMsgsPerTopic: number;
+
+        /** Messages Time to live in minutes */
+        msgsTtlMin: number;
+
+        /** Maximum message bytes allowed for a message */
+        maxMsgBytes: number;
+      };
+    };
+    replication: {
+      /** The number of peers that can hold a replicated data */
+      kReplicaCount: number;
+
+      /** Max number of attempts to retry and send the replica_request */
+      maxAttempts: number;
+
+      /** Base delay used for exponential backoff retry policy */
+      baseDelayMs: number;
+    };
+    store: {
+      /** Replica Storage type */
+      type: 'IN_MEMORY' | 'LEVEL_DB';
+      /** DB Path to store data in file - for levelDB */
+      dbPath: string;
+    };
+  };
   metrics: {
     enabled: boolean;
   };
