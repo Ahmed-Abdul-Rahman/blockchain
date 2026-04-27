@@ -129,6 +129,7 @@ export const createNode = async (
 ): Promise<{ components: DeChatComponents; start: () => Promise<void>; stop: () => Promise<void> }> => {
   const config = resolveConfig(userOpts);
   const nodeKey = await genEd25519KeyPair(nodeSeed);
+  config.discovery.nodeKey = nodeKey;
   const privateKey = await generateKeyPairFromSeed('Ed25519', nodeKey.secret);
 
   const components = {

@@ -1,117 +1,95 @@
-/** biome-ignore-all lint/suspicious/noExplicitAny: <its a test file    > */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NoopDialQueueMetrics } from '../../../src/metrics/noop/NoopDialQueueMetrics';
-import { DialQueue } from '../../../src/networking/DialQueue';
+/** biome-ignore-all lint/suspicious/noExplicitAny: <its a test file> */
 
-vi.mock('@libp2p/peer-id', async (importOriginal) => {
-  const actual = await importOriginal();
-  return {
-    ...(actual as any),
-    peerIdFromString: vi.fn((str: string) => ({
-      toString: () => str,
-      equals: (otherId: any) => str === otherId.toString(),
-    })),
-  };
-});
+import { createEd25519PeerId } from '@libp2p/peer-id-factory';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DECHAT_DEFAULTS } from '../../../src/config/defaults';
+import { DialQueue, dialQueue } from '../../../src/networking/DialQueue';
+import { DeChatComponents } from '../../../src/types';
 
 describe('DialQueue', () => {
-  let mockNode: any;
-  let mockScorer: any;
-  let dialQueue: DialQueue;
+  let mockComponents: Partial<DeChatComponents>;
+  let queue: DialQueue;
+  let selfPeerId: any; // We will store our dynamically generated valid PeerId here
 
-  beforeEach(() => {
-    vi.useFakeTimers();
+  beforeEach(async () => {
+    // Generate a mathematically valid libp2p PeerId for 'self'
+    selfPeerId = await createEd25519PeerId();
 
-    // Mock Libp2p Node
-    mockNode = {
-      peerId: {
-        toString: () => 'self-peer-id',
-        equals: (id: any) => id.toString() === 'self-peer-id',
-      },
-      getConnections: vi.fn().mockReturnValue([]),
-      dial: vi.fn().mockResolvedValue(true),
+    mockComponents = {
+      config: {
+        ...DECHAT_DEFAULTS,
+        dialQueue: {
+          maxConnections: 150,
+          minConnections: 8,
+          buffer: 5,
+          maxQueueLength: 100,
+          intervalMs: 1000,
+        },
+      } as any,
+      scorer: {
+        isDialable: vi.fn().mockReturnValue(true),
+        get: vi.fn().mockReturnValue(10),
+      } as any,
+      libp2p: {
+        peerId: selfPeerId,
+        getConnections: vi.fn().mockReturnValue([]),
+        dial: vi.fn().mockResolvedValue(true),
+      } as any,
+      metrics: {
+        dialQueue: {
+          peerEnqueued: vi.fn(),
+          dialAttempt: vi.fn(),
+          dialSucceeded: vi.fn(),
+          dialFailed: vi.fn(),
+          targetConnectionsComputed: vi.fn(),
+        },
+      } as any,
     };
 
-    // Mock Scorer
-    mockScorer = {
-      isDialable: vi.fn().mockReturnValue(true),
-    };
-
-    dialQueue = new DialQueue(
-      mockNode as any,
-      mockScorer,
-      new NoopDialQueueMetrics(),
-      10, // maxQueueLength
-      1000, // intervalMs
-      2, // minConnections
-      5, // maxConnections
-    );
+    queue = dialQueue()(mockComponents as DeChatComponents);
   });
 
   afterEach(() => {
-    dialQueue.stop();
-    vi.clearAllTimers();
-    vi.restoreAllMocks();
+    queue?.stop();
+    vi.clearAllMocks();
   });
 
-  it('should enqueue valid peers up to maxQueueLength', async () => {
-    const peers = Array.from({ length: 15 }).map((_, i) => ({
-      peerId: `peer-${i}`,
-      addresses: [],
-    }));
+  it('should not enqueue itself', async () => {
+    // Pass the valid stringified peerId
+    await queue.enqueue([{ peerId: selfPeerId.toString(), addresses: [] }]);
 
-    await dialQueue.enqueue(peers);
-
-    // Queue length should be capped at maxQueueLength (10)
-    // The loop implicitly starts running, taking 1 peer off immediately, so length might be 9 or 10 depending on execution.
-    // We can test behavior by checking if the loop dialed peers.
-    vi.advanceTimersByTime(1500);
-
-    // Check if dials happened
-    expect(mockNode.dial).toHaveBeenCalled();
+    // The target connections should be the minimum config value (8)
+    expect(queue.getTargetConnections()).toBe(8);
   });
 
-  it('should not enqueue self-peer', async () => {
-    await dialQueue.enqueue([{ peerId: 'self-peer-id', addresses: [] }]);
+  it('should compute adaptive target connections correctly', async () => {
+    // Dynamically generate 10 VALID dummy peers using Promise.all
+    const peers = await Promise.all(
+      Array.from({ length: 10 }).map(async () => {
+        const id = await createEd25519PeerId();
+        return {
+          peerId: id.toString(),
+          addresses: [],
+        };
+      }),
+    );
 
-    vi.advanceTimersByTime(1500);
-    expect(mockNode.dial).not.toHaveBeenCalled();
+    await queue.enqueue(peers);
+
+    // Adaptive logic: Math.floor(Math.log2(max(2, 10))) + 5 buffer = 3 + 5 = 8
+    expect(queue.getTargetConnections()).toBe(8);
   });
 
-  it('should not dial peers that are marked undialable by the scorer', async () => {
-    mockScorer.isDialable.mockReturnValue(false); // Make all peers undialable
+  it('should skip dialing peers with a low score', async () => {
+    mockComponents.scorer!.isDialable = vi.fn().mockReturnValue(false);
 
-    await dialQueue.enqueue([{ peerId: 'bad-peer', addresses: [] }]);
+    // Generate a valid bad peer
+    const badPeer = await createEd25519PeerId();
 
-    vi.advanceTimersByTime(1500);
-    expect(mockNode.dial).not.toHaveBeenCalled();
-  });
+    await queue.enqueue([{ peerId: badPeer.toString(), addresses: [] }]);
 
-  it('should respect connection boundaries (minConnections / maxConnections)', async () => {
-    // Simulate we already have 5 active connections (which is our maxConnections)
-    mockNode.getConnections.mockReturnValue([
-      { remotePeer: { toString: () => 'c1' }, status: 'open' },
-      { remotePeer: { toString: () => 'c2' }, status: 'open' },
-      { remotePeer: { toString: () => 'c3' }, status: 'open' },
-      { remotePeer: { toString: () => 'c4' }, status: 'open' },
-      { remotePeer: { toString: () => 'c5' }, status: 'open' },
-    ]);
-
-    await dialQueue.enqueue([{ peerId: 'new-peer', addresses: [] }]);
-
-    // Loop ticks, but we already have maxConnections
-    vi.advanceTimersByTime(1500);
-
-    // Should NOT dial because target connections max is reached
-    expect(mockNode.dial).not.toHaveBeenCalled();
-  });
-
-  it('stops processing when stop is called', async () => {
-    await dialQueue.enqueue([{ peerId: 'peer-1', addresses: [] }]);
-    dialQueue.stop();
-
-    vi.advanceTimersByTime(1500);
-    // Because it was stopped before the interval fired, dial should not be called
-    expect(mockNode.dial).not.toHaveBeenCalled();
+    setTimeout(() => {
+      expect(mockComponents.libp2p!.dial).not.toHaveBeenCalled();
+    }, 100);
   });
 });

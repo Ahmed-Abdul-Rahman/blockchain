@@ -20,7 +20,7 @@ const latencies: number[] = [];
 
 let terminateThread = false;
 let pubsub: GossipSub | null = null;
-let peerExchangeService: PeerExchangeService | null = null;
+let pexService: PeerExchangeService | null = null;
 let ttfvp: number | null = null;
 let checkTimer: NodeJS.Timeout | null = null;
 let selfPeerId: string | null = null;
@@ -87,7 +87,7 @@ const registerPubsub = (pubsubTopic: string) => {
   // Publish one "hello" when we first get peers
   const t0 = Date.now();
   const checkVerified = () => {
-    const size = peerExchangeService?.peerRegistry.getSize();
+    const size = pexService?.peerRegistry.getSize();
     if (ttfvp === null && size && size > 0) ttfvp = Date.now() - t0;
   };
   checkTimer = setInterval(checkVerified, 200);
@@ -105,13 +105,13 @@ const terminateAndCleanUp = async (
       clearInterval(checkTimer);
       checkTimer = null;
     }
-    if (!pubsub || !peerExchangeService) return;
+    if (!pubsub || !pexService) return;
 
     pubsub.removeEventListener('message', subHandler);
     propagation.stop();
     parentPort?.postMessage({
       type: 'done',
-      stats: await getStatistics(node, peerExchangeService, propagation, replicaStore),
+      stats: await getStatistics(node, pexService, propagation, replicaStore),
     });
 
     await node.stop();
@@ -161,24 +161,22 @@ const runNode = async () => {
   const { pubsubTopic, index } = args;
   const onBoardingPeerTime = random(1, 10) * 1000 + random(1, 10) * 100;
 
-  const {
-    node,
-    pexService,
-    nodePubsub,
-    broadcastProp,
-    directStream,
-    dataReplication,
-    replicaStore,
-    contentHasher,
-    nodeCleanUp,
-  } = await configureNode(onBoardingPeerTime);
+  const engine = await configureNode(onBoardingPeerTime);
+
+  const node = engine.node;
+  const dataReplication = engine.dataReplication;
+  const broadcastProp = engine.broadcastProp;
+  const directStream = engine.directStream;
+  const replicaStore = engine.replicaStore;
+  const contentHasher = engine.contentHasher;
+
+  pexService = engine.pexService;
 
   await node.start();
 
   selfPeerId = node.peerId.toString();
 
-  pubsub = nodePubsub;
-  peerExchangeService = pexService;
+  pubsub = engine.nodePubsub;
 
   registerPubsub(pubsubTopic);
 
@@ -203,7 +201,7 @@ const runNode = async () => {
     if (message.type === 'statistics')
       parentPort?.postMessage({
         type: 'statistics',
-        stats: await getStatistics(node, pexService, broadcastProp, replicaStore),
+        stats: await getStatistics(node, engine.pexService, broadcastProp, replicaStore),
       });
     else if (message.type === 'produce_messages') {
       for (let j = 1; j <= 2; j++) {
@@ -214,7 +212,7 @@ const runNode = async () => {
           const payloadB = `Hello ${i} from: ${node.peerId.toString()}`;
           publisMessage(node, broadcastProp, payloadB, GossipPropTopicB);
         }
-        pexService.peerRegistry.getPeers().forEach((peerId) => {
+        engine.pexService.peerRegistry.getPeers().forEach((peerId) => {
           const selfPeerId = node.peerId.toString();
           const payload = `Hello ${j} from ${selfPeerId}`;
           const id = sha256(payload);
@@ -236,7 +234,7 @@ const runNode = async () => {
           dataReplication.onLocalDataProduced(payloadB);
         }
         const payload = `Node: ${index} - Topic: ${DirectStreamProtocol} - Hello ${j} from: ${selfPeerId}`;
-        pexService.peerRegistry.getPeers().forEach((peerId) => {
+        engine.pexService.peerRegistry.getPeers().forEach((peerId) => {
           const id = sha256(payload);
           directStream.send(peerId, DirectStreamProtocol, { id, payload, from: selfPeerId, timestamp: Date.now() });
           hashedMessages.set(id, payload);
@@ -260,7 +258,7 @@ const runNode = async () => {
     } else if (message.type === 'terminate') {
       terminateThread = true;
       await terminateAndCleanUp(node, broadcastProp, replicaStore);
-      nodeCleanUp();
+      engine.nodeCleanUp();
       process.exit(0);
     }
   });

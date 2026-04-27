@@ -5,13 +5,7 @@ import { DirectPropagationInterface } from './data-propagation/direct/DirectProp
 import { ContentHashStrategy } from './data-replication/content-hash/types';
 import { DataReplicationInterface } from './data-replication/DataReplicationInterface';
 import { ReplicationProtocolInterface } from './data-replication/replication-protocol/ReplicationProtocolInterface';
-import {
-  AuthMetrics,
-  BasicAuthMetrics,
-  DialQueueMetrics,
-  PeerExchangeServiceMetrics,
-  PeerRegistryMetrics,
-} from './metrics';
+import { AuthMetrics, DialQueueMetrics, PeerExchangeServiceMetrics, PeerRegistryMetrics } from './metrics';
 import { DialQueue } from './networking/DialQueue';
 import { PeerDiscoveryManager } from './networking/PeerDiscoveryManager';
 import { PeerExchangeService } from './networking/PeerExchangeService';
@@ -47,11 +41,6 @@ export interface NodeComponents {
   scorer: SimplePeerScorer;
   pexService: PeerExchangeService;
   nodeCleanUp: () => void;
-}
-
-export interface Startable {
-  start(): Promise<void> | void;
-  stop(): Promise<void> | void;
 }
 
 export interface DeChatStrategies {

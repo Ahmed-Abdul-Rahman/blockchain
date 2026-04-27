@@ -32,7 +32,6 @@ export const DECHAT_DEFAULTS: DeChatConfig = {
   discovery: {
     enableMdns: true,
     onBoardingPeerTime: random(1, 10) * 1000 + random(1, 10) * 100,
-    nodeKey: { secret: new Uint8Array(), pub: new Uint8Array() },
   },
   dialQueue: {
     maxQueueLength: 256,

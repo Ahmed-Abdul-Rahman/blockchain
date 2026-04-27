@@ -59,7 +59,7 @@ export interface DeChatConfig {
     /** Time to wait before onboarding the peer to the network */
     onBoardingPeerTime: number;
 
-    nodeKey: { secret: Uint8Array; pub: Uint8Array };
+    nodeKey?: { secret: Uint8Array; pub: Uint8Array };
   };
   dialQueue: {
     /** Maximum peers that can be enqueued in the dial queue */

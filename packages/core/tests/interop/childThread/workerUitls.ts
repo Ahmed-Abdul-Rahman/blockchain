@@ -37,59 +37,67 @@ export const configureNode = async (
   replicaStore: InMemoryReplicaStore;
   contentHasher: ContentHashStrategy;
   dataReplication: KReplicaContentHashReplication;
-  nodeCleanUp: () => void;
+  nodeCleanUp: () => Promise<void>; // Updated to match the async stop() signature
 }> => {
   const args = workerData as WorkerData;
   const { index, nodeSeed, networkId } = args;
 
-  const { node, pexService, nodeCleanUp, scorer } = await createNode(networkId, nodeSeed, {
-    mdns: true,
-    listenTcp: ['/ip4/127.0.0.1/tcp/0'],
-    onBoardingPeerTime,
-  });
-
-  const nodePubsub = node.services.pubsub as GossipSub;
-
-  const broadcastProp = new GossipSubPropagation(node, new NoopGossipMetrics());
-
-  const directStream = new DirectStreamPropagation(node);
-
-  const contentHasher = new Sha256ContentHashStrategy();
-
-  const serializer = getGenericDataSerailizer();
-
-  const replicaStore = new InMemoryReplicaStore(serializer);
-
-  const transportSelector = new TransportSelector();
-
-  const replicationManager = new ReplicationMessageProtocolManager(node.peerId, {
-    broadcast: broadcastProp,
-    direct: directStream,
-    transportSelector,
-  });
-
-  const dataReplication = createReplicationEngine(
-    node.peerId.toString(),
-    () => pexService.peerRegistry.getPeers(),
-    contentHasher,
-    replicaStore,
-    serializer,
-    replicationManager,
-    3,
+  // Initialize using the new Config and Pluggable Strategy Factory
+  const engine = await createNode(
+    networkId,
+    nodeSeed,
+    {
+      // Map old config to the new nested DeChatConfig structure
+      network: {
+        listenAddrs: ['/ip4/0.0.0.0/tcp/0'],
+        bootstrapPeers: [],
+        maxConnections: 150,
+        minConnections: 8,
+        maxIncomingPendingConnections: 20,
+      },
+      discovery: { enableMdns: true, onBoardingPeerTime },
+    },
+    {
+      // Inject strategies using the components container (c)
+      broadcast: (c) => new GossipSubPropagation(c.libp2p, new NoopGossipMetrics()),
+      direct: (c) => new DirectStreamPropagation(c.libp2p),
+      replicaStore: () => new InMemoryReplicaStore(getGenericDataSerailizer()),
+      contentHasher: () => new Sha256ContentHashStrategy(),
+      replicationProtocol: (c) =>
+        new ReplicationMessageProtocolManager(c.libp2p.peerId, {
+          broadcast: c.strategies.broadcast!,
+          direct: c.strategies.direct!,
+          transportSelector: new TransportSelector(),
+        }),
+      dataReplication: (c) =>
+        createReplicationEngine(
+          c.libp2p.peerId.toString(),
+          () => c.pexService.peerRegistry.getPeers(), // Correctly bound to the injected PEX service
+          c.strategies.contentHasher!,
+          c.strategies.replicaStore!,
+          getGenericDataSerailizer(),
+          c.strategies.replicationProtocol!,
+          3,
+        ) as unknown as KReplicaContentHashReplication, // Typecast since factory natively returns DataReplicationInterface
+    },
   );
 
-  console.log('Wroker thread: ', threadId, 'and index: ', index, ' started with peerId: ', node.peerId);
+  const { components, stop } = engine;
+  const node = components.libp2p;
 
+  console.log('Worker thread: ', threadId, 'and index: ', index, ' started with peerId: ', node.peerId);
+
+  // Destructure components to return the exact footprint the test runner expects
   return {
     node,
-    nodePubsub,
-    pexService,
-    scorer,
-    broadcastProp,
-    directStream,
-    replicaStore,
-    contentHasher,
-    dataReplication,
-    nodeCleanUp,
+    nodePubsub: node.services.pubsub as GossipSub,
+    pexService: components.pexService,
+    scorer: components.scorer,
+    broadcastProp: components.strategies.broadcast as GossipSubPropagation,
+    directStream: components.strategies.direct as DirectStreamPropagation,
+    replicaStore: components.strategies.replicaStore as InMemoryReplicaStore,
+    contentHasher: components.strategies.contentHasher as ContentHashStrategy,
+    dataReplication: components.strategies.dataReplication as KReplicaContentHashReplication,
+    nodeCleanUp: stop,
   };
 };

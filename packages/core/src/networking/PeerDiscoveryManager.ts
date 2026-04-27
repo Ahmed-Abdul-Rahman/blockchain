@@ -11,7 +11,7 @@ export class PeerDiscoveryManager implements Startable {
 
   pexService: PeerExchangeService;
 
-  private nodeKey: { secret: Uint8Array; pub: Uint8Array };
+  private nodeKey: { secret: Uint8Array; pub: Uint8Array } | undefined;
 
   private config: DeChatComponents['config']['discovery'];
 
@@ -53,6 +53,7 @@ export class PeerDiscoveryManager implements Startable {
   private async onBoardNewPeer(event: CustomEvent<PeerInfo>): Promise<void> {
     const peerId = event.detail.id.toString();
     try {
+      if (!this.nodeKey) return;
       if (this.authenticatingPeers.has(peerId)) {
         logger.debug('Already authenticating with: ', peerId);
         return;

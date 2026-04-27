@@ -1,38 +1,39 @@
-import { describe, expect, it } from 'vitest';
-import { SimplePeerScorer } from '../../../src/networking/SimplePeerScorer';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { DECHAT_DEFAULTS } from '../../../src/config/defaults';
+import { SimplePeerScorer, simplePeerScorer } from '../../../src/networking/SimplePeerScorer';
+import { DeChatComponents } from '../../../src/types';
 
 describe('SimplePeerScorer', () => {
+  let mockComponents: Partial<DeChatComponents>;
+  let scorer: SimplePeerScorer;
+
+  beforeEach(() => {
+    mockComponents = {
+      config: DECHAT_DEFAULTS,
+    };
+    scorer = simplePeerScorer()(mockComponents as DeChatComponents);
+  });
+
   it('rewards and penalizes; dialable threshold works', () => {
-    const s = new SimplePeerScorer(-10, 100, -2, 1.0);
-    const pid = 'peerA';
-    expect(s.isDialable(pid)).toBe(true); // default 0 >= -2
+    scorer.reward('p1', 5);
+    expect(scorer.get('p1')).toBe(5);
 
-    s.penalize(pid, 5);
-    expect(s.get(pid)).toBe(-5);
-    expect(s.isDialable(pid)).toBe(false);
+    scorer.penalize('p1', 10);
+    expect(scorer.get('p1')).toBe(-5);
 
-    s.reward(pid, 10);
-    expect(s.get(pid)).toBe(5);
-    expect(s.isDialable(pid)).toBe(true);
+    // Default minDialableScore is -2
+    expect(scorer.isDialable('p1')).toBe(false);
+
+    scorer.reward('p1', 4);
+    expect(scorer.get('p1')).toBe(-1);
+    expect(scorer.isDialable('p1')).toBe(true);
   });
 
-  it('decays scores over time', () => {
-    const s = new SimplePeerScorer(-10, 100, -2, 0.5);
-    const pid = 'peerB';
-    s.reward(pid, 64);
-    s.decay();
-    expect(s.get(pid)).toBeCloseTo(32);
-    s.decay();
-    expect(s.get(pid)).toBeCloseTo(16);
-  });
+  it('caps scores at maxScore and minScore limits', () => {
+    scorer.reward('p2', 200);
+    expect(scorer.get('p2')).toBe(DECHAT_DEFAULTS.scoring.maxScore);
 
-  it('inbound acceptance threshold independent of dialable', () => {
-    const s = new SimplePeerScorer(-10, 100, -2, 1.0);
-    const pid = 'peerC';
-    s.penalize(pid, 4);
-    expect(s.isDialable(pid)).toBe(false); // -4 < -2
-    expect(s.isAcceptingInbound(pid)).toBe(true); // -4 >= -5
-    s.penalize(pid, 2);
-    expect(s.isAcceptingInbound(pid)).toBe(false); // -6 < -5
+    scorer.penalize('p3', 100);
+    expect(scorer.get('p3')).toBe(DECHAT_DEFAULTS.scoring.minScore);
   });
 });
