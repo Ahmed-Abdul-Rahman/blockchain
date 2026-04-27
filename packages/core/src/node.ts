@@ -6,7 +6,7 @@ import { generateIdProtocolPrefix } from '@dechat/crypto';
 import { BootstrapComponents, bootstrap } from '@libp2p/bootstrap';
 import { generateKeyPairFromSeed } from '@libp2p/crypto/keys';
 import { identify } from '@libp2p/identify';
-import { MultiaddrConnection, PeerDiscovery, PeerId, Startable } from '@libp2p/interface';
+import { isStartable, MultiaddrConnection, PeerDiscovery, PeerId, Startable } from '@libp2p/interface';
 import { MulticastDNSComponents, mdns } from '@libp2p/mdns';
 import { tcp } from '@libp2p/tcp';
 import { createLibp2p, Libp2p } from 'libp2p';
@@ -235,19 +235,17 @@ export const createNode = async (
       installAuthServer(libp2pNode, { pex: finalComponents.pexService, metrics: new BasicAuthMetrics() });
       for (const s of startables) await s.start();
       // Start strategies if they implement Startable
-      const strategies = finalComponents.strategies;
-      if (strategies.direct) await strategies.direct.start();
-      if (strategies.broadcast) await strategies.broadcast.start();
-      if (strategies.dataReplication) await strategies.dataReplication.start();
-      if (strategies.replicationProtocol) await strategies.replicationProtocol.start();
+      const allStrategies = Object.values(finalComponents.strategies);
+      for (const strategy of allStrategies) {
+        if (isStartable(strategy)) await strategy.start();
+      }
     },
     stop: async () => {
       // Stop in reverse order
-      const strategies = finalComponents.strategies;
-      if (strategies.replicationProtocol) await strategies.replicationProtocol.stop();
-      if (strategies.dataReplication) await strategies.dataReplication.stop();
-      if (strategies.broadcast) await strategies.broadcast.stop();
-      if (strategies.direct) await strategies.direct.stop();
+      const allStrategies = Object.values(finalComponents.strategies);
+      for (const strategy of allStrategies) {
+        if (isStartable(strategy)) await strategy.start();
+      }
       for (const s of [...startables].reverse()) await s.stop();
     },
   };

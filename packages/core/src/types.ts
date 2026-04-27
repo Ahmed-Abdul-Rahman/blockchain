@@ -2,7 +2,7 @@ import { Libp2p } from '@libp2p/interface';
 import { DeChatConfig } from './config/types';
 import { BroadcastPropagationInterface } from './data-propagation/broadcast/BroadcastPropagationInterface';
 import { DirectPropagationInterface } from './data-propagation/direct/DirectPropagationInterface';
-import { ContentHashStrategy } from './data-replication/content-hash/types';
+import { ContentHashStrategyInterface } from './data-replication/content-hash/types';
 import { DataReplicationInterface } from './data-replication/DataReplicationInterface';
 import { ReplicationProtocolInterface } from './data-replication/replication-protocol/ReplicationProtocolInterface';
 import { DataSerializer } from './data-replication/types';
@@ -49,7 +49,7 @@ export interface DeChatStrategies {
   broadcast?: DeChatFactory<BroadcastPropagationInterface>;
   direct?: DeChatFactory<DirectPropagationInterface>;
   replicaStore?: DeChatFactory<ReplicaStoreInterface>;
-  contentHasher?: DeChatFactory<ContentHashStrategy>;
+  contentHasher?: DeChatFactory<ContentHashStrategyInterface>;
   replicationProtocol?: DeChatFactory<ReplicationProtocolInterface>;
   dataReplication?: DeChatFactory<DataReplicationInterface>;
 }
@@ -76,7 +76,7 @@ export interface DeChatComponents {
     broadcast?: BroadcastPropagationInterface;
     direct?: DirectPropagationInterface;
     replicaStore?: ReplicaStoreInterface;
-    contentHasher?: ContentHashStrategy;
+    contentHasher?: ContentHashStrategyInterface;
     dataReplication?: DataReplicationInterface;
     replicationProtocol?: ReplicationProtocolInterface;
   };

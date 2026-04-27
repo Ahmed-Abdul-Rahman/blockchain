@@ -1,15 +1,12 @@
 import { PriorityQueue } from '@datastructures-js/priority-queue';
 import { logger } from '@dechat/common';
 import { calculateXorDistance, toHashBigInt } from '@dechat/crypto';
-import { inMemoryReplicaStore } from '../replica-store/InMemoryReplicaStore';
 import { ReplicaStoreInterface } from '../replica-store/ReplicaStoreInterface';
 import { DeChatComponents, DeChatFactory } from '../types';
-import { contentHashStrategy } from './content-hash/Sha256ContentHashStrategy';
-import { ContentHashStrategy } from './content-hash/types';
+import { ContentHashStrategyInterface } from './content-hash/types';
 import { DataReplicationInterface } from './DataReplicationInterface';
-import { InflightRequestTracker } from './replication-protocol/InflightRequestTracker';
+import { InflightRequestTracker, inflightRequestTracker } from './replication-protocol/InflightRequestTracker';
 import { ReplicationEngineDelegate } from './replication-protocol/ReplicationEngineDelegateInterface';
-import { replicationMessageProtocolManager } from './replication-protocol/ReplicationMessageProtocolManager';
 import { ReplicationProtocolInterface } from './replication-protocol/ReplicationProtocolInterface';
 import { getGenericDataSerailizer } from './serializers';
 import { ContentHash, DataSerializer } from './types';
@@ -30,22 +27,26 @@ export class KReplicaContentHashReplication implements DataReplicationInterface,
 
   private storage: ReplicaStoreInterface;
 
-  private hashStrategy: ContentHashStrategy;
+  private hashStrategy: ContentHashStrategyInterface;
 
   private serializer: DataSerializer;
 
   readonly replicationProtocol: ReplicationProtocolInterface;
 
   public constructor(components: DeChatComponents) {
+    if (!components.strategies.contentHasher) throw new Error('KReplicaReplication requires a contentHasher strategy.');
+    if (!components.strategies.replicaStore) throw new Error('KReplicaReplication requires a replicaStore strategy.');
+    if (!components.strategies.replicationProtocol)
+      throw new Error('KReplicaReplication requires a replicationProtocol strategy.');
+
     this.selfPeerId = components.libp2p.peerId.toString();
     this.config = components.config.strategies.replication;
     this.serializer = getGenericDataSerailizer();
     this.getKnownPeers = () => components.peerRegistry.getPeers();
-    this.hashStrategy = components.strategies.contentHasher ?? contentHashStrategy()(components);
-    this.storage = components.strategies.replicaStore ?? inMemoryReplicaStore()(components);
-    this.replicationProtocol =
-      components.strategies.replicationProtocol ?? replicationMessageProtocolManager()(components);
-    this.inflightTracker = new InflightRequestTracker();
+    this.hashStrategy = components.strategies.contentHasher;
+    this.storage = components.strategies.replicaStore;
+    this.replicationProtocol = components.strategies.replicationProtocol;
+    this.inflightTracker = inflightRequestTracker();
   }
 
   public readonly start = async (): Promise<void> => {

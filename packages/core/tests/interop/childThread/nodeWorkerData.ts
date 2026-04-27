@@ -99,6 +99,7 @@ const terminateAndCleanUp = async (
   node: Libp2p<ServiceMap>,
   propagation: GossipSubPropagation,
   replicaStore: InMemoryReplicaStore,
+  stopEngine: () => Promise<void>,
 ) => {
   try {
     if (checkTimer) {
@@ -108,13 +109,12 @@ const terminateAndCleanUp = async (
     if (!pubsub || !pexService) return;
 
     pubsub.removeEventListener('message', subHandler);
-    propagation.stop();
     parentPort?.postMessage({
       type: 'done',
       stats: await getStatistics(node, pexService, propagation, replicaStore),
     });
 
-    await node.stop();
+    await stopEngine();
     parentPort?.postMessage({
       type: 'terminate',
       status: 'success',
@@ -257,8 +257,7 @@ const runNode = async () => {
       }
     } else if (message.type === 'terminate') {
       terminateThread = true;
-      await terminateAndCleanUp(node, broadcastProp, replicaStore);
-      engine.nodeCleanUp();
+      await terminateAndCleanUp(node, broadcastProp, replicaStore, engine.nodeCleanUp);
       process.exit(0);
     }
   });

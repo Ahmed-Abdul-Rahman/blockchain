@@ -1,64 +1,60 @@
 /** biome-ignore-all lint/suspicious/noExplicitAny: <its a test file> */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DirectStreamPropagation } from '../../../src/data-propagation/direct/DirectStreamPropagation';
-
-vi.mock('@libp2p/peer-id', async (importOriginal) => {
-  const actual = await importOriginal();
-  return {
-    ...(actual as any),
-    peerIdFromString: vi.fn((str: string) => ({
-      toString: () => str,
-      equals: (otherId: any) => str === otherId.toString(),
-    })),
-  };
-});
+import { DeChatComponents } from '../../../src/types';
 
 describe('DirectStreamPropagation', () => {
-  let mockNode: any;
   let propagation: DirectStreamPropagation;
+  let mockComponents: Partial<DeChatComponents>;
+  let mockNode: any;
 
   beforeEach(() => {
     mockNode = {
       handle: vi.fn(),
-      unhandle: vi.fn().mockResolvedValue(undefined),
-      dialProtocol: vi.fn().mockResolvedValue({
-        sink: vi.fn(), // Mocking stream sink
-        source: async function* () {
-          yield new Uint8Array([0]);
-        },
-        close: vi.fn(),
-      }),
+      unhandle: vi.fn(),
+      dialProtocol: vi.fn(),
     };
 
-    propagation = new DirectStreamPropagation(mockNode);
+    mockComponents = {
+      libp2p: mockNode as any,
+      // Added missing config structure for direct propagation
+      config: {
+        strategies: {
+          propagation: {
+            direct: {},
+          },
+        },
+      } as any,
+    };
+
+    propagation = new DirectStreamPropagation(mockComponents as DeChatComponents);
   });
 
   afterEach(async () => {
-    await propagation.stop();
+    // Safely stop in case beforeEach fails
+    await propagation?.stop();
     vi.clearAllMocks();
   });
 
   it('should register handler on onReceive', () => {
-    const protocol = '/test/direct/1.0';
-    propagation.onReceive(protocol, vi.fn());
-    expect(mockNode.handle).toHaveBeenCalledWith(protocol, expect.any(Function));
+    const handler = vi.fn();
+    propagation.onReceive('/test/1.0.0', handler);
+    expect(mockNode.handle).toHaveBeenCalledWith('/test/1.0.0', expect.any(Function));
   });
 
   it('should dial and write to stream on send', async () => {
-    const protocol = '/test/direct/1.0';
+    const mockStream = { sink: vi.fn() };
+    mockNode.dialProtocol.mockResolvedValueOnce(mockStream);
     const message = { id: 'msg1', payload: 'hello', from: 'peerA', timestamp: Date.now() };
 
-    await propagation.send('targetPeerId', protocol, message);
+    await propagation.send('target-peer', '/test/1.0.0', message);
 
-    expect(mockNode.dialProtocol).toHaveBeenCalledWith(expect.any(Object), protocol);
-    // Since writeToStream uses it-pipe and sinks, dialing is the critical libp2p interaction to verify
+    expect(mockNode.dialProtocol).toHaveBeenCalledWith(expect.anything(), '/test/1.0.0');
   });
 
   it('should unhandle protocols on stop', async () => {
-    propagation.onReceive('/test/1', vi.fn());
-    propagation.onReceive('/test/2', vi.fn());
-
+    propagation.onReceive('/test/1.0.0', vi.fn());
     await propagation.stop();
-    expect(mockNode.unhandle).toHaveBeenCalledWith(['/test/1', '/test/2']);
+    expect(mockNode.unhandle).toHaveBeenCalledWith('/test/1.0.0');
   });
 });

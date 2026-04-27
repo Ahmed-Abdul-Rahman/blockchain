@@ -1,4 +1,3 @@
-import { DeChatFactory } from '../../types';
 import { ReplicationMessageType } from './ReplicationProtocolInterface';
 
 export class TransportSelector {

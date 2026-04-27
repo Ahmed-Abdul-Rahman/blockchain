@@ -10,7 +10,7 @@ import {
   directStreamPropagation,
 } from '../../../src/data-propagation/direct/DirectStreamPropagation';
 import { contentHashStrategy } from '../../../src/data-replication/content-hash/Sha256ContentHashStrategy';
-import { ContentHashStrategy } from '../../../src/data-replication/content-hash/types';
+import { ContentHashStrategyInterface } from '../../../src/data-replication/content-hash/types';
 import {
   KReplicaContentHashReplication,
   kReplicaContentHashReplication,
@@ -39,7 +39,7 @@ export const configureNode = async (
   broadcastProp: GossipSubPropagation;
   directStream: DirectStreamPropagation;
   replicaStore: InMemoryReplicaStore;
-  contentHasher: ContentHashStrategy;
+  contentHasher: ContentHashStrategyInterface;
   dataReplication: KReplicaContentHashReplication;
   nodeCleanUp: () => Promise<void>; // Updated to match the async stop() signature
 }> => {
@@ -85,7 +85,7 @@ export const configureNode = async (
     broadcastProp: components.strategies.broadcast as GossipSubPropagation,
     directStream: components.strategies.direct as DirectStreamPropagation,
     replicaStore: components.strategies.replicaStore as InMemoryReplicaStore,
-    contentHasher: components.strategies.contentHasher as ContentHashStrategy,
+    contentHasher: components.strategies.contentHasher as ContentHashStrategyInterface,
     dataReplication: components.strategies.dataReplication as KReplicaContentHashReplication,
     nodeCleanUp: stop,
   };

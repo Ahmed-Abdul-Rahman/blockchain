@@ -1,9 +1,7 @@
 import { logger } from '@dechat/common';
 import { PeerId } from '@libp2p/interface';
 import { BroadcastPropagationInterface } from '../../data-propagation/broadcast/BroadcastPropagationInterface';
-import { gossipSubPropagation } from '../../data-propagation/broadcast/GossipSubPropagation';
 import { DirectPropagationInterface } from '../../data-propagation/direct/DirectPropagationInterface';
-import { directStreamPropagation } from '../../data-propagation/direct/DirectStreamPropagation';
 import { PropagatedMessage, PropagationContext } from '../../data-propagation/types';
 import { DeChatComponents, DeChatFactory } from '../../types';
 import { ContentHash } from '../types';
@@ -42,11 +40,15 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
   private delegate?: ReplicationEngineDelegate;
 
   constructor(components: DeChatComponents) {
-    this.selfPeerId = components.libp2p.peerId;
-    this.transportSelector = transportSelector();
-    this.directProp = components.strategies.direct ?? directStreamPropagation()(components);
-    this.broadcastProp = components.strategies.broadcast ?? gossipSubPropagation()(components);
+    if (!components.strategies.direct)
+      throw new Error('ReplicationMessageProtocolManager requires a direct propagation strategy.');
+    if (!components.strategies.broadcast)
+      throw new Error('ReplicationMessageProtocolManager requires a broadcast propagation strategy.');
 
+    this.selfPeerId = components.libp2p.peerId;
+    this.directProp = components.strategies.direct;
+    this.broadcastProp = components.strategies.broadcast;
+    this.transportSelector = transportSelector();
     this.pendingRequests = new Map();
 
     this.directProp.onReceive(this.protocol, this.handleIncomingDirect.bind(this));

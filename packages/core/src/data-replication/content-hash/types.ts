@@ -1,6 +1,6 @@
 import { ContentHash } from '../types';
 
-export interface ContentHashStrategy {
+export interface ContentHashStrategyInterface {
   /**
    * Returns a deterministic content hash for the given data.
    * Must be stable across nodes.

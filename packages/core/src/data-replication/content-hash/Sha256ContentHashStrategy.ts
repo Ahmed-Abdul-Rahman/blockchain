@@ -1,9 +1,9 @@
 import { createHash } from 'crypto';
 import { DeChatFactory } from '../../types';
 import { canonicalSerialize } from '../serializers';
-import { ContentHashStrategy } from './types';
+import { ContentHashStrategyInterface } from './types';
 
-export class Sha256ContentHashStrategy implements ContentHashStrategy {
+export class Sha256ContentHashStrategy implements ContentHashStrategyInterface {
   public readonly algorithm = 'sha256';
 
   public readonly hash = <T>(data: T): string => {
@@ -12,6 +12,6 @@ export class Sha256ContentHashStrategy implements ContentHashStrategy {
   };
 }
 
-export const contentHashStrategy = (): DeChatFactory<ContentHashStrategy> => {
+export const contentHashStrategy = (): DeChatFactory<ContentHashStrategyInterface> => {
   return (components) => new Sha256ContentHashStrategy();
 };
