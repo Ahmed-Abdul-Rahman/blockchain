@@ -32,7 +32,7 @@ import { SimplePeerScorer, simplePeerScorer } from './networking/SimplePeerScore
 import { NodeKey } from './networking/types';
 import { DeChatComponents, DeChatStrategies, NodeOptions } from './types';
 
-export const getMetricsInstances = (enableMetrics: boolean) => {
+export const getMetricsInstances = (enableMetrics: boolean | undefined) => {
   if (enableMetrics) {
     return {
       peerRegistry: new BasicPeerRegistryMetrics(),
@@ -191,6 +191,7 @@ export const createNode = async (
   })) as Libp2p;
 
   components.libp2p = libp2pNode;
+  components.metrics = getMetricsInstances(userOpts?.metrics?.enabled);
   components.scorer = simplePeerScorer()(components as DeChatComponents);
   components.peerRegistry = peerRegistry()(components as DeChatComponents);
   components.dialQueue = dialQueue()(components as DeChatComponents);
@@ -209,8 +210,6 @@ export const createNode = async (
     if (strategies.dataReplication)
       components.strategies!.dataReplication = strategies.dataReplication(components as DeChatComponents);
   }
-
-  if (userOpts?.metrics?.enabled) components.metrics = getMetricsInstances(userOpts?.metrics?.enabled);
 
   const finalComponents = components as DeChatComponents;
 
