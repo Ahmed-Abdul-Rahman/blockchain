@@ -1,12 +1,42 @@
 export interface DeChatConfig {
   network: {
+    /** A list of string multiaddrs to listen on */
     listenAddrs: string[];
+
+    /** Override bootstrap multiaddrs*/
     bootstrapPeers: string[];
+
+    /** The maximum number of connections libp2p is willing to have before it starts pruning connections to reduce resource usage. Also used by DialQueue to maintain maximum peer connections */
     maxConnections: number;
+
+    /** The minium number of connections Peer needs to maintain. Only used by DialQueue */
     minConnections: number;
+
+    /**The maximum number of parallel incoming connections allowed that have yet to complete the connection upgrade - e.g. choosing connection encryption, muxer, etc. */
     maxIncomingPendingConnections: number;
   };
+  peerAuthenticator: {
+    /** Auth Protocol used for authenticating newly discovered peers */
+    authProtocol: string;
+
+    /** Unique network id for authentication */
+    networkId: string;
+
+    /**The maximum number of items to store in the cache before evicting old entries */
+    maxCount: number;
+
+    /** Replay Time in milliseconds for items to live in cache before they are considered stale. */
+    replayCacheWindowMs: number;
+
+    nodeKey?: { secret: Uint8Array; pub: Uint8Array };
+  };
   pexService: {
+    /** Peer Exchange Handle Protocol used to request connected peers from other peers*/
+    pexProtocol: string;
+
+    /** Peer Exchange Gossip Protocol Topic used to exchange peers on the connected network*/
+    pexTopic: string;
+
     /** Maximum peers to be shared with another peer on PEX_TOPIC and PEX_PROTOCOL */
     maxSharedPeers: number;
 
@@ -54,12 +84,11 @@ export interface DeChatConfig {
     decayIntervalMs: number;
   };
   discovery: {
+    /** Enable Multicast DNS */
     enableMdns: boolean;
 
-    /** Time to wait before onboarding the peer to the network */
+    /** Time to wait before interacting with a newly discovered peer and on board it to the network, used as the debounce delay when peer is bursted with new peer discovery events */
     onBoardingPeerTime: number;
-
-    nodeKey?: { secret: Uint8Array; pub: Uint8Array };
   };
   dialQueue: {
     /** Maximum peers that can be enqueued in the dial queue */
@@ -103,6 +132,12 @@ export interface DeChatConfig {
 
       /** Base delay used for exponential backoff retry policy */
       baseDelayMs: number;
+
+      /** Broadcast propagation topic */
+      topic: string;
+
+      /** Direct propagation protocol */
+      protocol: string;
     };
     store: {
       /** Replica Storage type */
@@ -112,6 +147,13 @@ export interface DeChatConfig {
     };
   };
   metrics: {
+    /** Enable metrics for node behaviour analysis */
     enabled: boolean;
   };
 }
+
+export type ValidationRule = {
+  name: string;
+  validate: (config: DeChatConfig) => boolean;
+  message: string | ((config: DeChatConfig) => string);
+};

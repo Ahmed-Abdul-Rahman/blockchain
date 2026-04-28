@@ -1,6 +1,6 @@
 import { merge, random } from 'es-toolkit';
 import { PartialDeep } from 'type-fest';
-import { DeChatConfig } from './types';
+import { DeChatConfig, ValidationRule } from './types';
 
 export const DECHAT_DEFAULTS: DeChatConfig = {
   network: {
@@ -10,7 +10,15 @@ export const DECHAT_DEFAULTS: DeChatConfig = {
     minConnections: 8,
     maxIncomingPendingConnections: 20,
   },
+  peerAuthenticator: {
+    authProtocol: '/deChat/core/auth/1.0.0',
+    networkId: 'deChat-core-net-v1',
+    maxCount: 5000,
+    replayCacheWindowMs: 60_000,
+  },
   pexService: {
+    pexProtocol: '/deChat/core/peer-exchange-protocol/1.0.0',
+    pexTopic: '/deChat/core/peer-exchange-topic/1.0.0',
     maxSharedPeers: 32,
     maxMsgsPerMin: 12,
     gossipIntervalMs: 30_000,
@@ -56,6 +64,8 @@ export const DECHAT_DEFAULTS: DeChatConfig = {
       kReplicaCount: 3,
       maxAttempts: 3,
       baseDelayMs: 200,
+      topic: '/deChat/v1/topic/replication-protocol',
+      protocol: '/deChat/v1/protocol/replication-protocol',
     },
     store: {
       type: 'IN_MEMORY',
@@ -68,8 +78,58 @@ export const DECHAT_DEFAULTS: DeChatConfig = {
 };
 
 /**
- *   Deep merge user overrides with defaults
+ * Add any new configuration constraints to this array.
+ * The system automatically enforces them.
+ */
+const configRules: ValidationRule[] = [
+  {
+    name: 'SyncPexCooldowns',
+    validate: (config) => config.peerRegistry.pexRequestCooldownMs === config.pexService.pexRequestCooldownMs,
+    message: (config) =>
+      `Configuration mismatch: peerRegistry.pexRequestCooldownMs (${config.peerRegistry.pexRequestCooldownMs}) ` +
+      `must exactly match pexService.pexRequestCooldownMs (${config.pexService.pexRequestCooldownMs}).`,
+  },
+  {
+    name: 'ValidListenAddrs',
+    validate: (config) => Array.isArray(config.network.listenAddrs) && config.network.listenAddrs.length > 0,
+    message: 'network.listenAddrs cannot be empty. You must provide at least one listening address.',
+  },
+  {
+    name: 'ValidConnectionLimits',
+    validate: (config) => config.network.maxConnections > config.network.minConnections,
+    message: 'maxConnections must be strictly greater than minConnections.',
+  },
+];
+
+/**
+ * Validates the resolved configuration against all defined rules.
+ * Outputs a boolean indicating if the config is structurally and logically sound.
+ */
+export const isConfigValid = (config: DeChatConfig): boolean => {
+  let isValid = true;
+
+  for (const rule of configRules) {
+    if (!rule.validate(config)) {
+      isValid = false;
+      const errorMessage = typeof rule.message === 'function' ? rule.message(config) : rule.message;
+
+      // Highly recommended to replace console.error with your logger
+      console.error(`[Config Validation Failed] Rule '${rule.name}': ${errorMessage}`);
+    }
+  }
+
+  return isValid;
+};
+
+/**
+ * Deep merge user overrides with defaults, and validate the final result.
  */
 export const resolveConfig = (userOpts?: PartialDeep<DeChatConfig>): DeChatConfig => {
-  return userOpts ? merge(DECHAT_DEFAULTS, userOpts) : DECHAT_DEFAULTS;
+  const resolved = userOpts ? merge(DECHAT_DEFAULTS, userOpts) : DECHAT_DEFAULTS;
+
+  if (!isConfigValid(resolved)) {
+    throw new Error('Invalid DeChat node configuration provided. Please fix the validation errors above.');
+  }
+
+  return resolved;
 };

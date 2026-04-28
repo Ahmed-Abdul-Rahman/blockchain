@@ -42,8 +42,6 @@ export type ReplicationMessage = ReplicationAnnounce | ReplicationRequest | Repl
  * Implementations (e.g. KReplicaContentHashReplication) implement this.
  */
 export interface ReplicationProtocolInterface extends Startable {
-  protocol: string;
-
   announceToNetwork(hash: ContentHash): Promise<void>;
 
   requestDataAndAwaitResponse(hash: string, targetPeerId: string): Promise<ReplicationContent | ReplicationError>;

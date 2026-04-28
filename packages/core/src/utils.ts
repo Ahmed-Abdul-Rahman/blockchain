@@ -5,6 +5,18 @@ import map from 'it-map';
 import { pipe } from 'it-pipe';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
+import {
+  BasicAuthMetrics,
+  BasicDialQueueMetrics,
+  BasicGossipSubPropagationMetrics,
+  BasicPeerExchangeMetrics,
+  BasicPeerRegistryMetrics,
+  NoopAuthMetrics,
+  NoopDialQueueMetrics,
+  NoopGossipMetrics,
+  NoopPeerExchangeMetrics,
+  NoopPeerRegistryMetrics,
+} from './metrics';
 
 export const now = (): number => Date.now();
 
@@ -92,4 +104,23 @@ export const readMessagesFromStream = async (
       }
     },
   );
+};
+
+export const getMetricsInstances = (enableMetrics: boolean | undefined) => {
+  if (enableMetrics) {
+    return {
+      peerRegistry: new BasicPeerRegistryMetrics(),
+      pexService: new BasicPeerExchangeMetrics(),
+      dialQueue: new BasicDialQueueMetrics(),
+      authMetrics: new BasicAuthMetrics(),
+      gossipSubPropMetrics: new BasicGossipSubPropagationMetrics(),
+    };
+  }
+  return {
+    peerRegistry: new NoopPeerRegistryMetrics(),
+    pexService: new NoopPeerExchangeMetrics(),
+    dialQueue: new NoopDialQueueMetrics(),
+    authMetrics: new NoopAuthMetrics(),
+    gossipSubPropMetrics: new NoopGossipMetrics(),
+  };
 };

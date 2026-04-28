@@ -18,13 +18,16 @@ import { TransportSelector, transportSelector } from './TransportSelector';
 
 export class ReplicationMessageProtocolManager implements ReplicationProtocolInterface {
   readonly selfPeerId: PeerId;
-  readonly topic: string = '/deChat/v1/topic/replication-protocol';
-  readonly protocol: string = '/deChat/v1/protocol/replication-protocol';
+
+  private config: DeChatComponents['config']['strategies']['replication'];
 
   // TODO: add a limit to maximum concurrent replication you can upload/send to other peers
   // readonly maxConcurrentUploads: number = 100;
+
   readonly transportSelector: TransportSelector;
+
   readonly directProp: DirectPropagationInterface;
+
   readonly broadcastProp: BroadcastPropagationInterface;
 
   /** Maps correlation keys (hash:peerId) to Promise resolvers */
@@ -46,13 +49,14 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
       throw new Error('ReplicationMessageProtocolManager requires a broadcast propagation strategy.');
 
     this.selfPeerId = components.libp2p.peerId;
+    this.config = components.config.strategies.replication;
     this.directProp = components.strategies.direct;
     this.broadcastProp = components.strategies.broadcast;
     this.transportSelector = transportSelector();
     this.pendingRequests = new Map();
 
-    this.directProp.onReceive(this.protocol, this.handleIncomingDirect.bind(this));
-    this.broadcastProp.subscribe(this.topic, this.handleIncomingBroadcast.bind(this));
+    this.directProp.onReceive(this.config.protocol, this.handleIncomingDirect.bind(this));
+    this.broadcastProp.subscribe(this.config.topic, this.handleIncomingBroadcast.bind(this));
   }
 
   public setDelegate(delegate: ReplicationEngineDelegate): void {
@@ -234,9 +238,9 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
 
     if (transport === 'direct') {
       if (!peerId) throw new Error('direct transport requires peerId');
-      await this.directProp.send(peerId, this.protocol, propagated);
+      await this.directProp.send(peerId, this.config.protocol, propagated);
     } else {
-      await this.broadcastProp.publish(this.topic, propagated);
+      await this.broadcastProp.publish(this.config.topic, propagated);
     }
   }
 }

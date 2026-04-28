@@ -14,6 +14,7 @@
     "test:coverage": ""
   },
   "dependencies": {
+    "@noble/ed25519": "^3.0.0",
     "ky": "^1.7.2"
   },
   "devDependencies": {

@@ -313,6 +313,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@dechat/crypto@workspace:packages/crypto"
   dependencies:
+    "@noble/ed25519": "npm:^3.0.0"
     ky: "npm:^1.7.2"
     typescript: "npm:^5.5.0"
   languageName: unknown

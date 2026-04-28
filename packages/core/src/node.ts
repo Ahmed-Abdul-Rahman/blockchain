@@ -2,7 +2,7 @@ import { gossipsub } from '@chainsafe/libp2p-gossipsub';
 import { noise } from '@chainsafe/libp2p-noise';
 import { yamux } from '@chainsafe/libp2p-yamux';
 import { logger } from '@dechat/common';
-import { generateIdProtocolPrefix } from '@dechat/crypto';
+import { genEd25519KeyPair, generateIdProtocolPrefix } from '@dechat/crypto';
 import { BootstrapComponents, bootstrap } from '@libp2p/bootstrap';
 import { generateKeyPairFromSeed } from '@libp2p/crypto/keys';
 import { identify } from '@libp2p/identify';
@@ -14,118 +14,14 @@ import { PartialDeep } from 'type-fest';
 import { resolveConfig } from './config/defaults';
 import { DeChatConfig } from './config/types';
 import { getGenericDataSerailizer } from './data-replication/serializers';
-import {
-  BasicAuthMetrics,
-  BasicDialQueueMetrics,
-  BasicGossipSubPropagationMetrics,
-  BasicPeerExchangeMetrics,
-  BasicPeerRegistryMetrics,
-  NoopAuthMetrics,
-  NoopDialQueueMetrics,
-  NoopGossipMetrics,
-  NoopPeerExchangeMetrics,
-  NoopPeerRegistryMetrics,
-} from './metrics';
-import { genEd25519KeyPair, installAuthServer } from './networking/auth';
 import { dialQueue } from './networking/DialQueue';
+import { peerAuthenticator } from './networking/PeerAuthenticator';
 import { peerDiscoveryManager } from './networking/PeerDiscoveryManager';
 import { peerExchangeService } from './networking/PeerExchangeService';
 import { peerRegistry } from './networking/PeerRegistry';
-import { SimplePeerScorer, simplePeerScorer } from './networking/SimplePeerScorer';
-import { NodeKey } from './networking/types';
-import { DeChatComponents, DeChatStrategies, NodeOptions } from './types';
-
-export const getMetricsInstances = (enableMetrics: boolean | undefined) => {
-  if (enableMetrics) {
-    return {
-      peerRegistry: new BasicPeerRegistryMetrics(),
-      pexService: new BasicPeerExchangeMetrics(),
-      dialQueue: new BasicDialQueueMetrics(),
-      authMetrics: new BasicAuthMetrics(),
-      gossipSubPropMetrics: new BasicGossipSubPropagationMetrics(),
-    };
-  }
-  return {
-    peerRegistry: new NoopPeerRegistryMetrics(),
-    pexService: new NoopPeerExchangeMetrics(),
-    dialQueue: new NoopDialQueueMetrics(),
-    authMetrics: new NoopAuthMetrics(),
-    gossipSubPropMetrics: new NoopGossipMetrics(),
-  };
-};
-
-export const createLibp2pNode = async (
-  infoHash: string,
-  nodeSeed: string,
-  scorer: SimplePeerScorer,
-  nodeOptions?: NodeOptions,
-): Promise<{
-  node: Libp2p;
-  nodeKey: NodeKey;
-}> => {
-  const nodeKey = await genEd25519KeyPair(nodeSeed);
-  const privateKey = await generateKeyPairFromSeed('Ed25519', nodeKey.secret);
-  const listenAddrs = nodeOptions?.listenTcp ?? ['/ip4/0.0.0.0/tcp/0'];
-  const transports = [tcp()];
-  const streamMuxers = [yamux()];
-  const connectionEncrypters = [noise()];
-
-  const peerDiscovery: (
-    | ((components: MulticastDNSComponents) => PeerDiscovery)
-    | ((components: BootstrapComponents) => PeerDiscovery)
-  )[] = [];
-
-  if (nodeOptions?.mdns !== false) peerDiscovery.push(mdns({ interval: 10e3 }));
-
-  if (nodeOptions?.bootstrap && nodeOptions.bootstrap.length > 0)
-    peerDiscovery.push(bootstrap({ list: nodeOptions.bootstrap }));
-
-  const node = (await createLibp2p({
-    privateKey,
-    addresses: { listen: listenAddrs },
-    transports,
-    connectionEncrypters,
-    streamMuxers,
-    peerDiscovery,
-    services: {
-      identify: identify({
-        protocolPrefix: generateIdProtocolPrefix(infoHash),
-        agentVersion: 'NodeAgent-1.0.0',
-      }),
-      pubsub: gossipsub({
-        // tune as desired; keep scoring ON in gossipsub if you enable it later
-        emitSelf: false,
-        allowPublishToZeroTopicPeers: false,
-        gossipFactor: 1,
-        globalSignaturePolicy: 'StrictSign',
-      }),
-    },
-
-    // keep the node stable under load
-    connectionManager: {
-      maxConnections: nodeOptions?.maxConnections ?? 150,
-      maxIncomingPendingConnections: 20,
-    },
-
-    // gate by score to avoid wasting resources
-    connectionGater: {
-      denyDialPeer: async (peerId) => {
-        const id = peerId.toString();
-        const isDenied = scorer.get(id) < -2;
-        if (isDenied) logger.debug('Denied Dialing to the peer:', id);
-        return isDenied;
-      },
-      denyInboundConnection: async (conn) => {
-        const peerId = conn.remoteAddr.getPeerId()?.toString?.() ?? '';
-        const isDenied = scorer.get(peerId) < -5 || node.getConnections().length >= 150;
-        if (isDenied) logger.debug('Denied inbound connection to the peer:', peerId);
-        return isDenied;
-      },
-    },
-  })) as Libp2p;
-
-  return { node, nodeKey };
-};
+import { simplePeerScorer } from './networking/SimplePeerScorer';
+import { DeChatComponents, DeChatStrategies } from './types';
+import { getMetricsInstances } from './utils';
 
 export const createNode = async (
   infoHash: string,
@@ -135,7 +31,7 @@ export const createNode = async (
 ): Promise<{ components: DeChatComponents; start: () => Promise<void>; stop: () => Promise<void> }> => {
   const config = resolveConfig(userOpts);
   const nodeKey = await genEd25519KeyPair(nodeSeed);
-  config.discovery.nodeKey = nodeKey;
+  config.peerAuthenticator.nodeKey = nodeKey;
   const privateKey = await generateKeyPairFromSeed('Ed25519', nodeKey.secret);
 
   const components = {
@@ -201,6 +97,7 @@ export const createNode = async (
   components.peerRegistry = peerRegistry()(components as DeChatComponents);
   components.dialQueue = dialQueue()(components as DeChatComponents);
   components.pexService = peerExchangeService()(components as DeChatComponents);
+  components.peerAuthenticator = peerAuthenticator()(components as DeChatComponents);
   components.peerDiscovery = peerDiscoveryManager()(components as DeChatComponents);
   components.serializer = getGenericDataSerailizer();
 
@@ -220,6 +117,7 @@ export const createNode = async (
   const finalComponents = components as DeChatComponents;
 
   const startables: Startable[] = [
+    finalComponents.peerAuthenticator,
     finalComponents.peerDiscovery,
     finalComponents.peerRegistry,
     finalComponents.pexService,
@@ -232,7 +130,6 @@ export const createNode = async (
   return {
     components: finalComponents,
     start: async () => {
-      installAuthServer(libp2pNode, { pex: finalComponents.pexService, metrics: new BasicAuthMetrics() });
       for (const s of startables) await s.start();
       // Start strategies if they implement Startable
       const allStrategies = Object.values(finalComponents.strategies);

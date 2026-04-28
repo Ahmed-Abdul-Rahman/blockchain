@@ -9,7 +9,6 @@ import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { PeerExchangeServiceMetrics } from '../metrics/interfaces/PeerExchangeServiceMetrics';
 import { DeChatComponents, DeChatFactory } from '../types';
 import { now, writeToStream } from '../utils';
-import { PEX_PROTOCOL, PEX_TOPIC } from './protocols';
 import { GET_PEERS_MSG, PEX_GOSSIP, PEX_PEER_LIST, PeerInfoLite } from './types';
 import { filterAddrs, processDataFromStream, publishWithRetry, sampleList } from './utils';
 
@@ -59,13 +58,13 @@ export class PeerExchangeService implements Startable {
       ttl: 10 * 60 * 1000, // 10 minutes
     });
 
-    this.node.handle(PEX_PROTOCOL, ({ stream, connection }) =>
+    this.node.handle(this.config.pexProtocol, ({ stream, connection }) =>
       this.onPexProtocolMessage(stream, connection.remotePeer.toString()),
     );
 
     this.pubsub = this.node.services.pubsub as GossipSub;
 
-    this.pubsub.subscribe(PEX_TOPIC);
+    this.pubsub.subscribe(this.config.pexTopic);
     this.gossipListener = (event: CustomEvent<Message>) => this.onGossip(event);
     this.pubsub.addEventListener('message', this.gossipListener);
 
@@ -187,7 +186,7 @@ export class PeerExchangeService implements Startable {
               addresses: this.node.getMultiaddrs().map((multiAddr) => multiAddr.toString()),
             },
           };
-          await publishWithRetry(this.pubsub, PEX_TOPIC, uint8ArrayFromString(JSON.stringify(msg)), {
+          await publishWithRetry(this.pubsub, this.config.pexTopic, uint8ArrayFromString(JSON.stringify(msg)), {
             retries: 7,
             baseDelay: this.config.gossipIntervalMs,
           });
@@ -228,7 +227,7 @@ export class PeerExchangeService implements Startable {
    */
   private onGossip(event: CustomEvent<Message>): void {
     const data = event.detail.data;
-    if (!data || event.detail.topic !== PEX_TOPIC) return;
+    if (!data || event.detail.topic !== this.config.pexTopic) return;
     logger.trace('PeerExchangeService - onGossip - entry');
     try {
       const parsedData = JSON.parse(uint8ArrayToString(data));
@@ -282,7 +281,7 @@ export class PeerExchangeService implements Startable {
     logger.trace('PeerExchangeService - requestPeersFrom - entry');
     try {
       this.metrics.exchangeRequested();
-      const stream = await this.node.dialProtocol(peerId, PEX_PROTOCOL);
+      const stream = await this.node.dialProtocol(peerId, this.config.pexProtocol);
       const req: GET_PEERS_MSG = { type: 'GET_PEERS', want };
       let receivedPeers: PeerInfoLite[] = [];
 

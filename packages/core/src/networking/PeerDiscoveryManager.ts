@@ -2,7 +2,7 @@ import { logger } from '@dechat/common';
 import { Libp2p, PeerId, PeerInfo, Startable } from '@libp2p/interface';
 import { debounce } from 'es-toolkit';
 import { DeChatComponents, DeChatFactory } from '../types';
-import { runAuthClient } from './auth';
+import { PeerAuthenticator } from './PeerAuthenticator';
 import { PeerExchangeService } from './PeerExchangeService';
 import { shouldDialNewPeer } from './shouldDial';
 
@@ -11,7 +11,7 @@ export class PeerDiscoveryManager implements Startable {
 
   pexService: PeerExchangeService;
 
-  private nodeKey: { secret: Uint8Array; pub: Uint8Array } | undefined;
+  peerAuthenticator: PeerAuthenticator;
 
   private config: DeChatComponents['config']['discovery'];
 
@@ -27,8 +27,8 @@ export class PeerDiscoveryManager implements Startable {
   constructor(components: DeChatComponents) {
     this.node = components.libp2p;
     this.config = components.config.discovery;
-    this.nodeKey = components.config.discovery.nodeKey;
     this.pexService = components.pexService;
+    this.peerAuthenticator = components.peerAuthenticator;
 
     this.authenticatingPeers = new Set<string>();
 
@@ -53,14 +53,13 @@ export class PeerDiscoveryManager implements Startable {
   private async onBoardNewPeer(event: CustomEvent<PeerInfo>): Promise<void> {
     const peerId = event.detail.id.toString();
     try {
-      if (!this.nodeKey) return;
       if (this.authenticatingPeers.has(peerId)) {
         logger.debug('Already authenticating with: ', peerId);
         return;
       }
       this.authenticatingPeers.add(peerId);
 
-      const isAuthenticated = await runAuthClient(this.node, event.detail.id, this.nodeKey.secret);
+      const isAuthenticated = await this.peerAuthenticator.runAuthClient(event.detail.id);
 
       if (isAuthenticated) {
         logger.info('Authentication successful with peer:', peerId);

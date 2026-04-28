@@ -9,41 +9,12 @@ import { DataSerializer } from './data-replication/types';
 import { AuthMetrics, DialQueueMetrics, PeerExchangeServiceMetrics, PeerRegistryMetrics } from './metrics';
 import { GossipSubPropagationMetrics } from './metrics/interfaces/GossipSubPropagationMetrics';
 import { DialQueue } from './networking/DialQueue';
+import { PeerAuthenticator } from './networking/PeerAuthenticator';
 import { PeerDiscoveryManager } from './networking/PeerDiscoveryManager';
 import { PeerExchangeService } from './networking/PeerExchangeService';
 import { PeerRegistry } from './networking/PeerRegistry';
 import { SimplePeerScorer } from './networking/SimplePeerScorer';
 import { ReplicaStoreInterface } from './replica-store/ReplicaStoreInterface';
-
-export interface NodeOptions {
-  /** Enable Multicast DNS */
-  mdns?: boolean;
-
-  /** override listen multiaddrs */
-  listenTcp?: string[];
-
-  /** override bootstrap multiaddrs */
-  bootstrap?: string[];
-
-  /** Initial bootstrap peers to be loaded */
-  peerSeeds?: { peerId: string; addresses: string[] }[];
-
-  /** Time to interact with a newly discovered peer and on board it to the network */
-  onBoardingPeerTime?: number;
-
-  /** Maximum direct peer connections to be maintained */
-  maxConnections?: number;
-
-  /** Enable metrics for node behaviour analysis */
-  enableMetrics?: boolean;
-}
-
-export interface NodeComponents {
-  node: Libp2p;
-  scorer: SimplePeerScorer;
-  pexService: PeerExchangeService;
-  nodeCleanUp: () => void;
-}
 
 export interface DeChatStrategies {
   broadcast?: DeChatFactory<BroadcastPropagationInterface>;
@@ -70,6 +41,7 @@ export interface DeChatComponents {
   dialQueue: DialQueue;
   pexService: PeerExchangeService;
   peerDiscovery: PeerDiscoveryManager;
+  peerAuthenticator: PeerAuthenticator;
   serializer: DataSerializer;
   metrics: DeChatMetrics;
   strategies: {

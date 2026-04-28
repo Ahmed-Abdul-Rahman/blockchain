@@ -34,6 +34,18 @@ describe('ReplicationMessageProtocolManager', () => {
 
     mockComponents = {
       libp2p: { peerId: { toString: () => 'self-peer-id' } } as any,
+      config: {
+        strategies: {
+          // Fixed path based on error trace
+          replication: {
+            kReplicaCount: 3,
+            maxAttempts: 3,
+            baseDelayMs: 200,
+            topic: '/test/v1/topic/replication-protocol',
+            protocol: '/test/v1/protocol/replication-protocol',
+          },
+        },
+      } as any,
       strategies: {
         direct: mockDirectStreamPropagation,
         broadcast: mockBroadcastPropagation,

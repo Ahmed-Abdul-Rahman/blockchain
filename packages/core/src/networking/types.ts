@@ -47,8 +47,3 @@ export interface ShouldDialOptions {
   /** Backoff probability for existing peers */
   electionModulo?: number;
 }
-
-export type NodeKey = {
-  secret: Uint8Array<ArrayBufferLike>;
-  pub: Uint8Array;
-};
