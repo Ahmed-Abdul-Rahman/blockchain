@@ -129,7 +129,7 @@ const terminateAndCleanUp = async (
       type: 'terminate',
       status: 'success',
     });
-    delay(100);
+    await delay(100);
   } catch (error) {
     console.log('Error occurred while terminateAndCleanUp ', error);
   }
