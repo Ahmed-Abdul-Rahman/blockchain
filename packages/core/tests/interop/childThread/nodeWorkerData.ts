@@ -61,7 +61,7 @@ const getStatistics = async (
 ): Promise<WorkerResult> => {
   const gossipSeenMessages = propagation.getSeenMessages();
 
-  const replicationResults = replicaStore ? getReplicationResult(replicaStore) : {};
+  const replicationResults = replicaStore ? await getReplicationResult(replicaStore) : {};
 
   return {
     me: selfPeerId,

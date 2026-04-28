@@ -244,7 +244,7 @@ export const createNode = async (
       // Stop in reverse order
       const allStrategies = Object.values(finalComponents.strategies);
       for (const strategy of allStrategies) {
-        if (isStartable(strategy)) await strategy.start();
+        if (isStartable(strategy)) await strategy.stop();
       }
       for (const s of [...startables].reverse()) await s.stop();
     },
