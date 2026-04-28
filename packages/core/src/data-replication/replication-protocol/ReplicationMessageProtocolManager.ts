@@ -60,11 +60,11 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
   }
 
   async start(): Promise<void> {
-    logger.info('[ReplicationProtocol] Started:', this.selfPeerId);
+    logger.info('ReplicationProtocol Started');
   }
 
   async stop(): Promise<void> {
-    logger.info('[ReplicationProtocol] Stopped:', this.selfPeerId);
+    logger.info('ReplicationProtocol Stopped');
   }
 
   public readonly announceToNetwork = async (hash: ContentHash): Promise<void> => {

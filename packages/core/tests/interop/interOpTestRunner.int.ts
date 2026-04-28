@@ -67,6 +67,7 @@ describe('P2P Network Integration StartUp Tests', () => {
     const bootstrapMultiaddrs = [];
 
     const aggregatedResults = await simulateBurstPeersAtStartUp({
+      testType: 'STARTUP',
       totalNodes,
       runDurationSec,
       messageRate,
@@ -106,6 +107,7 @@ describe('P2P Network Integration StartUp Tests', () => {
     const bootstrapMultiaddrs = [];
 
     const aggregatedResults = await simulateStaggeredPeersAtStartUp({
+      testType: 'STARTUP',
       totalNodes,
       runDurationSec,
       messageRate,
@@ -144,6 +146,7 @@ describe('P2P Network Integration Stability Tests', () => {
     const bootstrapMultiaddrs = [];
 
     const aggregatedResults = await simulatePeerChurn({
+      testType: 'STARTUP',
       totalNodes,
       runDurationSec,
       messageRate,
@@ -182,6 +185,7 @@ describe('Interop - Data Propagation Tests', () => {
     const bootstrapMultiaddrs = [];
 
     const aggregatedResults = await simulateBurstPeersAtStartUpWithDataPropagation({
+      testType: 'PROPAGATION',
       totalNodes,
       runDurationSec,
       messageRate,
@@ -233,6 +237,7 @@ describe('Interop - Data Replication Tests', () => {
     const bootstrapMultiaddrs = [];
 
     const aggregatedResults = await simulateBurstPeersAtStartUpWithPropagationAndReplication({
+      testType: 'REPLICATION',
       totalNodes,
       runDurationSec,
       messageRate,
@@ -286,6 +291,7 @@ describe('Interop - DHT Routing and Iterative Fetching', () => {
     const bootstrapMultiaddrs = [];
 
     const aggregatedResults = await simulateIterativeDataFetch({
+      testType: 'REPLICATION',
       totalNodes,
       runDurationSec,
       messageRate,

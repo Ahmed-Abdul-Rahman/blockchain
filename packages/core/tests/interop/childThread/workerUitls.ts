@@ -11,16 +11,14 @@ import {
 } from '../../../src/data-propagation/direct/DirectStreamPropagation';
 import { contentHashStrategy } from '../../../src/data-replication/content-hash/Sha256ContentHashStrategy';
 import { ContentHashStrategyInterface } from '../../../src/data-replication/content-hash/types';
-import {
-  KReplicaContentHashReplication,
-  kReplicaContentHashReplication,
-} from '../../../src/data-replication/KReplicaContentHashReplication';
+import { DataReplicationInterface } from '../../../src/data-replication/DataReplicationInterface';
+import { kReplicaContentHashReplication } from '../../../src/data-replication/KReplicaContentHashReplication';
 import { replicationMessageProtocolManager } from '../../../src/data-replication/replication-protocol/ReplicationMessageProtocolManager';
 import { PeerExchangeService } from '../../../src/networking/PeerExchangeService';
 import { SimplePeerScorer } from '../../../src/networking/SimplePeerScorer';
 import { createNode } from '../../../src/node';
-import { InMemoryReplicaStore } from '../../../src/replica-store/InMemoryReplicaStore';
-import { replicaStore } from '../../../src/replica-store/ReplicaStoreInterface';
+import { ReplicaStoreInterface, replicaStore } from '../../../src/replica-store/ReplicaStoreInterface';
+import { DeChatStrategies } from '../../../src/types';
 import { WorkerData } from '../types';
 
 export const percentile = (xs: number[], p: number): number => {
@@ -32,26 +30,40 @@ export const percentile = (xs: number[], p: number): number => {
 export const configureNode = async (
   onBoardingPeerTime: number,
 ): Promise<{
+  start: () => Promise<void>;
   node: Libp2p;
   nodePubsub: GossipSub;
   pexService: PeerExchangeService;
   scorer: SimplePeerScorer;
   broadcastProp: GossipSubPropagation;
   directStream: DirectStreamPropagation;
-  replicaStore: InMemoryReplicaStore;
-  contentHasher: ContentHashStrategyInterface;
-  dataReplication: KReplicaContentHashReplication;
-  nodeCleanUp: () => Promise<void>; // Updated to match the async stop() signature
+  replicaStore: ReplicaStoreInterface | undefined;
+  contentHasher: ContentHashStrategyInterface | undefined;
+  dataReplication: DataReplicationInterface | undefined;
+  nodeCleanUp: () => Promise<void>;
 }> => {
   const args = workerData as WorkerData;
-  const { index, nodeSeed, networkId } = args;
+  const { index, nodeSeed, networkId, testType } = args;
 
-  // Initialize using the new Config and Pluggable Strategy Factory
+  let strategies: DeChatStrategies = {
+    broadcast: gossipSubPropagation(),
+    direct: directStreamPropagation(),
+  };
+
+  if (testType && testType === 'REPLICATION') {
+    strategies = {
+      ...strategies,
+      replicaStore: replicaStore('IN_MEMORY'),
+      contentHasher: contentHashStrategy(),
+      replicationProtocol: replicationMessageProtocolManager(),
+      dataReplication: kReplicaContentHashReplication(),
+    };
+  }
+
   const engine = await createNode(
     networkId,
     nodeSeed,
     {
-      // Map old config to the new nested DeChatConfig structure
       network: {
         listenAddrs: ['/ip4/0.0.0.0/tcp/0'],
         bootstrapPeers: [],
@@ -61,32 +73,25 @@ export const configureNode = async (
       },
       discovery: { enableMdns: true, onBoardingPeerTime },
     },
-    {
-      broadcast: gossipSubPropagation(),
-      direct: directStreamPropagation(),
-      replicaStore: replicaStore('IN_MEMORY'),
-      contentHasher: contentHashStrategy(),
-      replicationProtocol: replicationMessageProtocolManager(),
-      dataReplication: kReplicaContentHashReplication(),
-    },
+    strategies,
   );
 
-  const { components, stop } = engine;
+  const { components, stop, start } = engine;
   const node = components.libp2p;
 
   console.log('Worker thread: ', threadId, 'and index: ', index, ' started with peerId: ', node.peerId);
 
-  // Destructure components to return the exact footprint the test runner expects
   return {
+    start,
     node,
     nodePubsub: node.services.pubsub as GossipSub,
     pexService: components.pexService,
     scorer: components.scorer,
     broadcastProp: components.strategies.broadcast as GossipSubPropagation,
     directStream: components.strategies.direct as DirectStreamPropagation,
-    replicaStore: components.strategies.replicaStore as InMemoryReplicaStore,
-    contentHasher: components.strategies.contentHasher as ContentHashStrategyInterface,
-    dataReplication: components.strategies.dataReplication as KReplicaContentHashReplication,
+    replicaStore: components.strategies.replicaStore,
+    contentHasher: components.strategies.contentHasher,
+    dataReplication: components.strategies.dataReplication,
     nodeCleanUp: stop,
   };
 };

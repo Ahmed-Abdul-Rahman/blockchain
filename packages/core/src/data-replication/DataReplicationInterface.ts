@@ -4,6 +4,11 @@ import { ContentHash } from './types';
 
 export interface DataReplicationInterface extends Startable {
   /**
+   * Replication protocol implementation to be used by this data replication
+   */
+  readonly replicationProtocol: ReplicationProtocolInterface;
+
+  /**
    * // TODO: implement batching, accept a list of dataItems and replicate each item efficiently and non-blocking
    * Called when local node produces new data
    */
@@ -26,7 +31,7 @@ export interface DataReplicationInterface extends Startable {
   evict?(contentHash: string): Promise<void>;
 
   /**
-   * Replication protocol implementation to be used by this data replication
+   * Request missing content from other peers
    */
-  readonly replicationProtocol: ReplicationProtocolInterface;
+  requestMissingData<T>(hash: ContentHash): Promise<T | null>;
 }
