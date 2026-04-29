@@ -12,7 +12,7 @@ export default defineConfig({
       reporter: ['text', 'html', 'lcov'], // 'text' for terminal, 'html' for browser, 'lcov' for CI
       include: ['src/**/*.ts'], // Only track source files
       exclude: [
-        'src/metrics/noop/**', // Exclude dummy metric implementations
+        'src/metrics/**/**', // Exclude dummy metric implementations
         '**/*.d.ts', // Exclude type definitions
         'tests/**', // Exclude the test files themselves
       ],

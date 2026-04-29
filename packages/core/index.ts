@@ -1,10 +1,47 @@
+export { DECHAT_DEFAULTS, isConfigValid, resolveConfig } from './src/config/defaults';
+export type { DeChatConfig } from './src/config/types';
+
 export { BroadcastPropagationInterface } from './src/data-propagation/broadcast/BroadcastPropagationInterface';
 export { GossipSubPropagation } from './src/data-propagation/broadcast/GossipSubPropagation';
+
 export { DirectPropagationInterface } from './src/data-propagation/direct/DirectPropagationInterface';
 export { DirectStreamPropagation } from './src/data-propagation/direct/DirectStreamPropagation';
-export { PropagatedMessage, PropagationContext } from './src/data-propagation/types';
 
-export { PeerExchangeService } from './src/networking/PeerExchangeService';
-export { SimplePeerScorer } from './src/networking/SimplePeerScorer';
+export type { PropagatedMessage, PropagationContext } from './src/data-propagation/types';
+
+export { Sha256ContentHashStrategy } from './src/data-replication/content-hash/Sha256ContentHashStrategy';
+export { ContentHashStrategyInterface } from './src/data-replication/content-hash/types';
+
+export { DataReplicationInterface } from './src/data-replication/DataReplicationInterface';
+export {
+  KReplicaContentHashReplication,
+  kReplicaContentHashReplication,
+} from './src/data-replication/KReplicaContentHashReplication';
+
+export { ReplicationMessageProtocolManager } from './src/data-replication/replication-protocol/ReplicationMessageProtocolManager';
+export { ReplicationProtocolInterface } from './src/data-replication/replication-protocol/ReplicationProtocolInterface';
+export { TransportSelector } from './src/data-replication/replication-protocol/TransportSelector';
+
+export { getGenericDataSerailizer } from './src/data-replication/serializers';
+export type { ContentHash, DataSerializer } from './src/data-replication/types';
+
+export * from './src/metrics';
+
+export { DialQueue, dialQueue } from './src/networking/DialQueue';
+export { PeerAuthenticator, peerAuthenticator } from './src/networking/PeerAuthenticator';
+export { PeerDiscoveryManager, peerDiscoveryManager } from './src/networking/PeerDiscoveryManager';
+export { PeerExchangeService, peerExchangeService } from './src/networking/PeerExchangeService';
+export { PeerRegistry, peerRegistry } from './src/networking/PeerRegistry';
+export { SimplePeerScorer, simplePeerScorer } from './src/networking/SimplePeerScorer';
 
 export { createNode } from './src/node';
+
+export { InMemoryReplicaStore } from './src/replica-store/InMemoryReplicaStore';
+export { LevelDbReplicaStore } from './src/replica-store/LevelDbReplicaStore';
+export { ReplicaStoreInterface } from './src/replica-store/ReplicaStoreInterface';
+
+export type {
+  DeChatComponents,
+  DeChatFactory,
+  DeChatStrategies,
+} from './src/types';

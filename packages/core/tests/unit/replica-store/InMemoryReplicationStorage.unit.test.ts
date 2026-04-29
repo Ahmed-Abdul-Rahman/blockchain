@@ -1,12 +1,19 @@
+/** biome-ignore-all lint/suspicious/noExplicitAny: <its a test file> */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { getGenericDataSerailizer } from '../../../src/data-replication/serializers';
 import { InMemoryReplicaStore } from '../../../src/replica-store/InMemoryReplicaStore';
+import { DeChatComponents } from '../../../src/types';
 
 describe('InMemoryReplicaStore', () => {
   let store: InMemoryReplicaStore;
+  let mockComponents: DeChatComponents;
 
   beforeEach(() => {
-    store = new InMemoryReplicaStore(getGenericDataSerailizer());
+    mockComponents = {
+      serializer: getGenericDataSerailizer(),
+    } as any;
+
+    store = new InMemoryReplicaStore(mockComponents);
   });
 
   it('should return false/undefined for non-existent keys', async () => {
