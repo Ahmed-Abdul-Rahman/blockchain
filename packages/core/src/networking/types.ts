@@ -9,11 +9,11 @@ export type PEX_GOSSIP = {
   from: string;
   /** message type */
   type: 'PEX_GOSSIP';
-  /** All the availabile peers connected to */
+  /** All the available peers connected to */
   peers: PeerInfoLite[];
   /** timestamp */
   ts: number;
-  /** orging peer details */
+  /** origin peer details */
   originPeerInfo: PeerInfoLite;
 };
 

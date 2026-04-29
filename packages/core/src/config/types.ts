@@ -78,7 +78,7 @@ export interface DeChatConfig {
     /** Periodically applies this decay factor to the peers score */
     decayFactor: number;
 
-    /** Minimum score for a peer to be eligible for dailing */
+    /** Minimum score for a peer to be eligible for dail */
     minDialableScore: number;
 
     decayIntervalMs: number;

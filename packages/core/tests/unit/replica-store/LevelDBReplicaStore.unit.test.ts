@@ -3,17 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LevelDbReplicaStore } from '../../../src/replica-store/LevelDbReplicaStore';
 import { DeChatComponents } from '../../../src/types';
 
-// Mock the level module since we don't want to actually write to disk during unit tests
 vi.mock('level', () => {
   return {
-    Level: vi.fn().mockImplementation(() => ({
-      get: vi.fn(),
-      put: vi.fn(),
-      del: vi.fn(),
-    })),
+    Level: vi.fn().mockImplementation(function () {
+      return {
+        get: vi.fn(),
+        put: vi.fn(),
+        del: vi.fn(),
+      };
+    }),
   };
 });
-
 describe('LevelDbReplicaStore', () => {
   let store: LevelDbReplicaStore;
   let mockComponents: Partial<DeChatComponents>;
