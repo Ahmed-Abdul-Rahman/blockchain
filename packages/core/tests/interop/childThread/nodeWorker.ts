@@ -1,7 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { parentPort, threadId, workerData } from 'node:worker_threads';
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
-import { Libp2p, Message, ServiceMap } from '@libp2p/interface';
+import { Libp2p, Message } from '@libp2p/interface';
 import { random } from 'es-toolkit';
 import { PeerExchangeService } from '../../../src/networking/PeerExchangeService';
 import { createNode } from '../../../src/node';
@@ -21,7 +21,7 @@ let peerExchangeService: PeerExchangeService | null = null;
 let checkTimer: NodeJS.Timeout | null = null;
 let selfPeerId: string | null = null;
 
-const getStatistics = (node: Libp2p<ServiceMap>, pexService: PeerExchangeService): WorkerResult => ({
+const getStatistics = (node: Libp2p, pexService: PeerExchangeService): WorkerResult => ({
   me: selfPeerId,
   verified: pexService.peerRegistry.getSize(),
   connections: node.getConnections().length,
@@ -56,7 +56,7 @@ const registerPubsub = (pubsubTopic: string) => {
   pubsub.addEventListener('message', subHandler);
 };
 
-const terminateAndCleanUp = async (node: Libp2p<ServiceMap>) => {
+const terminateAndCleanUp = async (node: Libp2p, stopEngine: () => Promise<void>) => {
   if (checkTimer) {
     clearInterval(checkTimer);
     checkTimer = null;
@@ -66,32 +66,46 @@ const terminateAndCleanUp = async (node: Libp2p<ServiceMap>) => {
   pubsub.removeEventListener('message', subHandler);
   parentPort?.postMessage({ type: 'done', stats: getStatistics(node, peerExchangeService) });
 
-  await node.stop();
+  // Cleanly stop the entire DI container (libp2p, dialQueue, pexService, etc.)
+  await stopEngine();
+
   parentPort?.postMessage({
     type: 'terminate',
     status: 'success',
   });
-  delay(100);
+  await delay(100);
 };
 
 const runNode = async () => {
   const args = workerData as WorkerData;
   const { index, nodeSeed, networkId, pubsubTopic, messageRate } = args;
 
-  // Start your node factory with mdns disabled for determinism (optional)
-  const { node, pexService, nodeCleanUp } = await createNode(networkId, nodeSeed, {
-    mdns: true,
-    listenTcp: ['/ip4/127.0.0.1/tcp/0'],
-    // bootstrap: bootstrapMultiaddrs, // make your node.ts honor this
-    onBoardingPeerTime: random(1, 10) * 1000 + random(1, 10) * 100,
-    enableMetrics: true,
+  // 1. Initialize using the nested configuration structure
+  const engine = await createNode(networkId, nodeSeed, {
+    network: {
+      listenAddrs: ['/ip4/0.0.0.0/tcp/0'],
+      bootstrapPeers: [],
+      maxConnections: 150,
+      minConnections: 8,
+      maxIncomingPendingConnections: 20,
+    },
+    discovery: {
+      enableMdns: true,
+      onBoardingPeerTime: random(1, 10) * 1000 + random(1, 10) * 100,
+    },
+    metrics: { enabled: true },
   });
 
-  await node.start();
+  // 2. Destructure from the DI components container
+  const node = engine.components.libp2p;
+  const pexService = engine.components.pexService;
+
+  // 3. Start all services systematically
+  await engine.start();
 
   selfPeerId = node.peerId.toString();
 
-  console.log('Wroker thread: ', threadId, 'and index: ', index, ' started with peerId: ', selfPeerId);
+  console.log('Worker thread: ', threadId, 'and index: ', index, ' started with peerId: ', selfPeerId);
 
   // Join pubsub topic
   pubsub = node.services.pubsub as GossipSub;
@@ -107,8 +121,7 @@ const runNode = async () => {
       });
     else if (message.type === 'terminate') {
       terminateThread = true;
-      await terminateAndCleanUp(node);
-      nodeCleanUp();
+      await terminateAndCleanUp(node, engine.stop); // Pass the container's unified stop method
       process.exit(0);
     }
   });

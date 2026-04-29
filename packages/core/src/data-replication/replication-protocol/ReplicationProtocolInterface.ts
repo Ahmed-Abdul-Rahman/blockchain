@@ -1,6 +1,5 @@
+import { Startable } from '@libp2p/interface';
 import { PropagatedMessage, PropagationContext } from '../../data-propagation/types';
-import { ReplicaStoreInterface } from '../../replica-store/ReplicaStoreInterface';
-import { ContentHashStrategy } from '../content-hash/types';
 import { ContentHash } from '../types';
 import { ReplicationEngineDelegate } from './ReplicationEngineDelegateInterface';
 
@@ -42,24 +41,10 @@ export type ReplicationMessage = ReplicationAnnounce | ReplicationRequest | Repl
  * Pluggable replication protocol interface.
  * Implementations (e.g. KReplicaContentHashReplication) implement this.
  */
-export interface ReplicationProtocolInterface {
-  protocol: string;
-
+export interface ReplicationProtocolInterface extends Startable {
   announceToNetwork(hash: ContentHash): Promise<void>;
 
   requestDataAndAwaitResponse(hash: string, targetPeerId: string): Promise<ReplicationContent | ReplicationError>;
-
-  /**
-   * Starts the replication protocol.
-   * @returns A promise that resolves when the protocol is started.
-   */
-  start(): Promise<void>;
-
-  /**
-   * Stops the replication protocol.
-   * @returns A promise that resolves when the protocol is stopped.
-   */
-  stop(): Promise<void>;
 
   /**
    * Injects the replication engine to handle business logic.

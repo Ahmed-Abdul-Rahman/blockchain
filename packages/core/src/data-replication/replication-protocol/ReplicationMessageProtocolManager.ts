@@ -3,6 +3,7 @@ import { PeerId } from '@libp2p/interface';
 import { BroadcastPropagationInterface } from '../../data-propagation/broadcast/BroadcastPropagationInterface';
 import { DirectPropagationInterface } from '../../data-propagation/direct/DirectPropagationInterface';
 import { PropagatedMessage, PropagationContext } from '../../data-propagation/types';
+import { DeChatComponents, DeChatFactory } from '../../types';
 import { ContentHash } from '../types';
 import { ReplicationEngineDelegate } from './ReplicationEngineDelegateInterface';
 import {
@@ -13,21 +14,20 @@ import {
   ReplicationProtocolInterface,
   ReplicationRequest,
 } from './ReplicationProtocolInterface';
-import { TransportSelector } from './TransportSelector';
-
-export interface ReplicationManagerOptions {
-  broadcast: BroadcastPropagationInterface;
-  direct: DirectPropagationInterface;
-  transportSelector: TransportSelector;
-}
+import { TransportSelector, transportSelector } from './TransportSelector';
 
 export class ReplicationMessageProtocolManager implements ReplicationProtocolInterface {
   readonly selfPeerId: PeerId;
-  readonly topic: string = '/deChat/v1/topic/replication-protocol';
-  readonly protocol: string = '/deChat/v1/protocol/replication-protocol';
-  readonly maxConcurrentUploads: number = 100;
+
+  private config: DeChatComponents['config']['strategies']['replication'];
+
+  // TODO: add a limit to maximum concurrent replication you can upload/send to other peers
+  // readonly maxConcurrentUploads: number = 100;
+
   readonly transportSelector: TransportSelector;
+
   readonly directProp: DirectPropagationInterface;
+
   readonly broadcastProp: BroadcastPropagationInterface;
 
   /** Maps correlation keys (hash:peerId) to Promise resolvers */
@@ -42,16 +42,21 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
 
   private delegate?: ReplicationEngineDelegate;
 
-  constructor(selfPeerId: PeerId, opts: ReplicationManagerOptions) {
-    this.selfPeerId = selfPeerId;
-    this.transportSelector = opts.transportSelector;
-    this.directProp = opts.direct;
-    this.broadcastProp = opts.broadcast;
+  constructor(components: DeChatComponents) {
+    if (!components.strategies.direct)
+      throw new Error('ReplicationMessageProtocolManager requires a direct propagation strategy.');
+    if (!components.strategies.broadcast)
+      throw new Error('ReplicationMessageProtocolManager requires a broadcast propagation strategy.');
 
+    this.selfPeerId = components.libp2p.peerId;
+    this.config = components.config.strategies.replication;
+    this.directProp = components.strategies.direct;
+    this.broadcastProp = components.strategies.broadcast;
+    this.transportSelector = transportSelector();
     this.pendingRequests = new Map();
 
-    this.directProp.onReceive(this.protocol, this.handleIncomingDirect.bind(this));
-    this.broadcastProp.subscribe(this.topic, this.handleIncomingBroadcast.bind(this));
+    this.directProp.onReceive(this.config.protocol, this.handleIncomingDirect.bind(this));
+    this.broadcastProp.subscribe(this.config.topic, this.handleIncomingBroadcast.bind(this));
   }
 
   public setDelegate(delegate: ReplicationEngineDelegate): void {
@@ -59,13 +64,11 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
   }
 
   async start(): Promise<void> {
-    logger.info('[ReplicationProtocol] Started:', this.selfPeerId);
+    logger.info('ReplicationProtocol Started');
   }
 
   async stop(): Promise<void> {
-    await this.directProp.stop?.();
-    await this.broadcastProp.unsubscribe(this.topic);
-    logger.info('[ReplicationProtocol] Stopped:', this.selfPeerId);
+    logger.info('ReplicationProtocol Stopped');
   }
 
   public readonly announceToNetwork = async (hash: ContentHash): Promise<void> => {
@@ -235,9 +238,13 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
 
     if (transport === 'direct') {
       if (!peerId) throw new Error('direct transport requires peerId');
-      await this.directProp.send(peerId, this.protocol, propagated);
+      await this.directProp.send(peerId, this.config.protocol, propagated);
     } else {
-      await this.broadcastProp.publish(this.topic, propagated);
+      await this.broadcastProp.publish(this.config.topic, propagated);
     }
   }
 }
+
+export const replicationMessageProtocolManager = (): DeChatFactory<ReplicationMessageProtocolManager> => {
+  return (components) => new ReplicationMessageProtocolManager(components);
+};

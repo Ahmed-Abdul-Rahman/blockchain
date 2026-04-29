@@ -1,6 +1,7 @@
+import { Startable } from '@libp2p/interface';
 import { PropagatedMessage, PropagationContext } from '../types';
 
-export interface BroadcastPropagationInterface {
+export interface BroadcastPropagationInterface extends Startable {
   /**
    * Publish data to the network
    */
@@ -23,9 +24,4 @@ export interface BroadcastPropagationInterface {
    * clear all the messages in a given topic or if topic not provided clears all messages of all topics.
    */
   clearMessages?(topic?: string): void;
-
-  /**
-   * Shutdown / cleanup
-   */
-  stop(): Promise<void> | void;
 }

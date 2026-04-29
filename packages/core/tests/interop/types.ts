@@ -55,6 +55,7 @@ export type AggregatedResult = {
 
 export type WorkerData = {
   index: number;
+  testType?: 'STARTUP' | 'PROPAGATION' | 'REPLICATION';
   nodeSeed: string;
   totalNodes: number;
   networkId: string;
@@ -65,6 +66,7 @@ export type WorkerData = {
 };
 
 export type WorkerDataConfig = {
+  testType?: 'STARTUP' | 'PROPAGATION' | 'REPLICATION';
   totalNodes: number;
   networkId: string;
   pubsubTopic: string;

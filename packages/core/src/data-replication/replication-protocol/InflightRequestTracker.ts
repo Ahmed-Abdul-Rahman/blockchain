@@ -30,3 +30,5 @@ export class InflightRequestTracker extends EventEmitter {
     });
   };
 }
+
+export const inflightRequestTracker = (): InflightRequestTracker => new InflightRequestTracker();

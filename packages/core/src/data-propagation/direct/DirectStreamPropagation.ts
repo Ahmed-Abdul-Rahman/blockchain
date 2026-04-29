@@ -1,6 +1,7 @@
 /** biome-ignore-all lint/suspicious/noExplicitAny: <Need a generic DirectStreamPropagation Implementation not tied to any specific message type> */
 import { IncomingStreamData, Libp2p, PeerId } from '@libp2p/interface';
 import { peerIdFromString } from '@libp2p/peer-id';
+import { DeChatComponents, DeChatFactory } from '../../types';
 import { now, readMessagesFromStream, writeToStream } from '../../utils';
 import { PropagatedMessage, PropagationContext } from '../types';
 import { DirectPropagationInterface } from './DirectPropagationInterface';
@@ -14,17 +15,18 @@ export class DirectStreamPropagation implements DirectPropagationInterface {
     (message: PropagatedMessage<any>, ctx: PropagationContext) => Promise<void> | void
   >;
 
-  /** Maximum message length that can be read */
-  private readonly maxMessageBytes: number;
+  private config: DeChatComponents['config']['strategies']['propagation']['direct'];
 
   /** Flag to stop the protocol handling */
   private stopped = false;
 
-  constructor(node: Libp2p, maxMessageBytes: number = 256 * 1024) {
-    this.node = node;
-    this.maxMessageBytes = maxMessageBytes;
+  constructor(components: DeChatComponents) {
+    this.node = components.libp2p;
+    this.config = components.config.strategies.propagation.direct;
     this.protocolHandlers = new Map();
   }
+
+  start(): void | Promise<void> {}
 
   private async handleIncomingStream<T>({ stream, connection }: IncomingStreamData, protocol: string) {
     if (this.stopped) return;
@@ -36,7 +38,7 @@ export class DirectStreamPropagation implements DirectPropagationInterface {
           const protocolHandler = this.protocolHandlers.get(protocol);
           if (protocolHandler) protocolHandler(receivedMessage, { from: connection.remotePeer, receivedAt: now() });
         },
-        this.maxMessageBytes,
+        this.config.maxMessageBytes,
       );
     } finally {
       stream.close();
@@ -71,3 +73,7 @@ export class DirectStreamPropagation implements DirectPropagationInterface {
     this.protocolHandlers.clear();
   }
 }
+
+export const directStreamPropagation = (): DeChatFactory<DirectStreamPropagation> => {
+  return (components) => new DirectStreamPropagation(components);
+};

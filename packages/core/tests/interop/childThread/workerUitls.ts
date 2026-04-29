@@ -1,22 +1,24 @@
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { Libp2p } from 'libp2p';
 import { threadId, workerData } from 'worker_threads';
-import { GossipSubPropagation } from '../../../src/data-propagation/broadcast/GossipSubPropagation';
-import { DirectStreamPropagation } from '../../../src/data-propagation/direct/DirectStreamPropagation';
-import { Sha256ContentHashStrategy } from '../../../src/data-replication/content-hash/Sha256ContentHashStrategy';
-import { ContentHashStrategy } from '../../../src/data-replication/content-hash/types';
 import {
-  createReplicationEngine,
-  KReplicaContentHashReplication,
-} from '../../../src/data-replication/KReplicaContentHashReplication';
-import { ReplicationMessageProtocolManager } from '../../../src/data-replication/replication-protocol/ReplicationMessageProtocolManager';
-import { TransportSelector } from '../../../src/data-replication/replication-protocol/TransportSelector';
-import { getGenericDataSerailizer } from '../../../src/data-replication/serializers';
-import { NoopGossipMetrics } from '../../../src/metrics';
+  GossipSubPropagation,
+  gossipSubPropagation,
+} from '../../../src/data-propagation/broadcast/GossipSubPropagation';
+import {
+  DirectStreamPropagation,
+  directStreamPropagation,
+} from '../../../src/data-propagation/direct/DirectStreamPropagation';
+import { contentHashStrategy } from '../../../src/data-replication/content-hash/Sha256ContentHashStrategy';
+import { ContentHashStrategyInterface } from '../../../src/data-replication/content-hash/types';
+import { DataReplicationInterface } from '../../../src/data-replication/DataReplicationInterface';
+import { kReplicaContentHashReplication } from '../../../src/data-replication/KReplicaContentHashReplication';
+import { replicationMessageProtocolManager } from '../../../src/data-replication/replication-protocol/ReplicationMessageProtocolManager';
 import { PeerExchangeService } from '../../../src/networking/PeerExchangeService';
 import { SimplePeerScorer } from '../../../src/networking/SimplePeerScorer';
 import { createNode } from '../../../src/node';
-import { InMemoryReplicaStore } from '../../../src/replica-store/InMemoryReplicaStore';
+import { ReplicaStoreInterface, replicaStore } from '../../../src/replica-store/ReplicaStoreInterface';
+import { DeChatStrategies } from '../../../src/types';
 import { WorkerData } from '../types';
 
 export const percentile = (xs: number[], p: number): number => {
@@ -28,68 +30,68 @@ export const percentile = (xs: number[], p: number): number => {
 export const configureNode = async (
   onBoardingPeerTime: number,
 ): Promise<{
+  start: () => Promise<void>;
   node: Libp2p;
   nodePubsub: GossipSub;
   pexService: PeerExchangeService;
   scorer: SimplePeerScorer;
   broadcastProp: GossipSubPropagation;
   directStream: DirectStreamPropagation;
-  replicaStore: InMemoryReplicaStore;
-  contentHasher: ContentHashStrategy;
-  dataReplication: KReplicaContentHashReplication;
-  nodeCleanUp: () => void;
+  replicaStore: ReplicaStoreInterface | undefined;
+  contentHasher: ContentHashStrategyInterface | undefined;
+  dataReplication: DataReplicationInterface | undefined;
+  nodeCleanUp: () => Promise<void>;
 }> => {
   const args = workerData as WorkerData;
-  const { index, nodeSeed, networkId } = args;
+  const { index, nodeSeed, networkId, testType } = args;
 
-  const { node, pexService, nodeCleanUp, scorer } = await createNode(networkId, nodeSeed, {
-    mdns: true,
-    listenTcp: ['/ip4/127.0.0.1/tcp/0'],
-    onBoardingPeerTime,
-  });
+  let strategies: DeChatStrategies = {
+    broadcast: gossipSubPropagation(),
+    direct: directStreamPropagation(),
+  };
 
-  const nodePubsub = node.services.pubsub as GossipSub;
+  if (testType && testType === 'REPLICATION') {
+    strategies = {
+      ...strategies,
+      replicaStore: replicaStore('IN_MEMORY'),
+      contentHasher: contentHashStrategy(),
+      replicationProtocol: replicationMessageProtocolManager(),
+      dataReplication: kReplicaContentHashReplication(),
+    };
+  }
 
-  const broadcastProp = new GossipSubPropagation(node, new NoopGossipMetrics());
-
-  const directStream = new DirectStreamPropagation(node);
-
-  const contentHasher = new Sha256ContentHashStrategy();
-
-  const serializer = getGenericDataSerailizer();
-
-  const replicaStore = new InMemoryReplicaStore(serializer);
-
-  const transportSelector = new TransportSelector();
-
-  const replicationManager = new ReplicationMessageProtocolManager(node.peerId, {
-    broadcast: broadcastProp,
-    direct: directStream,
-    transportSelector,
-  });
-
-  const dataReplication = createReplicationEngine(
-    node.peerId.toString(),
-    () => pexService.peerRegistry.getPeers(),
-    contentHasher,
-    replicaStore,
-    serializer,
-    replicationManager,
-    3,
+  const engine = await createNode(
+    networkId,
+    nodeSeed,
+    {
+      network: {
+        listenAddrs: ['/ip4/0.0.0.0/tcp/0'],
+        bootstrapPeers: [],
+        maxConnections: 150,
+        minConnections: 8,
+        maxIncomingPendingConnections: 20,
+      },
+      discovery: { enableMdns: true, onBoardingPeerTime },
+    },
+    strategies,
   );
 
-  console.log('Wroker thread: ', threadId, 'and index: ', index, ' started with peerId: ', node.peerId);
+  const { components, stop, start } = engine;
+  const node = components.libp2p;
+
+  console.log('Worker thread: ', threadId, 'and index: ', index, ' started with peerId: ', node.peerId);
 
   return {
+    start,
     node,
-    nodePubsub,
-    pexService,
-    scorer,
-    broadcastProp,
-    directStream,
-    replicaStore,
-    contentHasher,
-    dataReplication,
-    nodeCleanUp,
+    nodePubsub: node.services.pubsub as GossipSub,
+    pexService: components.pexService,
+    scorer: components.scorer,
+    broadcastProp: components.strategies.broadcast as GossipSubPropagation,
+    directStream: components.strategies.direct as DirectStreamPropagation,
+    replicaStore: components.strategies.replicaStore,
+    contentHasher: components.strategies.contentHasher,
+    dataReplication: components.strategies.dataReplication,
+    nodeCleanUp: stop,
   };
 };

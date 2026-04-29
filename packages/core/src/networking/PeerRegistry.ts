@@ -1,16 +1,16 @@
 import { logger } from '@dechat/common';
+import { Startable } from '@libp2p/interface';
 import { PeerRegistryMetrics } from '../metrics/interfaces/PeerRegistryMetrics';
+import { DeChatComponents, DeChatFactory } from '../types';
 import { now } from '../utils';
-import { PEER_ENTRY_TTL_MS, PEX_REQUEST_COOLDOWN_MS } from './configurations';
 import { PeerInfoLite } from './types';
 import { sampleList } from './utils';
 
-export class PeerRegistry {
+export class PeerRegistry implements Startable {
   /** This nodes peerId */
   private selfPeerId: string;
 
-  /** Maximum peers that can be stored */
-  private maxSize: number;
+  private config: DeChatComponents['config']['peerRegistry'];
 
   /** Map of peers with their addresses */
   private peerRegistry: Map<string, { addresses: Set<string>; lastUpdated: number; lastRequested?: number }>;
@@ -20,17 +20,18 @@ export class PeerRegistry {
 
   private cleanupIntervalId: NodeJS.Timeout | null = null;
 
-  constructor(
-    selfPeerId: string,
-    private readonly metrics: PeerRegistryMetrics,
-    maxSize = 50_000,
-  ) {
-    this.selfPeerId = selfPeerId;
+  readonly metrics: PeerRegistryMetrics;
+
+  constructor(components: DeChatComponents) {
+    this.selfPeerId = components.libp2p.peerId.toString();
+    this.config = components.config.peerRegistry;
+    this.metrics = components.metrics.peerRegistry;
+
     this.peerRegistry = new Map();
-    this.maxSize = maxSize;
+  }
 
+  start(): void | Promise<void> {
     this.startCleanupTimer();
-
     if (process.env.NODE_ENV !== 'production') {
       this.logIntervalId = this.logRegistryData();
     }
@@ -66,7 +67,7 @@ export class PeerRegistry {
    */
   upsert(peerInfo: PeerInfoLite): void {
     if (!peerInfo.peerId || peerInfo.peerId === this.selfPeerId) return;
-    if (!this.peerRegistry.has(peerInfo.peerId) && this.peerRegistry.size >= this.maxSize) {
+    if (!this.peerRegistry.has(peerInfo.peerId) && this.peerRegistry.size >= this.config.maxSize) {
       let oldestId: string | null = null;
       let oldest = Infinity;
       for (const [peerId, value] of this.peerRegistry)
@@ -100,7 +101,7 @@ export class PeerRegistry {
    */
   getCandidates(limit = 128): PeerInfoLite[] {
     const result: PeerInfoLite[] = [];
-    const cutOff = now() - PEER_ENTRY_TTL_MS;
+    const cutOff = now() - this.config.peerEntryTtlMs;
     for (const [peerId, value] of this.peerRegistry) {
       if (value.lastUpdated < cutOff) {
         this.peerRegistry.delete(peerId);
@@ -118,7 +119,7 @@ export class PeerRegistry {
    */
   isPeerDataRequested(peerId: string): boolean {
     const value = this.peerRegistry.get(peerId);
-    return !value || !value.lastRequested || now() - value.lastRequested > PEX_REQUEST_COOLDOWN_MS;
+    return !value || !value.lastRequested || now() - value.lastRequested > this.config.pexRequestCooldownMs;
   }
 
   /**
@@ -143,9 +144,9 @@ export class PeerRegistry {
    * Periodically removes stale peer entries from the registry to manage memory.
    */
   private startCleanupTimer(): void {
-    const interval = Math.min(PEER_ENTRY_TTL_MS, 20 * 60_000);
+    const interval = Math.min(this.config.peerEntryTtlMs, 20 * 60_000);
     this.cleanupIntervalId = setInterval(() => {
-      const cutOff = now() - PEER_ENTRY_TTL_MS;
+      const cutOff = now() - this.config.peerEntryTtlMs;
       let removedCount = 0;
 
       for (const [peerId, value] of this.peerRegistry) {
@@ -166,7 +167,7 @@ export class PeerRegistry {
     }, interval);
   }
 
-  cleanUp(): void {
+  stop(): void {
     if (this.logIntervalId) {
       clearInterval(this.logIntervalId);
       this.logIntervalId = null;
@@ -177,3 +178,7 @@ export class PeerRegistry {
     }
   }
 }
+
+export const peerRegistry = (): DeChatFactory<PeerRegistry> => {
+  return (components) => new PeerRegistry(components);
+};

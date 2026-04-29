@@ -1,14 +1,15 @@
 import { Level } from 'level';
 import { DataSerializer } from '../data-replication/types';
+import { DeChatComponents, DeChatFactory } from '../types';
 import { ReplicaStoreInterface } from './ReplicaStoreInterface';
 
 export class LevelDbReplicaStore implements ReplicaStoreInterface {
   private db: Level<string, Buffer>;
   public serializer: DataSerializer;
 
-  constructor(dbPath: string, serializer: DataSerializer) {
-    this.db = new Level(dbPath, { valueEncoding: 'binary' });
-    this.serializer = serializer;
+  constructor(components: DeChatComponents) {
+    this.db = new Level(components.config.strategies.store.dbPath, { valueEncoding: 'binary' });
+    this.serializer = components.serializer;
   }
 
   async has(hash: string): Promise<boolean> {
@@ -72,3 +73,7 @@ export class LevelDbReplicaStore implements ReplicaStoreInterface {
     await this.db.close();
   }
 }
+
+export const levelDbReplicaStore = (): DeChatFactory<ReplicaStoreInterface> => {
+  return (components) => new LevelDbReplicaStore(components);
+};

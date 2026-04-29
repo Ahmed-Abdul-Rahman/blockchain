@@ -1,7 +1,7 @@
-import { PeerId } from '@libp2p/interface';
+import { PeerId, Startable } from '@libp2p/interface';
 import { PropagatedMessage, PropagationContext } from '../types';
 
-export interface DirectPropagationInterface {
+export interface DirectPropagationInterface extends Startable {
   /**
    * Send a message directly to a specific peer.
    */
@@ -20,9 +20,4 @@ export interface DirectPropagationInterface {
    * Unregister a handler for a given protocol
    */
   unhandleProtocol(protocol: string): Promise<void>;
-  /**
-   * Stop handling direct messages and release resources.
-   * unhandle protocols, closes open streams if any, makes the instance inert
-   */
-  stop(): Promise<void>;
 }

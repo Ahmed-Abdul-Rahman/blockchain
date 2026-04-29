@@ -1,37 +1,29 @@
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { logger } from '@dechat/common';
-import { Libp2p, Message, PeerId, Stream } from '@libp2p/interface';
+import { Libp2p, Message, PeerId, Startable, Stream } from '@libp2p/interface';
 import bloomFilters from 'bloom-filters';
 import { delay, random } from 'es-toolkit';
 import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { PeerExchangeServiceMetrics } from '../metrics/interfaces/PeerExchangeServiceMetrics';
+import { DeChatComponents, DeChatFactory } from '../types';
 import { now, writeToStream } from '../utils';
-import {
-  GOSSIP_INTERVAL_MS,
-  MAX_PEX_MSGS_PER_MIN,
-  MAX_SHARED_PEERS,
-  PEER_SCORE_DECAY_INTERVAL,
-  SEEN_PEERS_BLOOM_FILTER_TTL_MS,
-} from './configurations';
-import { DialQueue } from './DialQueue';
-import { PeerRegistry } from './PeerRegistry';
-import { PEX_PROTOCOL, PEX_TOPIC } from './protocols';
-import { SimplePeerScorer } from './SimplePeerScorer';
 import { GET_PEERS_MSG, PEX_GOSSIP, PEX_PEER_LIST, PeerInfoLite } from './types';
 import { filterAddrs, processDataFromStream, publishWithRetry, sampleList } from './utils';
 
-export class PeerExchangeService {
+export class PeerExchangeService implements Startable {
   private node: Libp2p;
 
   private pubsub: GossipSub;
 
-  private scorer: SimplePeerScorer;
+  private scorer: DeChatComponents['scorer'];
 
-  readonly peerRegistry: PeerRegistry;
+  readonly peerRegistry: DeChatComponents['peerRegistry'];
 
-  private dialQ: DialQueue;
+  private dialQ: DeChatComponents['dialQueue'];
+
+  private config: DeChatComponents['config']['pexService'];
 
   /** Used to avoid frequent gossiping with the same peer */
   private lastGossipByPeer: LRUCache<string, number>;
@@ -50,34 +42,37 @@ export class PeerExchangeService {
 
   private bloomFilterResetInterval: NodeJS.Timeout | null = null;
 
-  constructor(
-    node: Libp2p,
-    scorer: SimplePeerScorer,
-    dialQ: DialQueue,
-    peerRegistry: PeerRegistry,
-    private readonly metrics: PeerExchangeServiceMetrics,
-  ) {
-    this.node = node;
-    this.scorer = scorer;
-    this.dialQ = dialQ;
-    this.peerRegistry = peerRegistry;
+  readonly metrics: PeerExchangeServiceMetrics;
+
+  constructor(components: DeChatComponents) {
+    this.node = components.libp2p;
+    this.scorer = components.scorer;
+    this.dialQ = components.dialQueue;
+    this.peerRegistry = components.peerRegistry;
+    this.config = components.config.pexService;
+    this.metrics = components.metrics.pexService;
+
     this.peersSeen = new bloomFilters.ScalableBloomFilter(1000, 0.01);
     this.lastGossipByPeer = new LRUCache<string, number>({
       max: 10000,
       ttl: 10 * 60 * 1000, // 10 minutes
     });
 
-    node.handle(PEX_PROTOCOL, ({ stream, connection }) =>
+    this.node.handle(this.config.pexProtocol, ({ stream, connection }) =>
       this.onPexProtocolMessage(stream, connection.remotePeer.toString()),
     );
 
     this.pubsub = this.node.services.pubsub as GossipSub;
 
-    this.pubsub.subscribe(PEX_TOPIC);
+    this.pubsub.subscribe(this.config.pexTopic);
     this.gossipListener = (event: CustomEvent<Message>) => this.onGossip(event);
     this.pubsub.addEventListener('message', this.gossipListener);
 
     this.startBloomFilterRotation();
+  }
+
+  start(): void | Promise<void> {
+    this.startPeerScoreDecay();
   }
 
   /**
@@ -128,7 +123,7 @@ export class PeerExchangeService {
     this.bloomFilterResetInterval = setInterval(() => {
       logger.info('Rotating seen peers Bloom filter to allow re-dialing');
       this.peersSeen = new bloomFilters.ScalableBloomFilter(1000, 0.01);
-    }, SEEN_PEERS_BLOOM_FILTER_TTL_MS);
+    }, this.config.seenPeersBloomFilterTTLMs);
   }
 
   /**
@@ -148,12 +143,13 @@ export class PeerExchangeService {
         }
         if (req.type === 'GET_PEERS') {
           if (fromId) this.scorer.reward(fromId, 1); // good behavior: asks, not floods
-          const share = sampleList(this.peerRegistry.getCandidates(MAX_SHARED_PEERS * 2), MAX_SHARED_PEERS).map(
-            ({ peerId, addresses }) => ({
-              peerId,
-              addresses: filterAddrs(addresses),
-            }),
-          );
+          const share = sampleList(
+            this.peerRegistry.getCandidates(this.config.maxSharedPeers * 2),
+            this.config.maxSharedPeers,
+          ).map(({ peerId, addresses }) => ({
+            peerId,
+            addresses: filterAddrs(addresses),
+          }));
           const response: PEX_PEER_LIST = { type: 'PEER_LIST', peers: share };
           await writeToStream(stream, response);
         }
@@ -172,11 +168,11 @@ export class PeerExchangeService {
     logger.info('Registered Peer Exchange Topic');
     while (this.isPeerExchangeStarted) {
       try {
-        const peers = sampleList(this.peerRegistry.getCandidates(256), MAX_SHARED_PEERS).map((p) => ({
+        const peers = sampleList(this.peerRegistry.getCandidates(256), this.config.maxSharedPeers).map((p) => ({
           peerId: p.peerId,
           addresses: filterAddrs(p.addresses),
         }));
-        const baseDelay = peers.length ? GOSSIP_INTERVAL_MS : 1000;
+        const baseDelay = peers.length ? this.config.gossipIntervalMs : 1000;
         const jitter = random(1, 100); // Add random jitter to avoid thundering herd problem or sync storms across nodes
         await delay(baseDelay + jitter); // Delay always to avoid CPU consumption when no peers present
         if (peers.length) {
@@ -190,9 +186,9 @@ export class PeerExchangeService {
               addresses: this.node.getMultiaddrs().map((multiAddr) => multiAddr.toString()),
             },
           };
-          await publishWithRetry(this.pubsub, PEX_TOPIC, uint8ArrayFromString(JSON.stringify(msg)), {
+          await publishWithRetry(this.pubsub, this.config.pexTopic, uint8ArrayFromString(JSON.stringify(msg)), {
             retries: 7,
-            baseDelay: GOSSIP_INTERVAL_MS,
+            baseDelay: this.config.gossipIntervalMs,
           });
           logger.trace('Published peers info on pex topic');
         }
@@ -220,7 +216,7 @@ export class PeerExchangeService {
       msg.type === 'PEX_GOSSIP' &&
       'peers' in msg &&
       Array.isArray(msg.peers) &&
-      msg.peers.length <= MAX_SHARED_PEERS
+      msg.peers.length <= this.config.maxSharedPeers
     );
   }
 
@@ -231,7 +227,7 @@ export class PeerExchangeService {
    */
   private onGossip(event: CustomEvent<Message>): void {
     const data = event.detail.data;
-    if (!data || event.detail.topic !== PEX_TOPIC) return;
+    if (!data || event.detail.topic !== this.config.pexTopic) return;
     logger.trace('PeerExchangeService - onGossip - entry');
     try {
       const parsedData = JSON.parse(uint8ArrayToString(data));
@@ -244,7 +240,7 @@ export class PeerExchangeService {
       const { from, type, peers, originPeerInfo } = parsedData;
       // inbound rate-limit per peer
       const last = this.lastGossipByPeer.get(from) || 0;
-      if (now() - last < 60_000 / MAX_PEX_MSGS_PER_MIN) {
+      if (now() - last < 60_000 / this.config.maxMsgsPerMin) {
         this.scorer.penalize(from, 0.5);
         return;
       }
@@ -257,7 +253,7 @@ export class PeerExchangeService {
 
       logger.trace('Received pex gossip message from: ', originPeerInfo?.peerId);
       // absorb and reward
-      const updatedPeers = (peers || []).slice(0, MAX_SHARED_PEERS);
+      const updatedPeers = (peers || []).slice(0, this.config.maxSharedPeers);
       this.peerRegistry.upsertMany(updatedPeers);
       if (originPeerInfo) this.peerRegistry.upsert(originPeerInfo);
 
@@ -285,7 +281,7 @@ export class PeerExchangeService {
     logger.trace('PeerExchangeService - requestPeersFrom - entry');
     try {
       this.metrics.exchangeRequested();
-      const stream = await this.node.dialProtocol(peerId, PEX_PROTOCOL);
+      const stream = await this.node.dialProtocol(peerId, this.config.pexProtocol);
       const req: GET_PEERS_MSG = { type: 'GET_PEERS', want };
       let receivedPeers: PeerInfoLite[] = [];
 
@@ -311,8 +307,8 @@ export class PeerExchangeService {
     }
   }
 
-  startPeerScoreDecay(): void {
-    this.peerScoreDecayInterval = setInterval(() => this.scorer.decay(), PEER_SCORE_DECAY_INTERVAL);
+  private startPeerScoreDecay(): void {
+    this.peerScoreDecayInterval = setInterval(() => this.scorer.decay(), this.config.peerScoreDecayIntervalMs);
   }
 
   /**
@@ -325,10 +321,8 @@ export class PeerExchangeService {
   /**
    * clears intervals, gossips and loops
    */
-  cleanUp(): void {
+  stop(): void {
     this.stopGossip();
-    this.dialQ.stop();
-    this.peerRegistry.cleanUp();
     this.pubsub.removeEventListener('message', this.gossipListener);
 
     if (this.peerScoreDecayInterval) {
@@ -342,3 +336,7 @@ export class PeerExchangeService {
     }
   }
 }
+
+export const peerExchangeService = (): DeChatFactory<PeerExchangeService> => {
+  return (components) => new PeerExchangeService(components);
+};

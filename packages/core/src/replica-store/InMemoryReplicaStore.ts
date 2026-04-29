@@ -1,4 +1,5 @@
 import { DataSerializer } from '../data-replication/types';
+import { DeChatComponents, DeChatFactory } from '../types';
 import { ReplicaStoreInterface } from './ReplicaStoreInterface';
 
 export class InMemoryReplicaStore implements ReplicaStoreInterface {
@@ -6,9 +7,9 @@ export class InMemoryReplicaStore implements ReplicaStoreInterface {
 
   serializer: DataSerializer;
 
-  constructor(dataSerailizer: DataSerializer) {
+  constructor(components: DeChatComponents) {
+    this.serializer = components.serializer;
     this.storage = new Map<string, Uint8Array>();
-    this.serializer = dataSerailizer;
   }
 
   async has(hash: string): Promise<boolean> {
@@ -52,3 +53,7 @@ export class InMemoryReplicaStore implements ReplicaStoreInterface {
     this.storage.clear();
   }
 }
+
+export const inMemoryReplicaStore = (): DeChatFactory<ReplicaStoreInterface> => {
+  return (components) => new InMemoryReplicaStore(components);
+};

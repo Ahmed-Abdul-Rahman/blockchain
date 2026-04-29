@@ -1,26 +1,16 @@
+import { DeChatComponents, DeChatFactory } from '../types';
+
 export class SimplePeerScorer {
   private scores: Map<string, number>;
+
+  private config: DeChatComponents['config']['scoring'];
 
   /** Used to periodically apply score decay for the peer based on last seen*/
   private lastSeen: Map<string, number>;
 
-  /** Minimum score a peer can be penalized with */
-  private readonly MIN_SCORE: number;
+  constructor(components: DeChatComponents) {
+    this.config = components.config.scoring;
 
-  /** Maximum score a peer can we rewarded */
-  private readonly MAX_SCORE: number;
-
-  /** Minimum score for a peer to be eligible for dailing */
-  private readonly MIN_DIALBALE_SCORE: number;
-
-  /** Periodically applies this decay factor to the peers score */
-  private readonly DECAY: number; // apply periodically
-
-  constructor(minScore: number = -10, maxScore: number = 100, minDiableScore: number = -2, decay: number = 0.98) {
-    this.MIN_SCORE = minScore;
-    this.MAX_SCORE = maxScore;
-    this.DECAY = decay;
-    this.MIN_DIALBALE_SCORE = minDiableScore;
     this.scores = new Map<string, number>();
     this.lastSeen = new Map<string, number>();
   }
@@ -31,7 +21,7 @@ export class SimplePeerScorer {
    * @param amount
    */
   reward(peerId: string, amount = 1): void {
-    const s = Math.min(this.MAX_SCORE, (this.scores.get(peerId) ?? 0) + amount);
+    const s = Math.min(this.config.maxScore, (this.scores.get(peerId) ?? 0) + amount);
     this.scores.set(peerId, s);
     this.lastSeen.set(peerId, Date.now());
   }
@@ -42,7 +32,7 @@ export class SimplePeerScorer {
    * @param amount
    */
   penalize(peerId: string, amount = 1): void {
-    const s = Math.max(this.MIN_SCORE, (this.scores.get(peerId) ?? 0) - amount);
+    const s = Math.max(this.config.minScore, (this.scores.get(peerId) ?? 0) - amount);
     this.scores.set(peerId, s);
     this.lastSeen.set(peerId, Date.now());
   }
@@ -61,7 +51,7 @@ export class SimplePeerScorer {
    * @returns {string[]}
    */
   getBestScorePeers(K: number): string[] {
-    const entries = [...this.scores.entries()].filter(([, score]) => score >= this.MIN_DIALBALE_SCORE);
+    const entries = [...this.scores.entries()].filter(([, score]) => score >= this.config.minDialableScore);
     entries.sort((a, b) => b[1] - a[1]);
     return entries.slice(0, K).map(([peerId]) => peerId);
   }
@@ -72,7 +62,7 @@ export class SimplePeerScorer {
    * @returns true if score greater than -2 otherwise false
    */
   isDialable(peerId: string): boolean {
-    return this.get(peerId) >= this.MIN_DIALBALE_SCORE;
+    return this.get(peerId) >= this.config.minDialableScore;
   }
 
   //
@@ -87,7 +77,7 @@ export class SimplePeerScorer {
   }
 
   /**
-   *  decays the score of every peer periodically by a factor of @constant {DECAY}
+   *  decays the score of every peer periodically by a factor of @property {config.decayFactor}
    */
   decay(): void {
     const now = Date.now();
@@ -100,8 +90,12 @@ export class SimplePeerScorer {
         // 5 min
         this.scores.set(peerId, score * 0.5); // Faster decay
       } else {
-        this.scores.set(peerId, score * this.DECAY);
+        this.scores.set(peerId, score * this.config.decayFactor);
       }
     }
   }
 }
+
+export const simplePeerScorer = (): DeChatFactory<SimplePeerScorer> => {
+  return (components) => new SimplePeerScorer(components);
+};

@@ -1,26 +1,17 @@
 import { logger } from '@dechat/common';
-import { Connection, Libp2p } from '@libp2p/interface';
+import { Connection, Libp2p, Startable } from '@libp2p/interface';
 import { peerIdFromString } from '@libp2p/peer-id';
 import { DialQueueMetrics } from '../metrics/interfaces/DialQueueMetrics.js';
+import { DeChatComponents, DeChatFactory } from '../types.js';
 import { PeerInfoLite } from './types.js';
 
-export class DialQueue {
+export class DialQueue implements Startable {
   private node: Libp2p;
 
   /** Scorer to determine if peer is worth dialing and maintaining a connection */
-  private scorer: { isDialable: (peerId: string) => boolean };
+  private scorer: DeChatComponents['scorer'];
 
-  /** Maximum peers that can be enqueued in the dial queue */
-  private maxQueueLength: number;
-
-  /** Maximum number of active connections that a peer can have with other peers */
-  private maxConnections: number;
-
-  /** Minimum number of active connections with the peer to be maintained */
-  private minConnections: number;
-
-  /** At this interval ms the dial queue is processed */
-  private intervalMs: number;
+  private config: DeChatComponents['config']['dialQueue'];
 
   /** Current Peers in the queue to be dialed */
   private dialQueue: Array<PeerInfoLite> = [];
@@ -31,25 +22,16 @@ export class DialQueue {
   /** Interval Id of the dial queue loop */
   private loopIntervalId: NodeJS.Timeout | null = null;
 
-  /** Buffer number used to calculate the number of target connections to be acheived and maintained*/
-  private buffer: number = 5;
+  private readonly metrics: DialQueueMetrics;
 
-  constructor(
-    node: Libp2p,
-    scorer: { isDialable: (peerId: string) => boolean },
-    private readonly metrics: DialQueueMetrics,
-    maxQueueLength: number = 256,
-    intervalMs: number = 10_000,
-    minConnections: number = 8,
-    maxConnections: number = 50,
-  ) {
-    this.node = node;
-    this.scorer = scorer;
-    this.maxQueueLength = maxQueueLength;
-    this.intervalMs = intervalMs;
-    this.minConnections = minConnections;
-    this.maxConnections = maxConnections;
+  constructor(components: DeChatComponents) {
+    this.node = components.libp2p;
+    this.config = components.config.dialQueue;
+    this.scorer = components.scorer;
+    this.metrics = components.metrics.dialQueue;
   }
+
+  start(): void {}
 
   /**
    * returns a list of unique remotePeerId connections that are open
@@ -80,10 +62,10 @@ export class DialQueue {
   }
 
   getTargetConnections(): number {
-    const configMax = this.maxConnections ?? 150;
+    const configMax = this.config.maxConnections ?? 150;
     const n = this.dialQueue.length + this.getConnections().length;
-    const adaptive = Math.floor(Math.log2(Math.max(2, n))) + this.buffer;
-    return Math.min(configMax, Math.max(this.minConnections, adaptive));
+    const adaptive = Math.floor(Math.log2(Math.max(2, n))) + this.config.buffer;
+    return Math.min(configMax, Math.max(this.config.minConnections, adaptive));
   }
 
   /**
@@ -92,7 +74,7 @@ export class DialQueue {
    */
   async enqueue(peers: PeerInfoLite[]): Promise<void> {
     for (const peer of peers) {
-      if (this.dialQueue.length >= this.maxQueueLength) break;
+      if (this.dialQueue.length >= this.config.maxQueueLength) break;
       if (this.node.peerId.toString() === peer.peerId) continue; // don't enqueue self
       if (this.getRemotePeerConnections(peer.peerId).length > 3) continue;
       this.dialQueue.push(peer);
@@ -147,7 +129,7 @@ export class DialQueue {
       } finally {
         this.isQueueRunning = false;
       }
-    }, this.intervalMs);
+    }, this.config.intervalMs);
   }
 
   /**
@@ -169,3 +151,7 @@ export class DialQueue {
     this.isQueueRunning = false;
   }
 }
+
+export const dialQueue = (): DeChatFactory<DialQueue> => {
+  return (components) => new DialQueue(components);
+};

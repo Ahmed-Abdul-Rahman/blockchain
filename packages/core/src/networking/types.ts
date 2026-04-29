@@ -1,17 +1,19 @@
 export type PeerInfoLite = { peerId: string; addresses: string[] };
 
 export type GET_PEERS_MSG = { type: 'GET_PEERS'; want?: number };
+
 export type PEX_PEER_LIST = { type: 'PEER_LIST'; peers: PeerInfoLite[] };
+
 export type PEX_GOSSIP = {
   /** PeerId of the origin peer */
   from: string;
   /** message type */
   type: 'PEX_GOSSIP';
-  /** All the availabile peers connected to */
+  /** All the available peers connected to */
   peers: PeerInfoLite[];
   /** timestamp */
   ts: number;
-  /** orging peer details */
+  /** origin peer details */
   originPeerInfo: PeerInfoLite;
 };
 
@@ -45,8 +47,3 @@ export interface ShouldDialOptions {
   /** Backoff probability for existing peers */
   electionModulo?: number;
 }
-
-export type NodeKey = {
-  secret: Uint8Array<ArrayBufferLike>;
-  pub: Uint8Array;
-};

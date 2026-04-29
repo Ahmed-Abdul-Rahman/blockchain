@@ -1,3 +1,4 @@
+import * as ed from '@noble/ed25519';
 import { createHash } from 'crypto';
 import { crc32 } from 'zlib';
 
@@ -34,4 +35,25 @@ export const toHashBigInt = (input: string): bigint => {
  */
 export const calculateXorDistance = (a: bigint, b: bigint): bigint => {
   return a ^ b;
+};
+
+/**
+ * Generate a new keypair (private 32 bytes, public 32 bytes)
+ * @param plainSeed
+ * @returns {Promise<{ secret: Uint8Array<ArrayBufferLike>; pub: Uint8Array; }>}
+ */
+export const genEd25519KeyPair = async (
+  plainSeed?: string,
+): Promise<{
+  secret: Uint8Array<ArrayBufferLike>;
+  pub: Uint8Array;
+}> => {
+  let secret = ed.utils.randomSecretKey();
+  if (plainSeed) {
+    const msgBytes = new TextEncoder().encode(plainSeed);
+    const secretHash64Bytes = createHash('sha512').update(msgBytes).digest();
+    secret = ed.utils.randomSecretKey(secretHash64Bytes.subarray(0, 32)); // Uint8Array(32)
+  }
+  const pub = await ed.getPublicKeyAsync(secret); // Uint8Array(32)
+  return { secret: new Uint8Array(secret), pub: new Uint8Array(pub) };
 };

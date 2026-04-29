@@ -1,9 +1,12 @@
+import { Startable } from '@libp2p/interface';
 import { ReplicationProtocolInterface } from './replication-protocol/ReplicationProtocolInterface';
 import { ContentHash } from './types';
 
-export interface DataReplicationInterface {
-  start(): Promise<void>;
-  stop(): Promise<void>;
+export interface DataReplicationInterface extends Startable {
+  /**
+   * Replication protocol implementation to be used by this data replication
+   */
+  readonly replicationProtocol: ReplicationProtocolInterface;
 
   /**
    * // TODO: implement batching, accept a list of dataItems and replicate each item efficiently and non-blocking
@@ -28,7 +31,7 @@ export interface DataReplicationInterface {
   evict?(contentHash: string): Promise<void>;
 
   /**
-   * Replication protocol implementation to be used by this data replication
+   * Request missing content from other peers
    */
-  readonly replicationProtocol: ReplicationProtocolInterface;
+  requestMissingData<T>(hash: ContentHash): Promise<T | null>;
 }

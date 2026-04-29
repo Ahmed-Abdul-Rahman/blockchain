@@ -278,7 +278,7 @@ export const simulateIterativeDataFetch = (workerDataConfig: WorkerDataConfig): 
     fetchNode.workerRef.postMessage({ type: 'fetch_target_data', hashes: targetHashes });
 
     // Wait for iterative routing to hop through the network and complete
-    await delay(20_000);
+    await delay(30_000);
 
     terminateWorkers(workers);
     await Promise.all(terminationPromises);

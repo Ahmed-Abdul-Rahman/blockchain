@@ -12,3 +12,5 @@ export class TransportSelector {
     return this.rules.get(messageType) ?? 'direct';
   };
 }
+
+export const transportSelector = (): TransportSelector => new TransportSelector();
