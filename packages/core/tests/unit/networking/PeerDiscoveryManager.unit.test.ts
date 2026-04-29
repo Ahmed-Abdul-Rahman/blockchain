@@ -9,6 +9,7 @@ describe('PeerDiscoveryManager', () => {
   let discoveryManager: PeerDiscoveryManager;
   let mockNode: any;
   let mockPexService: any;
+  let mockPeerAuthenticator: any;
 
   beforeEach(() => {
     mockNode = {
@@ -20,6 +21,8 @@ describe('PeerDiscoveryManager', () => {
     mockPexService = {
       enqueueDial: vi.fn(),
       requestPeersFrom: vi.fn().mockResolvedValue([]),
+      addPeers: vi.fn(),
+      initiatePeerExchange: vi.fn(),
       // Fix: Added mocked peerRegistry nested inside pexService!
       peerRegistry: {
         getSize: vi.fn().mockReturnValue(1),
@@ -27,10 +30,15 @@ describe('PeerDiscoveryManager', () => {
       },
     };
 
+    mockPeerAuthenticator = {
+      runAuthClient: vi.fn().mockReturnValue(true),
+    };
+
     mockComponents = {
       libp2p: mockNode as any,
       config: DECHAT_DEFAULTS,
       pexService: mockPexService as any,
+      peerAuthenticator: mockPeerAuthenticator as any,
     };
 
     discoveryManager = peerDiscoveryManager()(mockComponents as DeChatComponents);

@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DECHAT_DEFAULTS } from '../../../src/config/defaults';
 import { NoopPeerExchangeMetrics } from '../../../src/metrics';
 import { PeerExchangeService, peerExchangeService } from '../../../src/networking/PeerExchangeService';
-import { PEX_PROTOCOL, PEX_TOPIC } from '../../../src/networking/protocols';
 import { DeChatComponents } from '../../../src/types';
 
 describe('PeerExchangeService', () => {
@@ -14,6 +13,8 @@ describe('PeerExchangeService', () => {
   let mockDialQ: any;
   let mockScorer: any;
   let mockRegistry: any;
+  const pexProtocol = '/deChat/core/peer-exchange-protocol/1.0.0';
+  const pexTopic = '/deChat/core/peer-exchange-topic/1.0.0';
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -69,9 +70,9 @@ describe('PeerExchangeService', () => {
   });
 
   it('should subscribe to the PEX topic on initialization', () => {
-    expect(mockPubsub.subscribe).toHaveBeenCalledWith(PEX_TOPIC);
+    expect(mockPubsub.subscribe).toHaveBeenCalledWith(pexTopic);
     expect(mockPubsub.addEventListener).toHaveBeenCalledWith('message', expect.any(Function));
-    expect(mockNode.handle).toHaveBeenCalledWith(PEX_PROTOCOL, expect.any(Function));
+    expect(mockNode.handle).toHaveBeenCalledWith(pexProtocol, expect.any(Function));
   });
 
   it('should enqueue peers for dialing if they are new (Bloom Filter)', () => {
@@ -92,13 +93,13 @@ describe('PeerExchangeService', () => {
     await pexService.initiatePeerExchange();
     await vi.advanceTimersByTimeAsync(35_000);
 
-    expect(mockPubsub.publish).toHaveBeenCalledWith(PEX_TOPIC, expect.any(Uint8Array));
+    expect(mockPubsub.publish).toHaveBeenCalledWith(pexTopic, expect.any(Uint8Array));
   });
 
   it('should penalize peers for sending invalid PEX messages', () => {
     const fakeEvent = new CustomEvent('message', {
       detail: {
-        topic: PEX_TOPIC,
+        topic: pexTopic,
         data: new TextEncoder().encode(
           JSON.stringify({ from: 'malicious-peer', type: 'INVALID', peers: 'not-an-array' }),
         ),
