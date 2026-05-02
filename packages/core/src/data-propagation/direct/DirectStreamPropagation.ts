@@ -1,8 +1,8 @@
 /** biome-ignore-all lint/suspicious/noExplicitAny: <Need a generic DirectStreamPropagation Implementation not tied to any specific message type> */
 import { IncomingStreamData, Libp2p, PeerId } from '@libp2p/interface';
 import { peerIdFromString } from '@libp2p/peer-id';
+import { readMessagesFromStream, writeToStream } from '../../streamUtils';
 import { DeChatComponents, DeChatFactory } from '../../types';
-import { now, readMessagesFromStream, writeToStream } from '../../utils';
 import { PropagatedMessage, PropagationContext } from '../types';
 import { DirectPropagationInterface } from './DirectPropagationInterface';
 
@@ -36,7 +36,8 @@ export class DirectStreamPropagation implements DirectPropagationInterface {
         (message) => {
           const receivedMessage = message as PropagatedMessage<T>;
           const protocolHandler = this.protocolHandlers.get(protocol);
-          if (protocolHandler) protocolHandler(receivedMessage, { from: connection.remotePeer, receivedAt: now() });
+          if (protocolHandler)
+            protocolHandler(receivedMessage, { from: connection.remotePeer, receivedAt: Date.now() });
         },
         this.config.maxMessageBytes,
       );

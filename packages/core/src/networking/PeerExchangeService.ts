@@ -7,8 +7,8 @@ import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { PeerExchangeServiceMetrics } from '../metrics/interfaces/PeerExchangeServiceMetrics';
+import { writeToStream } from '../streamUtils';
 import { DeChatComponents, DeChatFactory } from '../types';
-import { now, writeToStream } from '../utils';
 import { GET_PEERS_MSG, PEX_GOSSIP, PEX_PEER_LIST, PeerInfoLite } from './types';
 import { filterAddrs, processDataFromStream, publishWithRetry, sampleList } from './utils';
 
@@ -180,7 +180,7 @@ export class PeerExchangeService implements Startable {
             from: this.node.peerId.toString(),
             type: 'PEX_GOSSIP',
             peers,
-            ts: now(),
+            ts: Date.now(),
             originPeerInfo: {
               peerId: this.node.peerId.toString(),
               addresses: this.node.getMultiaddrs().map((multiAddr) => multiAddr.toString()),
@@ -240,11 +240,11 @@ export class PeerExchangeService implements Startable {
       const { from, type, peers, originPeerInfo } = parsedData;
       // inbound rate-limit per peer
       const last = this.lastGossipByPeer.get(from) || 0;
-      if (now() - last < 60_000 / this.config.maxMsgsPerMin) {
+      if (Date.now() - last < 60_000 / this.config.maxMsgsPerMin) {
         this.scorer.penalize(from, 0.5);
         return;
       }
-      this.lastGossipByPeer.set(from, now());
+      this.lastGossipByPeer.set(from, Date.now());
 
       if (type !== 'PEX_GOSSIP') {
         this.scorer.penalize(from, 1);

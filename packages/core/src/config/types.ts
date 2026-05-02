@@ -107,6 +107,13 @@ export interface DeChatConfig {
     buffer: number;
   };
   strategies: {
+    synchronizer: {
+      /** Data convergence Protocol used for anti-entropy data sync across peers*/
+      protocol: string;
+
+      /** Interval number to run the AntiEntropy Synchronizer periodically to stabilize the network with consistent data across peers */
+      syncIntervalMs: number;
+    };
     propagation: {
       direct: {
         /** Maximum message length that can be read */

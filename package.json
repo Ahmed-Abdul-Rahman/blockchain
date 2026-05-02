@@ -16,6 +16,7 @@
     "core": "yarn workspace @dechat/core",
     "crypto": "yarn workspace @dechat/crypto",
     "common": "yarn workspace @dechat/common",
+    "examples": "yarn workspace @dechat/examples",
     "clean": "yarn cache clear && yarn foreach-workspace -p run clean",
     "clean:deps": "yarn clean && node ./scripts/removeFolderRecursive ./node_modules",
     "backend-node": "yarn workspace backend-node run",

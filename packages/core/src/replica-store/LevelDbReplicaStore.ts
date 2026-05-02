@@ -12,6 +12,8 @@ export class LevelDbReplicaStore implements ReplicaStoreInterface {
     this.serializer = components.serializer;
   }
 
+  async init(): Promise<void> {}
+
   async has(hash: string): Promise<boolean> {
     try {
       await this.db.get(hash);
@@ -35,13 +37,19 @@ export class LevelDbReplicaStore implements ReplicaStoreInterface {
   }
 
   async delete(hash: string): Promise<void> {
-    await this.db.del(hash);
+    throw new Error('DeChat is append-only. Publish a TOMBSTONE event instead.');
   }
 
   async keys(): Promise<readonly string[]> {
     const out: string[] = [];
     for await (const k of this.db.keys()) out.push(k.toString());
     return out;
+  }
+
+  public async *getAllKeys(): AsyncIterable<string> {
+    for await (const key of this.db.keys()) {
+      yield key;
+    }
   }
 
   async values(): Promise<readonly Uint8Array[]> {

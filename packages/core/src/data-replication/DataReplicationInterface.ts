@@ -31,7 +31,7 @@ export interface DataReplicationInterface extends Startable {
   evict?(contentHash: string): Promise<void>;
 
   /**
-   * Request missing content from other peers
+   * Request missing content from other peers or optionally from targetPeerId if you know that peer has the data
    */
-  requestMissingData<T>(hash: ContentHash): Promise<T | null>;
+  requestMissingData<T>(hash: ContentHash, targetPeerId?: string): Promise<T | null>;
 }

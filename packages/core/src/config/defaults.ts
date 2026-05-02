@@ -50,6 +50,10 @@ export const DECHAT_DEFAULTS: DeChatConfig = {
     buffer: 5,
   },
   strategies: {
+    synchronizer: {
+      protocol: '/deChat/v1/anti-entropy/1.0.0',
+      syncIntervalMs: 60_000,
+    },
     propagation: {
       direct: {
         maxMessageBytes: 256 * 1024,

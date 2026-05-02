@@ -119,7 +119,7 @@ export class KReplicaContentHashReplication implements DataReplicationInterface,
    * Uses a Priority Queue to efficiently traverse the network toward the target hash.
    * @param hash - The content hash of the missing data
    */
-  public async requestMissingData<T>(hash: ContentHash): Promise<T | null> {
+  public async requestMissingData<T>(hash: ContentHash, targetPeerId?: string): Promise<T | null> {
     if (await this.storage.has(hash)) {
       const rawBytes = await this.storage.get(hash);
       if (rawBytes) return this.serializer.deserialize<T>(rawBytes);
@@ -135,6 +135,11 @@ export class KReplicaContentHashReplication implements DataReplicationInterface,
       if (a.distance > b.distance) return 1;
       return 0;
     });
+
+    // Enqueue the targetPeerId if passed, this should be at the first in the queue, as it is highly probable that this peer has the data
+    if (targetPeerId) {
+      pq.enqueue({ peerId: targetPeerId, distance: calculateXorDistance(toHashBigInt(targetPeerId), contentBigInt) });
+    }
 
     // Enqueue locally known peers
     for (const peerId of this.getKnownPeers()) {

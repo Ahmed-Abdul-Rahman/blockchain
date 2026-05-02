@@ -1,10 +1,15 @@
 import { ContentHash, DataSerializer } from '../data-replication/types';
 import { DeChatFactory } from '../types';
-import { InMemoryReplicaStore, inMemoryReplicaStore } from './InMemoryReplicaStore';
+import { inMemoryReplicaStore } from './InMemoryReplicaStore';
 import { levelDbReplicaStore } from './LevelDbReplicaStore';
 
 export interface ReplicaStoreInterface {
   serializer: DataSerializer;
+
+  /** Load data from local files or db or any other source
+   * Note: If implemented, this method must be called before the node starts.
+   */
+  init(): Promise<void>;
 
   /**
    * Checks if the data associated with a specific hash exists in the store.
@@ -32,6 +37,7 @@ export interface ReplicaStoreInterface {
   // TODO: Implement a getStream and putStream method for large files
 
   /**
+   * Currently not supported by DeChat throws error when called.
    * Removes the data associated with a hash from local storage.
    * @param hash - The unique content-addressable identifier.
    */
@@ -42,6 +48,12 @@ export interface ReplicaStoreInterface {
    * For very large stores, returns an AsyncIterable instead.
    */
   keys: () => Promise<readonly ContentHash[] | AsyncIterable<ContentHash>>;
+
+  /**
+   * Asynchronously iterates over all keys currently stored in the database.
+   * Used for memory-efficient state reconstruction on boot.
+   */
+  getAllKeys(): AsyncIterable<string>;
 
   /**
    * Returns a list of all Uint8Array data currently held in the store.
