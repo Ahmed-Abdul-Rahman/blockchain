@@ -3,7 +3,7 @@ import { IncomingStreamData, Libp2p, PeerId, Startable } from '@libp2p/interface
 import { setupRPCStream } from '../shared/streamUtils';
 import { DeChatComponents, DeChatFactory } from '../types';
 import { PrefixTrie } from './PrefixTrie';
-import { AntiEntropyMessage } from './types';
+import { AntiEntropyMessage, SyncOutcome } from './types';
 
 /**
  * Handles the Libp2p direct streams for state reconciliation.
@@ -20,7 +20,7 @@ export class AntiEntropyNetworkExchange implements Startable {
    * Callback triggered when the handler side discovers missing hashes.
    * The AntiEntropyManager should attach a function to this to fetch the data.
    */
-  public onMissingHashesDiscovered?: (hashes: string[], peerId: PeerId) => void;
+  public onMissingHashesDiscovered?: (hashes: readonly string[], peerId: PeerId) => void;
 
   constructor(components: DeChatComponents) {
     if (!components.strategies?.prefixTrie) {
@@ -46,11 +46,13 @@ export class AntiEntropyNetworkExchange implements Startable {
         const { sendRequest } = setupRPCStream<AntiEntropyMessage>(stream, (message) =>
           this.handleIncomingMessage(message),
         );
-        const missingHashes = await this.executeSyncFlow(sendRequest);
+        const outcome = await this.executeSyncFlow(sendRequest);
 
-        if (missingHashes.length > 0 && this.onMissingHashesDiscovered) {
-          logger.debug(`[AntiEntropyNetworkExchange] Listener discovered ${missingHashes.length} missing hashes.`);
-          this.onMissingHashesDiscovered(missingHashes, connection.remotePeer);
+        if (outcome.hashes.length > 0 && this.onMissingHashesDiscovered) {
+          logger.debug(
+            `[AntiEntropyNetworkExchange] Listener discovered ${outcome.hashes.length} missing hashes (status=${outcome.status}).`,
+          );
+          this.onMissingHashesDiscovered(outcome.hashes, connection.remotePeer);
         }
       } catch (error) {
         logger.error(`[AntiEntropyNetworkExchange] Stream error: ${(error as Error)?.message}`);
@@ -64,11 +66,11 @@ export class AntiEntropyNetworkExchange implements Startable {
 
   /**
    * The dialer actively dials a peer and triggers the bidirectional sync.
-   * Returns a complete list of 64-char sha256 hashes that we need to fetch.
    * @param peerId The target peer to sync with
-   * @returns An array of strictly missing full hashes
+   * @returns The {@link SyncOutcome} of the drill-down, or `null` if the stream
+   *          could not be established at all (no diff information gained).
    */
-  public async syncWithPeer(peerId: PeerId): Promise<string[] | null> {
+  public async syncWithPeer(peerId: PeerId): Promise<SyncOutcome | null> {
     try {
       const stream = await this.node.dialProtocol(peerId, this.config.protocol);
 
@@ -76,11 +78,13 @@ export class AntiEntropyNetworkExchange implements Startable {
         this.handleIncomingMessage(message),
       );
 
-      const missingHashes = await this.executeSyncFlow(sendRequest);
-      if (missingHashes.length > 0) {
-        logger.debug(`[AntiEntropyNetworkExchange] Dialer discovered ${missingHashes.length} missing hashes.`);
+      const outcome = await this.executeSyncFlow(sendRequest);
+      if (outcome.hashes.length > 0) {
+        logger.debug(
+          `[AntiEntropyNetworkExchange] Dialer discovered ${outcome.hashes.length} missing hashes (status=${outcome.status}).`,
+        );
       }
-      return missingHashes;
+      return outcome;
     } catch (error) {
       logger.error(
         `[AntiEntropyNetworkExchange] Failed to sync with peer ${peerId.toString()}: ${(error as Error).message}`,
@@ -92,25 +96,35 @@ export class AntiEntropyNetworkExchange implements Startable {
   /**
    * The core drill-down loop used by BOTH the Dialer and the Listener.
    * Recursively asks for deeper branches until leaf hashes are identified.
+   *
+   * Returns a {@link SyncOutcome} so callers can tell an authoritative empty diff
+   * (convergence) apart from a partial diff that was cut short by a timeout, an
+   * unexpected response, or the drill-down depth cap. Any hashes collected before
+   * the interruption are still returned so callers can fetch them opportunistically.
    */
   private async executeSyncFlow(
     sendRequest: (msg: AntiEntropyMessage) => Promise<AntiEntropyMessage>,
-  ): Promise<string[]> {
+  ): Promise<SyncOutcome> {
     const missingHashes = new Set<string>();
 
     try {
       // Request the Top-N snapshot
       let response = await sendRequest({ type: 'REQUEST_TOP_N', levels: 2 });
-      let mismatches: string[] = [];
 
-      if (response.type === 'RESPONSE_TOP_N') {
-        mismatches = this.trie.findMismatches(response.snapshot);
+      if (response.type !== 'RESPONSE_TOP_N') {
+        return { status: 'partial', hashes: Array.from(missingHashes), reason: 'badResponse' };
       }
+
+      let mismatches: string[] = this.trie.findMismatches(response.snapshot);
 
       // Iteratively drill down into mismatched branches (Max depth 64 for SHA256)
       let depthCounter = 0;
 
-      while (mismatches.length > 0 && depthCounter < 64) {
+      while (mismatches.length > 0) {
+        if (depthCounter >= 64) {
+          // Branches still pending but we hit the SHA256 hex depth limit: incomplete.
+          return { status: 'partial', hashes: Array.from(missingHashes), reason: 'depthCap' };
+        }
         depthCounter++;
         const prefixesToRequest: string[] = [];
 
@@ -123,23 +137,33 @@ export class AntiEntropyNetworkExchange implements Startable {
           }
         }
 
-        // If no more branches need drilling, we are done
+        // If no more branches need drilling, every mismatch resolved to a leaf: done.
         if (prefixesToRequest.length === 0) break;
 
         // Request the next layer of branches
         response = await sendRequest({ type: 'REQUEST_BRANCHES', prefixes: prefixesToRequest });
-        mismatches = []; // Reset for the next loop evaluation
 
-        if (response.type === 'RESPONSE_BRANCHES') {
-          for (const branchSnapshot of Object.values(response.branches)) {
-            mismatches.push(...this.trie.findMismatches(branchSnapshot));
+        if (response.type !== 'RESPONSE_BRANCHES') {
+          return { status: 'partial', hashes: Array.from(missingHashes), reason: 'badResponse' };
+        }
+
+        mismatches = []; // Reset for the next loop evaluation
+        // Iterate over the prefixes we ASKED for, not just what came back. A dropped key
+        // would otherwise silently end this branch's drill-down and lose missing hashes.
+        for (const prefix of prefixesToRequest) {
+          const branchSnapshot = response.branches[prefix];
+          if (branchSnapshot === undefined) {
+            return { status: 'partial', hashes: Array.from(missingHashes), reason: 'badResponse' };
           }
+          mismatches.push(...this.trie.findMismatches(branchSnapshot));
         }
       }
+
+      return { status: 'complete', hashes: Array.from(missingHashes) };
     } catch (error) {
       logger.error(`[AntiEntropyNetworkExchange] Sync flow timeout/failure: ${(error as Error).message}`);
+      return { status: 'partial', hashes: Array.from(missingHashes), reason: 'timeout' };
     }
-    return Array.from(missingHashes);
   }
 
   /**

@@ -113,6 +113,18 @@ export interface DeChatConfig {
 
       /** Interval number to run the AntiEntropy Synchronizer periodically to stabilize the network with consistent data across peers */
       syncIntervalMs: number;
+
+      /** Bounded retry policy applied when a sync ends in a partial (incomplete) outcome */
+      retry: {
+        /** Maximum number of retry attempts against the same peer after a partial sync (0 disables retries) */
+        maxRetries: number;
+
+        /** Base backoff delay in ms; grows exponentially per attempt (base * 2^attempt) */
+        baseBackoffMs: number;
+
+        /** Upper bound for a single backoff delay in ms (before jitter) */
+        maxBackoffMs: number;
+      };
     };
     propagation: {
       direct: {

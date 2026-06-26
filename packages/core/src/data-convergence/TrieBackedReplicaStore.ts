@@ -80,9 +80,10 @@ export class TrieBackedReplicaStore implements ReplicaStoreInterface {
     return this.baseStore.entries();
   }
 
-  clear(): Promise<void> {
+  async clear(): Promise<void> {
     this.checkInitialized();
-    return this.baseStore.clear();
+    await this.baseStore.clear();
+    this.trie.clear();
   }
 
   size(): Promise<number> {

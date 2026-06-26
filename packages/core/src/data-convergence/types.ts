@@ -23,4 +23,23 @@ export type AntiEntropyMessage =
   | { type: 'REQUEST_BRANCHES'; prefixes: string[] }
   | { type: 'RESPONSE_BRANCHES'; branches: Record<string, TrieNodeSnapshot> };
 
+/**
+ * Why a drill-down sync stopped before fully reconciling the two tries.
+ * - `timeout`: an RPC threw or timed out mid-flow.
+ * - `badResponse`: the peer replied with an unexpected/mismatched message type.
+ * - `depthCap`: the 64-level SHA256 drill-down limit was hit with branches still pending.
+ */
+export type SyncIncompleteReason = 'timeout' | 'badResponse' | 'depthCap';
+
+/**
+ * Result of an Anti-Entropy drill-down exchange.
+ *
+ * `complete` means the diff is authoritative: an empty `hashes` array genuinely
+ * signals convergence. `partial` means the diff was cut short, so `hashes` is only
+ * what we managed to collect and an empty array must NOT be read as convergence.
+ */
+export type SyncOutcome =
+  | { readonly status: 'complete'; readonly hashes: readonly string[] }
+  | { readonly status: 'partial'; readonly hashes: readonly string[]; readonly reason: SyncIncompleteReason };
+
 export const ANTI_ENTROPY_PROTOCOL = '/deChat/v1/anti-entropy/1.0.0';

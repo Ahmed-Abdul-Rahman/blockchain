@@ -321,6 +321,81 @@ const collectExpectedHashes = async (producers: WorkerDetails[]): Promise<string
   return Array.from(new Set(reports.flat()));
 };
 
+export const simulateOfflinePeerRevivalConvergence = (
+  workerDataConfig: WorkerDataConfig,
+): Promise<AggregatedResult> => {
+  // Scaled-up timing for the standard 12-node config (relative to the 6-node late-joiner test).
+  // STABILIZE_MS matches the proven peer-churn stabilization window so the full mesh + replication
+  // topic subscriptions are established before any node announces.
+  const STABILIZE_MS = 180_000; // let all nodes form the mesh, exchange peers + subscribe
+  const PROPAGATE_SETTLE_MS = 60_000; // let produced messages fully replicate across the network
+  const RECONNECT_MS = 30_000; // let the revived peer rediscover + re-authenticate into the mesh
+  const syncIntervalMs = workerDataConfig.syncIntervalMs ?? 15_000;
+  const ANTI_ENTROPY_WAIT_MS = syncIntervalMs * 6 + 30_000; // several sync cycles + generous buffer
+
+  const scenario: RunWorkersScenario = async (workers, workerResults, handleComplete, handleWorkerError) => {
+    const terminationPromises: Promise<boolean>[] = [];
+    const { totalNodes } = workerDataConfig;
+
+    // 1. Spin up every node
+    for (let i = 0; i < totalNodes; i++) {
+      const nodeSeed = `Test-Revival-Convergence-Worker-${i}`;
+      const workerData = { index: i, nodeSeed, ...workerDataConfig } as WorkerData;
+      workers.push(
+        createWorker(
+          nodeWorkerDataPropPath,
+          workerData,
+          workerResults,
+          handleComplete,
+          handleWorkerError,
+          terminationPromises,
+        ),
+      );
+    }
+
+    // 2. Stabilize the mesh, produce messages, then let them propagate across the network
+    await delay(STABILIZE_MS);
+    postMessageToWorkers(workers, { type: 'produce_messages_replication' });
+    await delay(PROPAGATE_SETTLE_MS);
+
+    // 3. Snapshot the converged network state (under TOPIC_BASED every node holds the full set)
+    const expectedHashes = await collectExpectedHashes(workers);
+    console.log(`[Revival Convergence Test] Network holds ${expectedHashes.length} unique hashes before drop`);
+
+    // 4. Drop one random peer
+    const [dropIndex] = sampleIndices(totalNodes, 1);
+    const droppedWorker = workers[dropIndex] as WorkerDetails;
+    console.log(`[Revival Convergence Test] Dropping peer index ${dropIndex}`);
+    await terminateWorker(droppedWorker.workerRef);
+
+    // 5. Revive the SAME peer (same seed/identity) with a fresh, empty in-memory store.
+    //    GossipSub never re-delivers history, so the revived node can only recover the
+    //    pre-drop messages through the background AntiEntropyManager.
+    console.log(`[Revival Convergence Test] Reviving peer index ${dropIndex}`);
+    const revivedWorker = createWorker(
+      nodeWorkerDataPropPath,
+      droppedWorker.workerData,
+      workerResults,
+      handleComplete,
+      handleWorkerError,
+      terminationPromises,
+    );
+    workers[dropIndex] = revivedWorker;
+
+    // 6. Let it reconnect, tell it which hashes anti-entropy must restore (no manual fetch),
+    //    then wait for several sync cycles to converge.
+    await delay(RECONNECT_MS);
+    revivedWorker.workerRef.postMessage({ type: 'set_expected_hashes', hashes: expectedHashes });
+    await delay(ANTI_ENTROPY_WAIT_MS);
+
+    terminateWorkers(workers);
+    await Promise.all(terminationPromises);
+  };
+
+  const { scenarioResults } = setupScenario(scenario);
+  return scenarioResults;
+};
+
 export const simulateIterativeDataFetch = (workerDataConfig: WorkerDataConfig): Promise<AggregatedResult> => {
   const scenario: RunWorkersScenario = async (workers, workerResults, handleComplete, handleWorkerError) => {
     const terminationPromises: Promise<boolean>[] = [];

@@ -73,7 +73,8 @@ Rejected enhancement requests are recorded in `.out-of-scope/*.md` (create the d
 | Unit tests (core only) | `yarn core test` |
 | Single unit test file | `yarn core test:file packages/core/tests/unit/<path>/<Module>.unit.test.ts` |
 | Coverage (core) | `yarn core test:coverage` |
-| Integration tests (P2P interop) | `yarn build && yarn test:int` |
+| Integration tests (P2P interop, full) | `yarn build && yarn test:int` |
+| Integration tests (P2P interop, narrow) | `yarn build && yarn test:int:narrow` (3 nodes, 30s) |
 | Lint | `yarn lint` |
 | Lint fix | `yarn lint:fix` |
 | Run a P2P node | `cd apps/backend && yarn start:dev` |

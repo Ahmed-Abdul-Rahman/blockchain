@@ -193,7 +193,7 @@ AntiEntropyManager (interval: config.strategies.synchronizer.syncIntervalMs)
 - `workerUitls.ts` → `configureNode()` — production strategy wiring
 - Always end with `terminateWorkers(workers)` + `await Promise.all(terminationPromises)`
 
-Narrow interop runs: `--nodes 3 --duration 30` via `parseArg()` in `helper.ts`.
+Narrow interop runs: `yarn build && yarn test:int:narrow` (3 nodes, 30s). Custom sizes: `yarn workspace @dechat/core test:int --nodes N --duration S` (flags must reach the Node process — do not append them to root `yarn test:int`).
 
 ## Common mistakes
 

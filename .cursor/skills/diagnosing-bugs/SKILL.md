@@ -18,7 +18,7 @@ Read `.cursor/PROJECT.md` for DeChat-specific commands and architecture anchors.
 | Single-module logic | New or existing `*.unit.test.ts` | Seconds |
 | Serialization / hashing | Unit test against `shared/serializers.ts` or `Sha256ContentHashStrategy` | Seconds |
 | Replication protocol | `ReplicationMessageProtocolManager.unit.test.ts` pattern | Seconds |
-| Cross-node P2P | Narrow interop run: `yarn build && yarn test:int` with `--nodes 3 --duration 30` | Minutes |
+| Cross-node P2P | Narrow interop run: `yarn build && yarn test:int:narrow` (3 nodes, 30s) | Minutes |
 | Worker harness | `configureNode()` in `childThread/workerUitls.ts` — one real node in a worker | Seconds–minutes |
 | CI hang | Check missing `terminateWorkers()` in interop scenarios | N/A |
 

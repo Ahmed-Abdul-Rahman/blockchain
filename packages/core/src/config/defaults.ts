@@ -53,6 +53,11 @@ export const DECHAT_DEFAULTS: DeChatConfig = {
     synchronizer: {
       protocol: '/deChat/v1/anti-entropy/1.0.0',
       syncIntervalMs: 60_000,
+      retry: {
+        maxRetries: 3,
+        baseBackoffMs: 1_000,
+        maxBackoffMs: 10_000,
+      },
     },
     propagation: {
       direct: {

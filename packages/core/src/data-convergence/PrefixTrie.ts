@@ -47,7 +47,15 @@ export class PrefixTrie {
    * @returns An array of string prefixes where data differs.
    */
   public findMismatches(remoteSnapshot: TrieNodeSnapshot): string[] {
-    return this._compare(this.root, remoteSnapshot);
+    // Re-root the local cursor at the snapshot's prefix. Branch snapshots (prefix !== '')
+    // must be compared against the matching local subtree, not the root — otherwise we
+    // compare unrelated branches and both miss real mismatches and invent false ones.
+    let localNode: TrieNode | undefined = this.root;
+    for (const char of remoteSnapshot.prefix) {
+      localNode = localNode?.children.get(char);
+      if (!localNode) break;
+    }
+    return this._compare(localNode, remoteSnapshot);
   }
 
   /**
@@ -74,9 +82,20 @@ export class PrefixTrie {
         if (!current) break;
         current = current.children.get(char);
       }
-      if (current) branches[prefix] = this._getSnapshot(current, levels, 0);
+      // Always return an entry for every requested prefix. An empty-hash snapshot
+      // explicitly means "no data under this prefix", letting the requester tell a
+      // genuinely absent branch (nothing to pull) apart from a dropped response key.
+      branches[prefix] = current ? this._getSnapshot(current, levels, 0) : { prefix, hash: '' };
     }
     return branches;
+  }
+
+  /**
+   * Resets the trie to an empty state. Used when the backing store is cleared.
+   */
+  public clear(): void {
+    this.root.children.clear();
+    this.root.hash = '';
   }
 
   /**
@@ -130,25 +149,26 @@ export class PrefixTrie {
   }
 
   private _compare(localNode: TrieNode | undefined, remoteSnapshot: TrieNodeSnapshot): string[] {
-    // If we don't have this local branch at all, we are missing all data under this prefix
-    if (!localNode) return [remoteSnapshot.prefix];
+    // The remote reports no data under this prefix (empty/absent node): nothing to pull.
+    if (!remoteSnapshot.hash) return [];
 
-    // If the hashes match perfectly, our trees are converged here. Zero missing data.
-    if (localNode.hash === remoteSnapshot.hash) return [];
+    // Identical Merkle hashes: this subtree is fully converged, nothing missing.
+    if (localNode && localNode.hash === remoteSnapshot.hash) return [];
 
-    const mismatches: string[] = [];
-
-    if (!remoteSnapshot.children) {
-      // The remote peer didn't send children for this level, so we only know there's
-      // a mismatch at this prefix, but not exactly which leaves. We must request deeper data.
-      mismatches.push(remoteSnapshot.prefix);
-    } else {
-      // Drill deeper into the provided remote children
+    // Hashes differ (or we lack this branch entirely). If the remote expanded its children,
+    // drill into each one. We descend even when there is no local node here, because every
+    // remote child is then something we are missing and must resolve down to its leaves.
+    if (remoteSnapshot.children) {
+      const mismatches: string[] = [];
       for (const [char, remoteChild] of Object.entries(remoteSnapshot.children)) {
-        const localChild = localNode.children.get(char);
-        mismatches.push(...this._compare(localChild, remoteChild));
+        mismatches.push(...this._compare(localNode?.children.get(char), remoteChild));
       }
+      return mismatches;
     }
-    return mismatches;
+
+    // The remote did not expand children at this level, so we cannot resolve further from
+    // this snapshot. Report this prefix so the caller fetches a deeper snapshot — or, if it
+    // is a full 64-char hash, it is a concrete missing leaf.
+    return [remoteSnapshot.prefix];
   }
 }
