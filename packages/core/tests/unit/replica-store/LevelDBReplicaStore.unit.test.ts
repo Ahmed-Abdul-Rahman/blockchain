@@ -75,9 +75,8 @@ describe('LevelDbReplicaStore', () => {
     expect(result).toEqual(expectedData);
   });
 
-  it('should delete data from the db', async () => {
-    mockDbInstance.del.mockResolvedValueOnce(undefined);
-    await store.delete('key5');
-    expect(mockDbInstance.del).toHaveBeenCalledWith('key5');
+  it('should reject delete (append-only store)', async () => {
+    await expect(store.delete('key5')).rejects.toThrow('DeChat is append-only. Publish a TOMBSTONE event instead.');
+    expect(mockDbInstance.del).not.toHaveBeenCalled();
   });
 });

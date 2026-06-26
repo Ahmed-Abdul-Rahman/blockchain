@@ -21,3 +21,5 @@ export interface PropagationContext {
   /** Optional GossipSub Topic on which the message is received*/
   topic?: string;
 }
+
+export type MessageHandler<T> = (message: PropagatedMessage<T>, ctx: PropagationContext) => Promise<void> | void;

@@ -264,6 +264,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@datastructures-js/queue@npm:^4.3.0":
+  version: 4.3.0
+  resolution: "@datastructures-js/queue@npm:4.3.0"
+  checksum: 10c0/d47ae4f901d52bd1f5420a6ae0280b63d6ac8a98ea0ab33db4becf79f16dda13ed772cc8c5c1d59a355031bc806c0fd7b76f220dd44677f1159deb2631d53ecc
+  languageName: node
+  linkType: hard
+
 "@dechat/blockchain@workspace:packages/blockchain":
   version: 0.0.0-use.local
   resolution: "@dechat/blockchain@workspace:packages/blockchain"
@@ -292,6 +299,7 @@ __metadata:
     "@chainsafe/libp2p-noise": "npm:^16.0.1"
     "@chainsafe/libp2p-yamux": "npm:^7.0.1"
     "@datastructures-js/priority-queue": "npm:^6.3.5"
+    "@datastructures-js/queue": "npm:^4.3.0"
     "@dechat/common": "npm:*"
     "@dechat/crypto": "npm:*"
     "@libp2p/bootstrap": "npm:^11.0.47"

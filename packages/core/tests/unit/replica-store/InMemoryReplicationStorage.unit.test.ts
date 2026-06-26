@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/suspicious/noExplicitAny: <its a test file> */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { getGenericDataSerailizer } from '../../../src/data-replication/serializers';
 import { InMemoryReplicaStore } from '../../../src/replica-store/InMemoryReplicaStore';
+import { getGenericDataSerailizer } from '../../../src/shared/serializers';
 import { DeChatComponents } from '../../../src/types';
 
 describe('InMemoryReplicaStore', () => {
@@ -37,19 +37,15 @@ describe('InMemoryReplicaStore', () => {
     expect(retrievedData).toEqual(data);
   });
 
-  it('should delete data correctly', async () => {
+  it('should reject delete (append-only store)', async () => {
     const key = 'test-hash-456';
     const data = new Uint8Array([50, 60]);
 
-    // Setup
     await store.put(key, data);
     expect(await store.has(key)).toBe(true);
 
-    // Act
-    await store.delete(key);
-
-    // Assert
-    expect(await store.has(key)).toBe(false);
-    expect(await store.get(key)).toBeNull();
+    await expect(store.delete(key)).rejects.toThrow('DeChat is append-only. Publish a TOMBSTONE event instead.');
+    expect(await store.has(key)).toBe(true);
+    expect(await store.get(key)).toEqual(data);
   });
 });

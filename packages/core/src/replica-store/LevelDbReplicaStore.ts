@@ -1,5 +1,5 @@
 import { Level } from 'level';
-import { DataSerializer } from '../data-replication/types';
+import { DataSerializer } from '../shared/types';
 import { DeChatComponents, DeChatFactory } from '../types';
 import { ReplicaStoreInterface } from './ReplicaStoreInterface';
 

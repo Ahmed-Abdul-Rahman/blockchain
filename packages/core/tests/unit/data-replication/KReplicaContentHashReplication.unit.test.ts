@@ -1,13 +1,13 @@
 /** biome-ignore-all lint/suspicious/noExplicitAny: <its a test file> */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  KReplicaContentHashReplication,
+  KReplicaContentReplication,
   kReplicaContentHashReplication,
-} from '../../../src/data-replication/KReplicaContentHashReplication';
+} from '../../../src/data-replication/KReplicaContentReplication';
 import { DeChatComponents } from '../../../src/types';
 
-describe('KReplicaContentHashReplication', () => {
-  let engine: KReplicaContentHashReplication;
+describe('KReplicaContentReplication', () => {
+  let engine: KReplicaContentReplication;
   let mockComponents: Partial<DeChatComponents>;
 
   let mockHashStrategy: any;

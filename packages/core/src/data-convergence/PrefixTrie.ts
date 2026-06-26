@@ -4,7 +4,7 @@ import { TrieNodeSnapshot } from './types';
 /**
  * Represents a single node within the Incremental Prefix Merkle Trie.
  */
-class TrieNode {
+export class TrieNode {
   public children: Map<string, TrieNode> = new Map();
   public hash: string = '';
   public readonly prefix: string;

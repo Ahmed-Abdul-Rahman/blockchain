@@ -8,7 +8,6 @@ import { DirectPropagationInterface } from './data-propagation/direct/DirectProp
 import { ContentHashStrategyInterface } from './data-replication/content-hash/types';
 import { DataReplicationInterface } from './data-replication/DataReplicationInterface';
 import { ReplicationProtocolInterface } from './data-replication/replication-protocol/ReplicationProtocolInterface';
-import { DataSerializer } from './data-replication/types';
 import { AuthMetrics, DialQueueMetrics, PeerExchangeServiceMetrics, PeerRegistryMetrics } from './metrics';
 import { GossipSubPropagationMetrics } from './metrics/interfaces/GossipSubPropagationMetrics';
 import { DialQueue } from './networking/DialQueue';
@@ -18,12 +17,7 @@ import { PeerExchangeService } from './networking/PeerExchangeService';
 import { PeerRegistry } from './networking/PeerRegistry';
 import { SimplePeerScorer } from './networking/SimplePeerScorer';
 import { ReplicaStoreInterface } from './replica-store/ReplicaStoreInterface';
-
-export interface BaseMessage<T> {
-  id?: string;
-  responseCorrelationId?: string;
-  payload: T;
-}
+import { DataSerializer } from './shared/types';
 
 export interface DeChatStrategies {
   broadcast?: DeChatFactory<BroadcastPropagationInterface>;

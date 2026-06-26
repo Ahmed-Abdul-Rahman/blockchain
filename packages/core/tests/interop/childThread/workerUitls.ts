@@ -1,6 +1,8 @@
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { Libp2p } from 'libp2p';
 import { threadId, workerData } from 'worker_threads';
+import { antiEntropyManager } from '../../../src/data-convergence/AntiEntropyManager';
+import { antiEntropyNetworkExchangeEngine } from '../../../src/data-convergence/AntiEntropyNetworkExchange';
 import {
   GossipSubPropagation,
   gossipSubPropagation,
@@ -12,8 +14,9 @@ import {
 import { contentHashStrategy } from '../../../src/data-replication/content-hash/Sha256ContentHashStrategy';
 import { ContentHashStrategyInterface } from '../../../src/data-replication/content-hash/types';
 import { DataReplicationInterface } from '../../../src/data-replication/DataReplicationInterface';
-import { kReplicaContentHashReplication } from '../../../src/data-replication/KReplicaContentHashReplication';
+import { kReplicaContentHashReplication } from '../../../src/data-replication/KReplicaContentReplication';
 import { replicationMessageProtocolManager } from '../../../src/data-replication/replication-protocol/ReplicationMessageProtocolManager';
+import { topicBasedContentHashReplication } from '../../../src/data-replication/TopicBasedContentReplication';
 import { PeerExchangeService } from '../../../src/networking/PeerExchangeService';
 import { SimplePeerScorer } from '../../../src/networking/SimplePeerScorer';
 import { createNode } from '../../../src/node';
@@ -43,7 +46,7 @@ export const configureNode = async (
   nodeCleanUp: () => Promise<void>;
 }> => {
   const args = workerData as WorkerData;
-  const { index, nodeSeed, networkId, testType } = args;
+  const { index, nodeSeed, networkId, testType, replicationType, dataSyncEnabled = false, syncIntervalMs } = args;
 
   let strategies: DeChatStrategies = {
     broadcast: gossipSubPropagation(),
@@ -56,7 +59,11 @@ export const configureNode = async (
       replicaStore: replicaStore('IN_MEMORY'),
       contentHasher: contentHashStrategy(),
       replicationProtocol: replicationMessageProtocolManager(),
-      dataReplication: kReplicaContentHashReplication(),
+      dataReplication:
+        replicationType === 'K_REPLICA' ? kReplicaContentHashReplication() : topicBasedContentHashReplication(),
+      ...(dataSyncEnabled
+        ? { networkExchanger: antiEntropyNetworkExchangeEngine(), antiEntropyManager: antiEntropyManager() }
+        : {}),
     };
   }
 
@@ -72,6 +79,7 @@ export const configureNode = async (
         maxIncomingPendingConnections: 20,
       },
       discovery: { enableMdns: true, onBoardingPeerTime },
+      ...(syncIntervalMs ? { strategies: { synchronizer: { syncIntervalMs } } } : {}),
     },
     strategies,
   );

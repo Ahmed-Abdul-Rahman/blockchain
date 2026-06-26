@@ -56,6 +56,7 @@ export type AggregatedResult = {
 export type WorkerData = {
   index: number;
   testType?: 'STARTUP' | 'PROPAGATION' | 'REPLICATION';
+  replicationType?: 'K_REPLICA' | 'TOPIC_BASED';
   nodeSeed: string;
   totalNodes: number;
   networkId: string;
@@ -63,16 +64,21 @@ export type WorkerData = {
   bootstrapMultiaddrs: string[];
   runDurationSec: number;
   messageRate: number; // msgs per second
+  dataSyncEnabled: boolean;
+  syncIntervalMs?: number; // anti-entropy sync interval override
 };
 
 export type WorkerDataConfig = {
   testType?: 'STARTUP' | 'PROPAGATION' | 'REPLICATION';
+  replicationType?: 'K_REPLICA' | 'TOPIC_BASED';
   totalNodes: number;
   networkId: string;
   pubsubTopic: string;
   bootstrapMultiaddrs: string[];
   runDurationSec: number;
   messageRate: number; // msgs per second
+  dataSyncEnabled: boolean;
+  syncIntervalMs?: number; // anti-entropy sync interval override
 };
 
 export type WorkerDetails = { workerData: WorkerData; workerRef: Worker };

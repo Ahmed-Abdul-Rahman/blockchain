@@ -1,5 +1,5 @@
 import { PeerId, Startable } from '@libp2p/interface';
-import { PropagatedMessage, PropagationContext } from '../types';
+import { MessageHandler, PropagatedMessage, PropagationContext } from '../types';
 
 export interface DirectPropagationInterface extends Startable {
   /**
@@ -11,13 +11,15 @@ export interface DirectPropagationInterface extends Startable {
    * Register a handler for inbound direct messages.
    * Only one handler is expected per instance.
    */
-  onReceive<T>(
-    protocol: string,
-    handler: (message: PropagatedMessage<T>, ctx: PropagationContext) => Promise<void> | void,
-  ): void;
+  onReceive<T>(protocol: string, handler: MessageHandler<T>): void;
 
   /**
    * Unregister a handler for a given protocol
+   */
+  removeHandler<T>(protocol: string, handler: MessageHandler<T>): Promise<void>;
+
+  /**
+   * Unhandle a given protocol completely
    */
   unhandleProtocol(protocol: string): Promise<void>;
 }

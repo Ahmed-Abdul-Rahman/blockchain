@@ -5,7 +5,7 @@ import * as ed from '@noble/ed25519';
 import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { AuthMetrics } from '../metrics/interfaces/AuthMetrics';
-import { readFromStream, writeToStream } from '../streamUtils';
+import { readFromStream, writeToStream } from '../shared/streamUtils';
 import { DeChatComponents, DeChatFactory } from '../types';
 import { AuthSignMessage, AuthSignResponse } from './types';
 

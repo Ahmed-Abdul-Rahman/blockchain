@@ -1,4 +1,5 @@
-import { ContentHash, DataSerializer } from '../data-replication/types';
+import { ContentHash } from '../data-replication/types';
+import { DataSerializer } from '../shared/types';
 import { DeChatFactory } from '../types';
 import { inMemoryReplicaStore } from './InMemoryReplicaStore';
 import { levelDbReplicaStore } from './LevelDbReplicaStore';

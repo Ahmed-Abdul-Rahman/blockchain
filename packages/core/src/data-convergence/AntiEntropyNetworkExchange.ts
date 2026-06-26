@@ -1,6 +1,6 @@
 import { logger } from '@dechat/common';
 import { IncomingStreamData, Libp2p, PeerId, Startable } from '@libp2p/interface';
-import { setupRPCStream } from '../streamUtils';
+import { setupRPCStream } from '../shared/streamUtils';
 import { DeChatComponents, DeChatFactory } from '../types';
 import { PrefixTrie } from './PrefixTrie';
 import { AntiEntropyMessage } from './types';

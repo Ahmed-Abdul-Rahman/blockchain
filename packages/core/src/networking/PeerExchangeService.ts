@@ -7,7 +7,7 @@ import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { PeerExchangeServiceMetrics } from '../metrics/interfaces/PeerExchangeServiceMetrics';
-import { writeToStream } from '../streamUtils';
+import { writeToStream } from '../shared/streamUtils';
 import { DeChatComponents, DeChatFactory } from '../types';
 import { GET_PEERS_MSG, PEX_GOSSIP, PEX_PEER_LIST, PeerInfoLite } from './types';
 import { filterAddrs, processDataFromStream, publishWithRetry, sampleList } from './utils';

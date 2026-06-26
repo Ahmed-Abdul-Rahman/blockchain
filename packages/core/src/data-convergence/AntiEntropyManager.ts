@@ -79,7 +79,7 @@ export class AntiEntropyManager implements Startable {
       return;
     }
 
-    const connections = this.node.getConnections();
+    const connections = this.node.getConnections(); // TODO: should it use the peer registry instead?
     if (connections.length === 0) {
       return; // No peers to sync with
     }

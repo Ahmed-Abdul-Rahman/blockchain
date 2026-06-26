@@ -1,5 +1,6 @@
-import { ContentHash, DataSerializer } from '../data-replication/types';
+import { ContentHash } from '../data-replication/types';
 import { ReplicaStoreInterface } from '../replica-store/ReplicaStoreInterface';
+import { DataSerializer } from '../shared/types';
 import { PrefixTrie } from './PrefixTrie';
 
 /**
@@ -80,6 +81,7 @@ export class TrieBackedReplicaStore implements ReplicaStoreInterface {
   }
 
   clear(): Promise<void> {
+    this.checkInitialized();
     return this.baseStore.clear();
   }
 
@@ -88,6 +90,7 @@ export class TrieBackedReplicaStore implements ReplicaStoreInterface {
   }
 
   close(): Promise<void> {
+    this.checkInitialized();
     return this.baseStore.close();
   }
 }

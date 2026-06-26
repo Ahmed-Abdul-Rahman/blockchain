@@ -5,13 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DeChatComponents } from '../../../src/types';
 
 // 1. Mock network stream utilities to avoid complex buffer/iterable orchestration
-vi.mock('../../../src/utils', () => ({
-  now: vi.fn(() => 1000000), // Fixed timestamp for deterministic testing
+vi.mock('../../../src/shared/streamUtils', () => ({
   readFromStream: vi.fn(),
   writeToStream: vi.fn(),
 }));
 
-import { readFromStream, writeToStream } from '../../../src/utils';
+import { readFromStream, writeToStream } from '../../../src/shared/streamUtils';
 
 // 2. Mock cryptography to securely test logical branches without CPU overhead
 vi.mock('@noble/ed25519', () => ({
@@ -100,6 +99,7 @@ describe('PeerAuthenticator', () => {
   });
 
   it('runAuthClient should send auth payload and return true if verified', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
     authenticator.start();
 
     const targetPeerId = await createEd25519PeerId();
@@ -112,7 +112,6 @@ describe('PeerAuthenticator', () => {
     const result = await authenticator.runAuthClient(targetPeerId as any);
 
     expect(result).toBe(true);
-    // FIX: Removed `authAttempted` assertion since the class no longer emits it
     expect(mockNode.dialProtocol).toHaveBeenCalledWith(targetPeerId, authProtocol);
 
     // Verify it sent the signed payload to the stream
@@ -121,13 +120,16 @@ describe('PeerAuthenticator', () => {
       expect.objectContaining({
         pub: expect.any(String),
         sig: expect.any(String),
-        timestamp: 1000000,
+        timestamp: 1_000_000,
         nonce: expect.any(String),
       }),
     );
+
+    nowSpy.mockRestore();
   });
 
   it('should successfully verify an incoming peer and add them to PEX', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
     authenticator.start();
     const handler = mockNode.handle.mock.calls.find((c: any) => c[0] === authProtocol)[1];
 
@@ -137,10 +139,10 @@ describe('PeerAuthenticator', () => {
 
     // Fake incoming message
     (readFromStream as any).mockResolvedValueOnce({
-      pub: 'dummy-pub',
-      sig: 'dummy-sig',
+      pub: Buffer.from('valid-pub-key').toString('base64url'),
+      sig: Buffer.from('valid-sig').toString('base64url'),
       nonce: 'unique-nonce-123',
-      timestamp: 1000000, // Matches our mocked now()
+      timestamp: 1_000_000,
     });
 
     (ed.verifyAsync as any).mockResolvedValueOnce(true);
@@ -158,9 +160,12 @@ describe('PeerAuthenticator', () => {
     expect(mockPexService.initiatePeerExchange).toHaveBeenCalled();
     expect(writeToStream).toHaveBeenCalledWith(mockStream, { isVerified: true });
     expect(mockMetrics.verificationSucceeded).toHaveBeenCalled();
+
+    nowSpy.mockRestore();
   });
 
   it('should reject and close stream if signature is invalid', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
     authenticator.start();
     const handler = mockNode.handle.mock.calls.find((c: any) => c[0] === authProtocol)[1];
 
@@ -168,10 +173,10 @@ describe('PeerAuthenticator', () => {
     const connection = { remotePeer: await createEd25519PeerId(), remoteAddr: {} };
 
     (readFromStream as any).mockResolvedValueOnce({
-      pub: 'dummy-pub',
-      sig: 'bad-sig',
+      pub: Buffer.from('valid-pub-key').toString('base64url'),
+      sig: Buffer.from('bad-sig').toString('base64url'),
       nonce: 'unique-nonce-456',
-      timestamp: 1000000,
+      timestamp: 1_000_000,
     });
 
     // Mock crypto to fail the verification
@@ -182,6 +187,8 @@ describe('PeerAuthenticator', () => {
     expect(mockStream.close).toHaveBeenCalled();
     expect(mockMetrics.verificationFailed).toHaveBeenCalledWith('invalid_signature');
     expect(mockPexService.addPeers).not.toHaveBeenCalled(); // Ensure peer is NOT trusted
+
+    nowSpy.mockRestore();
   });
 
   it('should drop messages with expired timestamps (Replay Attack Prevention)', async () => {
@@ -206,13 +213,19 @@ describe('PeerAuthenticator', () => {
   });
 
   it('should drop messages with previously used nonces (Replay Attack Prevention)', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
     authenticator.start();
     const handler = mockNode.handle.mock.calls.find((c: any) => c[0] === authProtocol)[1];
 
     const mockStream = { close: vi.fn() };
     const connection = { remotePeer: await createEd25519PeerId(), remoteAddr: { toString: () => '/ip4/0' } };
 
-    const payload = { pub: 'pub', sig: 'sig', nonce: 'reused-nonce', timestamp: 1000000 };
+    const payload = {
+      pub: Buffer.from('valid-pub-key').toString('base64url'),
+      sig: Buffer.from('valid-sig').toString('base64url'),
+      nonce: 'reused-nonce',
+      timestamp: 1_000_000,
+    };
 
     // Send the message the first time
     (readFromStream as any).mockResolvedValueOnce(payload);
@@ -226,5 +239,7 @@ describe('PeerAuthenticator', () => {
     // It should have blocked it, so successes stays at 1 and stream is closed
     expect(mockMetrics.verificationSucceeded).toHaveBeenCalledTimes(1);
     expect(mockStream.close).toHaveBeenCalled();
+
+    nowSpy.mockRestore();
   });
 });

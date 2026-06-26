@@ -15,13 +15,13 @@ import { resolveConfig } from './config/defaults';
 import { DeChatConfig } from './config/types';
 import { PrefixTrie } from './data-convergence/PrefixTrie';
 import { TrieBackedReplicaStore } from './data-convergence/TrieBackedReplicaStore';
-import { getGenericDataSerailizer } from './data-replication/serializers';
 import { dialQueue } from './networking/DialQueue';
 import { peerAuthenticator } from './networking/PeerAuthenticator';
 import { peerDiscoveryManager } from './networking/PeerDiscoveryManager';
 import { peerExchangeService } from './networking/PeerExchangeService';
 import { peerRegistry } from './networking/PeerRegistry';
 import { simplePeerScorer } from './networking/SimplePeerScorer';
+import { getGenericDataSerailizer } from './shared/serializers';
 import { DeChatComponents, DeChatStrategies } from './types';
 import { getMetricsInstances } from './utils';
 
@@ -112,6 +112,7 @@ export const createNode = async (
       const baseReplicaStore = strategies.replicaStore(components as DeChatComponents);
       const prefixTrie = new PrefixTrie(components.strategies.contentHasher);
       const wrappedStore = new TrieBackedReplicaStore(baseReplicaStore, prefixTrie, components.serializer);
+      components.strategies!.prefixTrie = prefixTrie;
       components.strategies!.replicaStore = wrappedStore;
     }
     if (strategies.replicationProtocol)
