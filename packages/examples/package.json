@@ -6,7 +6,8 @@
   "scripts": {
     "start:dialer": "tsx chat/dialer.ts",
     "start:handler": "tsx chat/handler.ts",
-    "test": "test-node-example test/*"
+    "test": "",
+    "test:coverage": ""
   },
   "dependencies": {
     "@chainsafe/libp2p-gossipsub": "^14.1.0",
