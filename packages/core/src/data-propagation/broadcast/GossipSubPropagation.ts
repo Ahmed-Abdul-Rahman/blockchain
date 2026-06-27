@@ -7,7 +7,7 @@ import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { GossipSubPropagationMetrics } from '../../metrics/interfaces/GossipSubPropagationMetrics';
 import { DeChatComponents, DeChatFactory } from '../../types';
-import { PropagatedMessage, PropagationContext } from '../types';
+import { MessageHandler, PropagatedMessage, PropagationContext } from '../types';
 import { BroadcastPropagationInterface } from './BroadcastPropagationInterface';
 
 export class GossipSubPropagation implements BroadcastPropagationInterface {
@@ -18,14 +18,8 @@ export class GossipSubPropagation implements BroadcastPropagationInterface {
   /**Map to store seen messages to avoid deduplication of data propagation */
   private seenMessages: Map<string, LRUCache<string, true>>;
 
-  /** Listener for listening to gossip messages */
-  private gossipListener: (event: CustomEvent<Message>) => void;
-
   /** Handler function that gets executed when a message is received on the corresponding topics */
-  private topicsHandlers: Map<
-    string,
-    (message: PropagatedMessage<any>, ctx: PropagationContext) => Promise<void> | void
-  >;
+  private topicsHandlers: Map<string, Set<MessageHandler<any>>>;
 
   private config: DeChatComponents['config']['strategies']['propagation']['broadcast'];
 
@@ -38,48 +32,51 @@ export class GossipSubPropagation implements BroadcastPropagationInterface {
     this.pubsub = this.node.services.pubsub as GossipSub;
     this.topicsHandlers = new Map();
     this.seenMessages = new Map();
+  }
 
-    this.gossipListener = (event: CustomEvent<Message>) => {
-      const topic = event.detail.topic;
-      const data = event.detail.data;
-      const handler = this.topicsHandlers.get(topic);
+  start(): void | Promise<void> {
+    this.pubsub.addEventListener('message', this.gossipListener.bind(this));
+  }
 
-      if (!handler || !data || data.length > this.config.maxMsgBytes) return;
+  private gossipListener(event: CustomEvent<Message>) {
+    const topic = event.detail.topic;
+    const data = event.detail.data;
+    const handlers = this.topicsHandlers.get(topic);
 
-      try {
-        const msg = JSON.parse(uint8ArrayToString(data)) as PropagatedMessage<any>;
+    if (!handlers || handlers.size === 0 || !data || data.length > this.config.maxMsgBytes) return;
 
-        if (!msg || !msg.id) return;
-        if (this.seenMessages.has(topic) && this.seenMessages.get(topic)?.has(msg.id)) {
-          logger.trace('Ignoring already seen message');
-          this.metrics.messageDropped('duplicate');
-          return;
-        }
-        Object.freeze(msg);
+    try {
+      const msg = JSON.parse(uint8ArrayToString(data)) as PropagatedMessage<any>;
 
-        const cache = this.seenMessages.get(topic);
-        if (cache) cache.set(msg.id, true);
-        else {
-          this.seenMessages.set(topic, this.initializeSeenCache());
-          this.seenMessages.get(topic)?.set(msg.id, true);
-        }
-        if (handler)
+      if (!msg || !msg.id) return;
+      if (this.seenMessages.has(topic) && this.seenMessages.get(topic)?.has(msg.id)) {
+        logger.trace('[GossipSubPropagation] Ignoring already seen message');
+        this.metrics.messageDropped('duplicate');
+        return;
+      }
+      Object.freeze(msg);
+
+      const cache = this.seenMessages.get(topic);
+      if (cache) cache.set(msg.id, true);
+      else {
+        this.seenMessages.set(topic, this.initializeSeenCache());
+        this.seenMessages.get(topic)?.set(msg.id, true);
+      }
+      for (const handler of handlers) {
+        Promise.resolve(
           handler(msg, {
             from: (event.detail as SignedMessage).from,
             receivedAt: Date.now(),
             topic,
-          });
-      } catch (error: unknown) {
-        logger.warn('Error occured while receiving a data propagation message');
-        logger.debug(error);
+          }),
+        ).catch((err) => logger.error(`[GossipSubPropagation] Handler error on topic ${topic}: ${err.message}`));
       }
-      this.metrics.messageReceived(topic);
-    };
-
-    this.pubsub.addEventListener('message', this.gossipListener);
+    } catch (error: unknown) {
+      logger.warn('[GossipSubPropagation] Error occured while receiving a data propagation message');
+      logger.debug(error);
+    }
+    this.metrics.messageReceived(topic);
   }
-
-  start(): void | Promise<void> {}
 
   private initializeSeenCache(): LRUCache<string, true> {
     return new LRUCache({
@@ -90,7 +87,7 @@ export class GossipSubPropagation implements BroadcastPropagationInterface {
 
   async publish<T>(topic: string, message: PropagatedMessage<T>): Promise<void> {
     const handler = this.topicsHandlers.get(topic);
-    if (!handler) throw new Error(`Cannot publish to unregistered topic "${topic}"`);
+    if (!handler) throw new Error(`[GossipSubPropagation] Cannot publish to unregistered topic "${topic}"`);
 
     const data = uint8ArrayFromString(JSON.stringify(message));
     await this.pubsub.publish(topic, data);
@@ -101,19 +98,37 @@ export class GossipSubPropagation implements BroadcastPropagationInterface {
     topic: string,
     handler: (message: PropagatedMessage<T>, ctx: PropagationContext) => Promise<void> | void,
   ): void {
-    this.pubsub.subscribe(topic);
-    this.topicsHandlers.set(topic, handler);
+    if (!this.topicsHandlers.has(topic)) {
+      this.topicsHandlers.set(topic, new Set());
+      this.pubsub.subscribe(topic);
+      logger.debug(`[GossipSubPropagation] Network joined topic: ${topic}`);
+    }
+    this.topicsHandlers.get(topic)!.add(handler);
+    logger.debug(`[GossipSuPropagation] Local handler attached to topic: ${topic}`);
   }
 
-  unsubscribe(topic: string, purgeData = false): void {
-    this.pubsub.unsubscribe(topic);
-    this.topicsHandlers.delete(topic);
-    if (purgeData) this.seenMessages.delete(topic);
+  unsubscribe<T>(topic: string, handler: MessageHandler<T>, purgeData?: boolean): void {
+    const handlers = this.topicsHandlers.get(topic);
+    if (handlers) {
+      handlers.delete(handler);
+      logger.debug(`[GossipSubPropagation] Local handler detached from topic: ${topic}`);
+      if (handlers.size === 0) {
+        this.topicsHandlers.delete(topic);
+        this.pubsub.unsubscribe(topic);
+        if (purgeData) this.seenMessages.delete(topic);
+        logger.debug(`[GossipSubPropagation] Network left topic: ${topic} (No more local listeners)`);
+      }
+    }
   }
 
   stop(): void {
     this.pubsub.removeEventListener('message', this.gossipListener);
-    this.topicsHandlers.keys().forEach((key) => this.unsubscribe(key));
+    this.topicsHandlers.keys().forEach((topic) => {
+      const handlers = this.topicsHandlers.get(topic);
+      handlers?.clear();
+      this.topicsHandlers.delete(topic);
+      this.pubsub.unsubscribe(topic);
+    });
   }
 
   clearMessages(topic?: string): void {

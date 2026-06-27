@@ -1,11 +1,13 @@
 import { Libp2p } from '@libp2p/interface';
 import { DeChatConfig } from './config/types';
+import { AntiEntropyManager } from './data-convergence/AntiEntropyManager';
+import { AntiEntropyNetworkExchange } from './data-convergence/AntiEntropyNetworkExchange';
+import { PrefixTrie } from './data-convergence/PrefixTrie';
 import { BroadcastPropagationInterface } from './data-propagation/broadcast/BroadcastPropagationInterface';
 import { DirectPropagationInterface } from './data-propagation/direct/DirectPropagationInterface';
 import { ContentHashStrategyInterface } from './data-replication/content-hash/types';
 import { DataReplicationInterface } from './data-replication/DataReplicationInterface';
 import { ReplicationProtocolInterface } from './data-replication/replication-protocol/ReplicationProtocolInterface';
-import { DataSerializer } from './data-replication/types';
 import { AuthMetrics, DialQueueMetrics, PeerExchangeServiceMetrics, PeerRegistryMetrics } from './metrics';
 import { GossipSubPropagationMetrics } from './metrics/interfaces/GossipSubPropagationMetrics';
 import { DialQueue } from './networking/DialQueue';
@@ -15,6 +17,7 @@ import { PeerExchangeService } from './networking/PeerExchangeService';
 import { PeerRegistry } from './networking/PeerRegistry';
 import { SimplePeerScorer } from './networking/SimplePeerScorer';
 import { ReplicaStoreInterface } from './replica-store/ReplicaStoreInterface';
+import { DataSerializer } from './shared/types';
 
 export interface DeChatStrategies {
   broadcast?: DeChatFactory<BroadcastPropagationInterface>;
@@ -23,6 +26,8 @@ export interface DeChatStrategies {
   contentHasher?: DeChatFactory<ContentHashStrategyInterface>;
   replicationProtocol?: DeChatFactory<ReplicationProtocolInterface>;
   dataReplication?: DeChatFactory<DataReplicationInterface>;
+  networkExchanger?: DeChatFactory<AntiEntropyNetworkExchange>;
+  antiEntropyManager?: DeChatFactory<AntiEntropyManager>;
 }
 
 export interface DeChatMetrics {
@@ -51,6 +56,9 @@ export interface DeChatComponents {
     contentHasher?: ContentHashStrategyInterface;
     dataReplication?: DataReplicationInterface;
     replicationProtocol?: ReplicationProtocolInterface;
+    prefixTrie?: PrefixTrie;
+    networkExchanger?: AntiEntropyNetworkExchange;
+    antiEntropyManager?: AntiEntropyManager;
   };
 }
 

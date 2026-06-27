@@ -1,5 +1,5 @@
 import { Startable } from '@libp2p/interface';
-import { PropagatedMessage, PropagationContext } from '../types';
+import { MessageHandler, PropagatedMessage, PropagationContext } from '../types';
 
 export interface BroadcastPropagationInterface extends Startable {
   /**
@@ -10,15 +10,12 @@ export interface BroadcastPropagationInterface extends Startable {
   /**
    * Subscribe to incoming data
    */
-  subscribe<T>(
-    topic: string,
-    handler: (message: PropagatedMessage<T>, ctx: PropagationContext) => Promise<void> | void,
-  ): Promise<void> | void;
+  subscribe<T>(topic: string, handler: MessageHandler<T>): Promise<void> | void;
 
   /**
    * Unsubscribe from a topic
    */
-  unsubscribe(topic: string): Promise<void> | void;
+  unsubscribe<T>(topic: string, handler: MessageHandler<T>, purgeData?: boolean): Promise<void> | void;
 
   /**
    * clear all the messages in a given topic or if topic not provided clears all messages of all topics.

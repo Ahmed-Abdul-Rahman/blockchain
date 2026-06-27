@@ -1,8 +1,8 @@
 import * as ed from '@noble/ed25519';
-import { createHash } from 'crypto';
+import { BinaryLike, createHash, randomUUID } from 'crypto';
 import { crc32 } from 'zlib';
 
-export const sha256 = (message: string): string => createHash('sha256').update(message).digest('hex');
+export const sha256 = (message: BinaryLike): string => createHash('sha256').update(message).digest('hex');
 
 export const isValidInfoHash = (sourceHash: string, receivedHash: string): boolean => sourceHash === receivedHash;
 
@@ -16,6 +16,8 @@ export const generateIdProtocolPrefix = (hash: string): string => {
 };
 
 export const generateTimestamp = (): string => new Date().toISOString();
+
+export const generateRandomUUID = (): string => randomUUID();
 
 /**
  * Converts a string input to a 256-bit numeric representation using SHA-256.

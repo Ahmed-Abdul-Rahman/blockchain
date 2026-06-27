@@ -44,9 +44,9 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
 
   constructor(components: DeChatComponents) {
     if (!components.strategies.direct)
-      throw new Error('ReplicationMessageProtocolManager requires a direct propagation strategy.');
+      throw new Error('[ReplicationMessageProtocolManager] requires a direct propagation strategy.');
     if (!components.strategies.broadcast)
-      throw new Error('ReplicationMessageProtocolManager requires a broadcast propagation strategy.');
+      throw new Error('[ReplicationMessageProtocolManager] requires a broadcast propagation strategy.');
 
     this.selfPeerId = components.libp2p.peerId;
     this.config = components.config.strategies.replication;
@@ -54,9 +54,6 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
     this.broadcastProp = components.strategies.broadcast;
     this.transportSelector = transportSelector();
     this.pendingRequests = new Map();
-
-    this.directProp.onReceive(this.config.protocol, this.handleIncomingDirect.bind(this));
-    this.broadcastProp.subscribe(this.config.topic, this.handleIncomingBroadcast.bind(this));
   }
 
   public setDelegate(delegate: ReplicationEngineDelegate): void {
@@ -64,16 +61,22 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
   }
 
   async start(): Promise<void> {
-    logger.info('ReplicationProtocol Started');
+    this.directProp.onReceive(this.config.protocol, this.handleIncomingDirect.bind(this));
+    this.broadcastProp.subscribe(this.config.topic, this.handleIncomingBroadcast);
+    logger.info('[ReplicationMessageProtocolManager] Started');
   }
 
   async stop(): Promise<void> {
-    logger.info('ReplicationProtocol Stopped');
+    this.directProp.unhandleProtocol(this.config.protocol);
+    this.broadcastProp.unsubscribe(this.config.topic, this.handleIncomingBroadcast);
+    logger.info('[ReplicationMessageProtocolManager] Stopped');
   }
 
   public readonly announceToNetwork = async (hash: ContentHash): Promise<void> => {
     const msg: ReplicationAnnounce = { type: 'replication_announce', hash };
-    await this.sendMessage(msg).catch((error) => logger.error('Announcing replication hash failed: ', error));
+    await this.sendMessage(msg).catch((error) =>
+      logger.error('[ReplicationMessageProtocolManager] Announcing replication hash failed: ', error),
+    );
   };
 
   async handleAnnounce(msg: PropagatedMessage<ReplicationAnnounce>, ctx?: PropagationContext): Promise<void> {
@@ -104,7 +107,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
         replicationContent: Array.from(result.data),
       };
       await this.sendMessage(content, from).catch((error) =>
-        logger.error('Failed sending replication content:', error),
+        logger.error('[ReplicationMessageProtocolManager] Failed sending replication content:', error),
       );
     } else {
       const errorMessage: ReplicationError = {
@@ -114,7 +117,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
         closestPeers: result.closestPeers,
       };
       await this.sendMessage(errorMessage, from).catch((error) =>
-        logger.error('Sending replication error response failed: ', error),
+        logger.error('[ReplicationMessageProtocolManager] Sending replication error response failed: ', error),
       );
     }
   }
@@ -173,7 +176,9 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
 
       const timer = setTimeout(() => {
         this.pendingRequests.delete(key);
-        reject(new Error(`Timeout waiting for data ${hash} from peer ${targetPeerId}`));
+        reject(
+          new Error(`[ReplicationMessageProtocolManager] Timeout waiting for data ${hash} from peer ${targetPeerId}`),
+        );
       }, 7000);
 
       this.pendingRequests.set(key, { resolve, reject, timer });
@@ -187,7 +192,10 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
     });
   }
 
-  async handleIncomingBroadcast<T>(message: PropagatedMessage<T>, ctx?: PropagationContext): Promise<void> {
+  public readonly handleIncomingBroadcast = async <T>(
+    message: PropagatedMessage<T>,
+    ctx?: PropagationContext,
+  ): Promise<void> => {
     try {
       const payload = message.payload as ReplicationMessage;
       // If this is an explicit replication control message, dispatch to protocol handlers
@@ -214,12 +222,15 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
             break;
         }
       } else {
-        logger.warn('Expected a replication protocol message, received', payload?.type);
+        logger.warn(
+          '[ReplicationMessageProtocolManager] Expected a replication protocol message, received',
+          payload?.type,
+        );
       }
     } catch (err) {
-      logger.error('Error handling incoming replication message', err);
+      logger.error('[ReplicationMessageProtocolManager] Error handling incoming replication message', err);
     }
-  }
+  };
 
   async handleIncomingDirect<T>(message: PropagatedMessage<T>, ctx?: PropagationContext): Promise<void> {
     // direct channel typically carries REQUEST/CONTENT/ERROR
@@ -237,7 +248,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
     } as PropagatedMessage<ReplicationMessage>;
 
     if (transport === 'direct') {
-      if (!peerId) throw new Error('direct transport requires peerId');
+      if (!peerId) throw new Error('[ReplicationMessageProtocolManager] direct transport requires peerId');
       await this.directProp.send(peerId, this.config.protocol, propagated);
     } else {
       await this.broadcastProp.publish(this.config.topic, propagated);

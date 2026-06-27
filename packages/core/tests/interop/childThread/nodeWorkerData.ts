@@ -311,6 +311,13 @@ const runNodeDataReplication = async () => {
       for (const hash of targetHashesToFetch || []) {
         await dataReplication.requestMissingData(hash);
       }
+    } else if (message.type === 'report_hashes') {
+      const hashes = (await replicaStore.keys()) as readonly string[];
+      parentPort?.postMessage({ type: 'hashes_report', index, hashes });
+    } else if (message.type === 'set_expected_hashes') {
+      // Record the hashes we expect anti-entropy to deliver, WITHOUT triggering a
+      // manual fetch. hasTargetData in the final stats then reflects pure convergence.
+      targetHashesToFetch = message.hashes;
     } else if (message.type === 'terminate') {
       terminateThread = true;
       await terminateAndCleanUp(node, broadcastProp, engine.nodeCleanUp, replicaStore);

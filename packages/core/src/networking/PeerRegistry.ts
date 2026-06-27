@@ -2,7 +2,6 @@ import { logger } from '@dechat/common';
 import { Startable } from '@libp2p/interface';
 import { PeerRegistryMetrics } from '../metrics/interfaces/PeerRegistryMetrics';
 import { DeChatComponents, DeChatFactory } from '../types';
-import { now } from '../utils';
 import { PeerInfoLite } from './types';
 import { sampleList } from './utils';
 
@@ -79,7 +78,7 @@ export class PeerRegistry implements Startable {
     }
     const current = this.peerRegistry.get(peerInfo.peerId) ?? { addresses: new Set<string>(), lastUpdated: 0 };
     for (const address of peerInfo.addresses || []) current.addresses.add(address);
-    current.lastUpdated = now();
+    current.lastUpdated = Date.now();
     this.peerRegistry.set(peerInfo.peerId, current);
     this.metrics.peerAdded();
     this.metrics.registrySize(this.peerRegistry.size);
@@ -101,7 +100,7 @@ export class PeerRegistry implements Startable {
    */
   getCandidates(limit = 128): PeerInfoLite[] {
     const result: PeerInfoLite[] = [];
-    const cutOff = now() - this.config.peerEntryTtlMs;
+    const cutOff = Date.now() - this.config.peerEntryTtlMs;
     for (const [peerId, value] of this.peerRegistry) {
       if (value.lastUpdated < cutOff) {
         this.peerRegistry.delete(peerId);
@@ -119,7 +118,7 @@ export class PeerRegistry implements Startable {
    */
   isPeerDataRequested(peerId: string): boolean {
     const value = this.peerRegistry.get(peerId);
-    return !value || !value.lastRequested || now() - value.lastRequested > this.config.pexRequestCooldownMs;
+    return !value || !value.lastRequested || Date.now() - value.lastRequested > this.config.pexRequestCooldownMs;
   }
 
   /**
@@ -128,7 +127,7 @@ export class PeerRegistry implements Startable {
    */
   markRequested(peerId: string): void {
     const value = this.peerRegistry.get(peerId);
-    if (value) value.lastRequested = now();
+    if (value) value.lastRequested = Date.now();
   }
 
   private logRegistryData(): NodeJS.Timeout {
@@ -146,7 +145,7 @@ export class PeerRegistry implements Startable {
   private startCleanupTimer(): void {
     const interval = Math.min(this.config.peerEntryTtlMs, 20 * 60_000);
     this.cleanupIntervalId = setInterval(() => {
-      const cutOff = now() - this.config.peerEntryTtlMs;
+      const cutOff = Date.now() - this.config.peerEntryTtlMs;
       let removedCount = 0;
 
       for (const [peerId, value] of this.peerRegistry) {

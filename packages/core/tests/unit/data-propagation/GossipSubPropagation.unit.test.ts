@@ -67,7 +67,9 @@ describe('GossipSubPropagation', () => {
     expect(mockPubsub.publish).toHaveBeenCalledWith('test-topic', expect.any(Uint8Array));
   });
 
-  it('should trigger handler on incoming unseen message and drop duplicates', () => {
+  it('should trigger handler on incoming unseen message and drop duplicates', async () => {
+    await propagation.start();
+
     const handler = vi.fn();
     propagation.subscribe('test-topic', handler);
 

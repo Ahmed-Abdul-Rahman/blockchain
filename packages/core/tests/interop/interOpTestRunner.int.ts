@@ -2,10 +2,12 @@ import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import { parseArg } from './helper';
 import {
+  simulateAntiEntropyConvergence,
   simulateBurstPeersAtStartUp,
   simulateBurstPeersAtStartUpWithDataPropagation,
   simulateBurstPeersAtStartUpWithPropagationAndReplication,
   simulateIterativeDataFetch,
+  simulateOfflinePeerRevivalConvergence,
   simulatePeerChurn,
   simulateStaggeredPeersAtStartUp,
 } from './InterOpScenarios';
@@ -74,6 +76,7 @@ describe('P2P Network Integration StartUp Tests', () => {
       pubsubTopic,
       networkId,
       bootstrapMultiaddrs,
+      dataSyncEnabled: false,
     });
 
     const { workerResults } = aggregatedResults;
@@ -114,6 +117,7 @@ describe('P2P Network Integration StartUp Tests', () => {
       pubsubTopic,
       networkId,
       bootstrapMultiaddrs,
+      dataSyncEnabled: false,
     });
 
     const { workerResults } = aggregatedResults;
@@ -153,6 +157,7 @@ describe('P2P Network Integration Stability Tests', () => {
       pubsubTopic,
       networkId,
       bootstrapMultiaddrs,
+      dataSyncEnabled: false,
     });
 
     const { workerResults } = aggregatedResults;
@@ -192,6 +197,7 @@ describe('Interop - Data Propagation Tests', () => {
       pubsubTopic,
       networkId,
       bootstrapMultiaddrs,
+      dataSyncEnabled: false,
     });
 
     const { workerResults } = aggregatedResults;
@@ -238,12 +244,14 @@ describe('Interop - Data Replication Tests', () => {
 
     const aggregatedResults = await simulateBurstPeersAtStartUpWithPropagationAndReplication({
       testType: 'REPLICATION',
+      replicationType: 'K_REPLICA',
       totalNodes,
       runDurationSec,
       messageRate,
       pubsubTopic,
       networkId,
       bootstrapMultiaddrs,
+      dataSyncEnabled: false,
     });
 
     const { workerResults } = aggregatedResults;
@@ -292,12 +300,14 @@ describe('Interop - DHT Routing and Iterative Fetching', () => {
 
     const aggregatedResults = await simulateIterativeDataFetch({
       testType: 'REPLICATION',
+      replicationType: 'K_REPLICA',
       totalNodes,
       runDurationSec,
       messageRate,
       pubsubTopic,
       networkId,
       bootstrapMultiaddrs,
+      dataSyncEnabled: false,
     });
 
     const { workerResults } = aggregatedResults;
@@ -313,6 +323,128 @@ describe('Interop - DHT Routing and Iterative Fetching', () => {
     assert.ok(fetchNodeResult?.hasTargetData, `Node failed to iteratively fetch target data`);
 
     const report = generateTestReport('DHT Iterative Fetch', totalNodes, runDurationSec, aggregatedResults, passed);
+    printTestReport(report);
+  });
+});
+
+describe('Interop - Data Convergence (Anti-Entropy) Tests', () => {
+  it(`should converge a late-joining peer's store via background anti-entropy sync`, async () => {
+    const totalNodes = totalNodesArg ?? 6;
+    const runDurationSec = runDurationSecArg ?? 300;
+    const messageRate = messageRateArg ?? 5;
+    const pubsubTopic = pubsubTopicArg ?? '/bench/1';
+    const networkId = networkIdArg ?? 'benchnet-1';
+    const bootstrapMultiaddrs = [];
+    const syncIntervalMs = 15_000;
+
+    const aggregatedResults = await simulateAntiEntropyConvergence({
+      testType: 'REPLICATION',
+      replicationType: 'TOPIC_BASED',
+      dataSyncEnabled: true,
+      syncIntervalMs,
+      totalNodes,
+      runDurationSec,
+      messageRate,
+      pubsubTopic,
+      networkId,
+      bootstrapMultiaddrs,
+    });
+
+    const { workerResults } = aggregatedResults;
+
+    // The late joiner is the only node given an expected-hash set, so it is the
+    // only result carrying hasTargetData.
+    const lateJoiner = workerResults.find((r) => r.hasTargetData !== undefined);
+    const producers = workerResults.filter((r) => r.hasTargetData === undefined);
+    const maxProducerReplicaCount = Math.max(0, ...producers.map((r) => r.replicaCount ?? 0));
+
+    let passed = true;
+
+    if (!lateJoiner || !lateJoiner.hasTargetData) {
+      passed = false;
+      console.log(`⚠️ Late joiner failed to converge via anti-entropy. replicaCount: ${lateJoiner?.replicaCount}`);
+    }
+
+    if (lateJoiner && (lateJoiner.replicaCount ?? 0) < maxProducerReplicaCount) {
+      passed = false;
+      console.log(
+        `⚠️ Late joiner store incomplete: ${lateJoiner.replicaCount} < producer max ${maxProducerReplicaCount}`,
+      );
+    }
+
+    assert.ok(lateJoiner?.hasTargetData, `Late joiner failed to converge missing hashes via anti-entropy`);
+    assert.ok(
+      (lateJoiner?.replicaCount ?? 0) >= maxProducerReplicaCount,
+      `Late joiner store (${lateJoiner?.replicaCount}) did not reach producer store size (${maxProducerReplicaCount})`,
+    );
+
+    const report = generateTestReport(
+      'Anti-Entropy Convergence',
+      totalNodes,
+      runDurationSec,
+      aggregatedResults,
+      passed,
+    );
+    printTestReport(report);
+  });
+
+  it(`should converge a revived (dropped then restored) peer's store via background anti-entropy sync`, async () => {
+    const totalNodes = totalNodesArg ?? 12;
+    const runDurationSec = runDurationSecArg ?? 300;
+    const messageRate = messageRateArg ?? 5;
+    const pubsubTopic = pubsubTopicArg ?? '/bench/1';
+    const networkId = networkIdArg ?? 'benchnet-1';
+    const bootstrapMultiaddrs = [];
+    const syncIntervalMs = 15_000;
+
+    const aggregatedResults = await simulateOfflinePeerRevivalConvergence({
+      testType: 'REPLICATION',
+      replicationType: 'TOPIC_BASED',
+      dataSyncEnabled: true,
+      syncIntervalMs,
+      totalNodes,
+      runDurationSec,
+      messageRate,
+      pubsubTopic,
+      networkId,
+      bootstrapMultiaddrs,
+    });
+
+    const { workerResults } = aggregatedResults;
+
+    // The revived peer is the only node given an expected-hash set, so it is the
+    // only result carrying hasTargetData.
+    const revivedPeer = workerResults.find((r) => r.hasTargetData !== undefined);
+    const survivors = workerResults.filter((r) => r.hasTargetData === undefined);
+    const maxSurvivorReplicaCount = Math.max(0, ...survivors.map((r) => r.replicaCount ?? 0));
+
+    let passed = true;
+
+    if (!revivedPeer || !revivedPeer.hasTargetData) {
+      passed = false;
+      console.log(`⚠️ Revived peer failed to converge via anti-entropy. replicaCount: ${revivedPeer?.replicaCount}`);
+    }
+
+    if (revivedPeer && (revivedPeer.replicaCount ?? 0) < maxSurvivorReplicaCount) {
+      passed = false;
+      console.log(
+        `⚠️ Revived peer store incomplete: ${revivedPeer.replicaCount} < network max ${maxSurvivorReplicaCount}`,
+      );
+    }
+
+    assert.ok(revivedPeer?.hasTargetData, `Revived peer failed to converge missing hashes via anti-entropy`);
+    assert.ok(
+      (revivedPeer?.replicaCount ?? 0) >= maxSurvivorReplicaCount,
+      `Revived peer store (${revivedPeer?.replicaCount}) did not reach network store size (${maxSurvivorReplicaCount})`,
+    );
+
+    const report = generateTestReport(
+      'Anti-Entropy Revival Convergence',
+      totalNodes,
+      runDurationSec,
+      aggregatedResults,
+      passed,
+    );
     printTestReport(report);
   });
 });

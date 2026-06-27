@@ -1,6 +1,6 @@
 /** biome-ignore-all lint/suspicious/noExplicitAny: <As it is going to test with random objects> */
 import { describe, expect, it } from 'vitest';
-import { canonicalSerialize } from '../../../src/data-replication/serializers';
+import { canonicalSerialize } from '../../../src/shared/serializers';
 
 const decode = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
 

@@ -1,44 +1,44 @@
 export { DECHAT_DEFAULTS, isConfigValid, resolveConfig } from './src/config/defaults';
 export type { DeChatConfig } from './src/config/types';
-
+export { AntiEntropyManager, antiEntropyManager } from './src/data-convergence/AntiEntropyManager';
+export {
+  AntiEntropyNetworkExchange,
+  antiEntropyNetworkExchangeEngine,
+} from './src/data-convergence/AntiEntropyNetworkExchange';
+export { PrefixTrie, TrieNode } from './src/data-convergence/PrefixTrie';
+export { TrieBackedReplicaStore } from './src/data-convergence/TrieBackedReplicaStore';
 export { BroadcastPropagationInterface } from './src/data-propagation/broadcast/BroadcastPropagationInterface';
 export { GossipSubPropagation } from './src/data-propagation/broadcast/GossipSubPropagation';
-
 export { DirectPropagationInterface } from './src/data-propagation/direct/DirectPropagationInterface';
 export { DirectStreamPropagation } from './src/data-propagation/direct/DirectStreamPropagation';
-
 export type { PropagatedMessage, PropagationContext } from './src/data-propagation/types';
-
 export { Sha256ContentHashStrategy } from './src/data-replication/content-hash/Sha256ContentHashStrategy';
 export { ContentHashStrategyInterface } from './src/data-replication/content-hash/types';
-
 export { DataReplicationInterface } from './src/data-replication/DataReplicationInterface';
 export {
-  KReplicaContentHashReplication,
+  KReplicaContentReplication as KReplicaContentHashReplication,
   kReplicaContentHashReplication,
-} from './src/data-replication/KReplicaContentHashReplication';
-
+} from './src/data-replication/KReplicaContentReplication';
 export { ReplicationMessageProtocolManager } from './src/data-replication/replication-protocol/ReplicationMessageProtocolManager';
 export { ReplicationProtocolInterface } from './src/data-replication/replication-protocol/ReplicationProtocolInterface';
 export { TransportSelector } from './src/data-replication/replication-protocol/TransportSelector';
-
-export { getGenericDataSerailizer } from './src/data-replication/serializers';
-export type { ContentHash, DataSerializer } from './src/data-replication/types';
-
+export {
+  TopicBasedContentReplication,
+  topicBasedContentHashReplication,
+} from './src/data-replication/TopicBasedContentReplication';
+export type { ContentHash } from './src/data-replication/types';
 export * from './src/metrics';
-
 export { DialQueue, dialQueue } from './src/networking/DialQueue';
 export { PeerAuthenticator, peerAuthenticator } from './src/networking/PeerAuthenticator';
 export { PeerDiscoveryManager, peerDiscoveryManager } from './src/networking/PeerDiscoveryManager';
 export { PeerExchangeService, peerExchangeService } from './src/networking/PeerExchangeService';
 export { PeerRegistry, peerRegistry } from './src/networking/PeerRegistry';
 export { SimplePeerScorer, simplePeerScorer } from './src/networking/SimplePeerScorer';
-
 export { createNode } from './src/node';
-
 export { InMemoryReplicaStore } from './src/replica-store/InMemoryReplicaStore';
 export { LevelDbReplicaStore } from './src/replica-store/LevelDbReplicaStore';
 export { ReplicaStoreInterface } from './src/replica-store/ReplicaStoreInterface';
+export { getGenericDataSerailizer } from './src/shared/serializers';
 
 export type {
   DeChatComponents,

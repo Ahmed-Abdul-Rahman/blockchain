@@ -1,5 +1,5 @@
 import { Level } from 'level';
-import { DataSerializer } from '../data-replication/types';
+import { DataSerializer } from '../shared/types';
 import { DeChatComponents, DeChatFactory } from '../types';
 import { ReplicaStoreInterface } from './ReplicaStoreInterface';
 
@@ -11,6 +11,8 @@ export class LevelDbReplicaStore implements ReplicaStoreInterface {
     this.db = new Level(components.config.strategies.store.dbPath, { valueEncoding: 'binary' });
     this.serializer = components.serializer;
   }
+
+  async init(): Promise<void> {}
 
   async has(hash: string): Promise<boolean> {
     try {
@@ -35,13 +37,19 @@ export class LevelDbReplicaStore implements ReplicaStoreInterface {
   }
 
   async delete(hash: string): Promise<void> {
-    await this.db.del(hash);
+    throw new Error('DeChat is append-only. Publish a TOMBSTONE event instead.');
   }
 
   async keys(): Promise<readonly string[]> {
     const out: string[] = [];
     for await (const k of this.db.keys()) out.push(k.toString());
     return out;
+  }
+
+  public async *getAllKeys(): AsyncIterable<string> {
+    for await (const key of this.db.keys()) {
+      yield key;
+    }
   }
 
   async values(): Promise<readonly Uint8Array[]> {

@@ -5,8 +5,8 @@ import * as ed from '@noble/ed25519';
 import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { AuthMetrics } from '../metrics/interfaces/AuthMetrics';
+import { readFromStream, writeToStream } from '../shared/streamUtils';
 import { DeChatComponents, DeChatFactory } from '../types';
-import { now, readFromStream, writeToStream } from '../utils';
 import { AuthSignMessage, AuthSignResponse } from './types';
 
 export class PeerAuthenticator implements Startable {
@@ -54,7 +54,7 @@ export class PeerAuthenticator implements Startable {
     try {
       const myPeerId = this.node.peerId.toString();
       const remotePeerId = connection.remotePeer.toString();
-      const timestamp = now();
+      const timestamp = Date.now();
 
       const authResponse = (await readFromStream(stream)) as AuthSignMessage;
 
@@ -112,7 +112,7 @@ export class PeerAuthenticator implements Startable {
       throw new Error('PeerAuthenticator requires nodeKey');
     }
 
-    const timestamp = now();
+    const timestamp = Date.now();
     const nonce = Math.random().toString(36).slice(2) + '-' + Date.now().toString(36);
 
     const contextStr = this.generateNonce(this.node.peerId.toString(), targetPeerId.toString(), timestamp, nonce);

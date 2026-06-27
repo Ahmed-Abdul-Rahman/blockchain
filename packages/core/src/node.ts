@@ -13,13 +13,15 @@ import { createLibp2p, Libp2p } from 'libp2p';
 import { PartialDeep } from 'type-fest';
 import { resolveConfig } from './config/defaults';
 import { DeChatConfig } from './config/types';
-import { getGenericDataSerailizer } from './data-replication/serializers';
+import { PrefixTrie } from './data-convergence/PrefixTrie';
+import { TrieBackedReplicaStore } from './data-convergence/TrieBackedReplicaStore';
 import { dialQueue } from './networking/DialQueue';
 import { peerAuthenticator } from './networking/PeerAuthenticator';
 import { peerDiscoveryManager } from './networking/PeerDiscoveryManager';
 import { peerExchangeService } from './networking/PeerExchangeService';
 import { peerRegistry } from './networking/PeerRegistry';
 import { simplePeerScorer } from './networking/SimplePeerScorer';
+import { getGenericDataSerailizer } from './shared/serializers';
 import { DeChatComponents, DeChatStrategies } from './types';
 import { getMetricsInstances } from './utils';
 
@@ -104,14 +106,23 @@ export const createNode = async (
   if (strategies) {
     if (strategies.broadcast) components.strategies!.broadcast = strategies.broadcast(components as DeChatComponents);
     if (strategies.direct) components.strategies!.direct = strategies.direct(components as DeChatComponents);
-    if (strategies.replicaStore)
-      components.strategies!.replicaStore = strategies.replicaStore(components as DeChatComponents);
     if (strategies.contentHasher)
       components.strategies!.contentHasher = strategies.contentHasher(components as DeChatComponents);
+    if (strategies.replicaStore && components.strategies?.contentHasher) {
+      const baseReplicaStore = strategies.replicaStore(components as DeChatComponents);
+      const prefixTrie = new PrefixTrie(components.strategies.contentHasher);
+      const wrappedStore = new TrieBackedReplicaStore(baseReplicaStore, prefixTrie, components.serializer);
+      components.strategies!.prefixTrie = prefixTrie;
+      components.strategies!.replicaStore = wrappedStore;
+    }
     if (strategies.replicationProtocol)
       components.strategies!.replicationProtocol = strategies.replicationProtocol(components as DeChatComponents);
     if (strategies.dataReplication)
       components.strategies!.dataReplication = strategies.dataReplication(components as DeChatComponents);
+    if (strategies.networkExchanger)
+      components.strategies!.networkExchanger = strategies.networkExchanger(components as DeChatComponents);
+    if (strategies.antiEntropyManager)
+      components.strategies!.antiEntropyManager = strategies.antiEntropyManager(components as DeChatComponents);
   }
 
   const finalComponents = components as DeChatComponents;
@@ -125,11 +136,12 @@ export const createNode = async (
     finalComponents.libp2p,
   ];
 
-  // if (nodeOptions?.peerSeeds?.length) pexService.addPeers(nodeOptions.peerSeeds);
-
   return {
     components: finalComponents,
     start: async () => {
+      if (components.strategies?.replicaStore) {
+        await components.strategies.replicaStore.init();
+      }
       for (const s of startables) await s.start();
       // Start strategies if they implement Startable
       const allStrategies = Object.values(finalComponents.strategies);

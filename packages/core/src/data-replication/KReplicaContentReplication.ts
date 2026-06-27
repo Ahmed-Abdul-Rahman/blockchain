@@ -2,21 +2,22 @@ import { PriorityQueue } from '@datastructures-js/priority-queue';
 import { logger } from '@dechat/common';
 import { calculateXorDistance, toHashBigInt } from '@dechat/crypto';
 import { ReplicaStoreInterface } from '../replica-store/ReplicaStoreInterface';
+import { getGenericDataSerailizer } from '../shared/serializers';
+import { DataSerializer } from '../shared/types';
 import { DeChatComponents, DeChatFactory } from '../types';
 import { ContentHashStrategyInterface } from './content-hash/types';
 import { DataReplicationInterface } from './DataReplicationInterface';
 import { InflightRequestTracker, inflightRequestTracker } from './replication-protocol/InflightRequestTracker';
 import { ReplicationEngineDelegate } from './replication-protocol/ReplicationEngineDelegateInterface';
 import { ReplicationProtocolInterface } from './replication-protocol/ReplicationProtocolInterface';
-import { getGenericDataSerailizer } from './serializers';
-import { ContentHash, DataSerializer } from './types';
+import { ContentHash } from './types';
 
 interface PeerDistance {
   peerId: string;
   distance: bigint;
 }
 
-export class KReplicaContentHashReplication implements DataReplicationInterface, ReplicationEngineDelegate {
+export class KReplicaContentReplication implements DataReplicationInterface, ReplicationEngineDelegate {
   private inflightTracker: InflightRequestTracker;
 
   private config: DeChatComponents['config']['strategies']['replication'];
@@ -34,10 +35,12 @@ export class KReplicaContentHashReplication implements DataReplicationInterface,
   readonly replicationProtocol: ReplicationProtocolInterface;
 
   public constructor(components: DeChatComponents) {
-    if (!components.strategies.contentHasher) throw new Error('KReplicaReplication requires a contentHasher strategy.');
-    if (!components.strategies.replicaStore) throw new Error('KReplicaReplication requires a replicaStore strategy.');
+    if (!components.strategies.contentHasher)
+      throw new Error('KReplicaContentReplication requires a contentHasher strategy.');
+    if (!components.strategies.replicaStore)
+      throw new Error('KReplicaContentReplication requires a replicaStore strategy.');
     if (!components.strategies.replicationProtocol)
-      throw new Error('KReplicaReplication requires a replicationProtocol strategy.');
+      throw new Error('KReplicaContentReplication requires a replicationProtocol strategy.');
 
     this.selfPeerId = components.libp2p.peerId.toString();
     this.config = components.config.strategies.replication;
@@ -104,7 +107,8 @@ export class KReplicaContentHashReplication implements DataReplicationInterface,
   };
 
   public readonly evict = async (hash: ContentHash): Promise<void> => {
-    await this.storage.delete(hash);
+    // await this.storage.delete(hash);
+    // Not supported for K-replica replication
   };
 
   private readonly persist = async <T>(hash: ContentHash, data: T): Promise<void> => {
@@ -119,7 +123,7 @@ export class KReplicaContentHashReplication implements DataReplicationInterface,
    * Uses a Priority Queue to efficiently traverse the network toward the target hash.
    * @param hash - The content hash of the missing data
    */
-  public async requestMissingData<T>(hash: ContentHash): Promise<T | null> {
+  public async requestMissingData<T>(hash: ContentHash, targetPeerId?: string): Promise<T | null> {
     if (await this.storage.has(hash)) {
       const rawBytes = await this.storage.get(hash);
       if (rawBytes) return this.serializer.deserialize<T>(rawBytes);
@@ -135,6 +139,11 @@ export class KReplicaContentHashReplication implements DataReplicationInterface,
       if (a.distance > b.distance) return 1;
       return 0;
     });
+
+    // Enqueue the targetPeerId if passed, this should be at the first in the queue, as it is highly probable that this peer has the data
+    if (targetPeerId) {
+      pq.enqueue({ peerId: targetPeerId, distance: calculateXorDistance(toHashBigInt(targetPeerId), contentBigInt) });
+    }
 
     // Enqueue locally known peers
     for (const peerId of this.getKnownPeers()) {
@@ -233,7 +242,7 @@ export class KReplicaContentHashReplication implements DataReplicationInterface,
     logger.debug(`Passive replication error from ${peerId}`, { hash, reason });
   }
 
-  public readonly executeWithRetry = async <T>(fn: () => Promise<T>): Promise<T> => {
+  private readonly executeWithRetry = async <T>(fn: () => Promise<T>): Promise<T> => {
     let attempt = 0;
     while (true) {
       try {
@@ -251,6 +260,6 @@ export class KReplicaContentHashReplication implements DataReplicationInterface,
   };
 }
 
-export const kReplicaContentHashReplication = (): DeChatFactory<KReplicaContentHashReplication> => {
-  return (components) => new KReplicaContentHashReplication(components);
+export const kReplicaContentHashReplication = (): DeChatFactory<KReplicaContentReplication> => {
+  return (components) => new KReplicaContentReplication(components);
 };

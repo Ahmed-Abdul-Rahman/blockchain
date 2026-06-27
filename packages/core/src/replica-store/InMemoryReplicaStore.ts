@@ -1,4 +1,4 @@
-import { DataSerializer } from '../data-replication/types';
+import { DataSerializer } from '../shared/types';
 import { DeChatComponents, DeChatFactory } from '../types';
 import { ReplicaStoreInterface } from './ReplicaStoreInterface';
 
@@ -11,6 +11,8 @@ export class InMemoryReplicaStore implements ReplicaStoreInterface {
     this.serializer = components.serializer;
     this.storage = new Map<string, Uint8Array>();
   }
+
+  async init(): Promise<void> {}
 
   async has(hash: string): Promise<boolean> {
     return this.storage.has(hash);
@@ -25,11 +27,17 @@ export class InMemoryReplicaStore implements ReplicaStoreInterface {
   }
 
   async delete(hash: string): Promise<void> {
-    this.storage.delete(hash);
+    throw new Error('DeChat is append-only. Publish a TOMBSTONE event instead.');
   }
 
   async keys(): Promise<readonly string[]> {
     return Array.from(this.storage.keys());
+  }
+
+  public async *getAllKeys(): AsyncIterable<string> {
+    for (const key of this.storage.keys()) {
+      yield key;
+    }
   }
 
   async values(): Promise<readonly Uint8Array[]> {
