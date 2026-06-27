@@ -103,9 +103,23 @@ export const simulateStaggeredPeersAtStartUp = (workerDataConfig: WorkerDataConf
   return scenarioResults;
 };
 
+const finalizeChurnFromStatistics = (
+  statsByIndex: Map<number, WorkerResult>,
+  totalNodes: number,
+  handleComplete: (results: WorkerResult[]) => void,
+): void => {
+  const results = Array.from({ length: totalNodes }, (_, index) => {
+    const stats = statsByIndex.get(index);
+    if (!stats) throw new Error(`Missing statistics snapshot for node index ${index}`);
+    return stats;
+  });
+  handleComplete(results);
+};
+
 export const simulatePeerChurn = async (workerDataConfig: WorkerDataConfig): Promise<AggregatedResult> => {
   const scenario: RunWorkersScenario = async (workers, workerResults, handleComplete, handleWorkerError) => {
     const terminationPromises: Promise<boolean>[] = [];
+    const churnStatsByIndex = new Map<number, WorkerResult>();
     const { totalNodes } = workerDataConfig;
 
     for (let i = 0; i < totalNodes; i++) {
@@ -117,7 +131,15 @@ export const simulatePeerChurn = async (workerDataConfig: WorkerDataConfig): Pro
       } as WorkerData;
 
       workers.push(
-        createWorker(nodeWorkerPath, workerData, workerResults, handleComplete, handleWorkerError, terminationPromises),
+        createWorker(
+          nodeWorkerPath,
+          workerData,
+          workerResults,
+          handleComplete,
+          handleWorkerError,
+          terminationPromises,
+          churnStatsByIndex,
+        ),
       );
     }
 
@@ -143,13 +165,18 @@ export const simulatePeerChurn = async (workerDataConfig: WorkerDataConfig): Pro
         handleComplete,
         handleWorkerError,
         terminationPromises,
+        churnStatsByIndex,
       );
       workers[index] = revivedWorker;
     });
 
+    const CHURN_RECONNECT_SETTLE_MS = 120_000;
+    await delay(CHURN_RECONNECT_SETTLE_MS);
     await delay(workerDataConfig.runDurationSec * 1000);
-    terminateWorkers(workers);
-    await Promise.all(terminationPromises);
+    postMessageToWorkers(workers, { type: 'statistics' });
+    await delay(15_000);
+    finalizeChurnFromStatistics(churnStatsByIndex, totalNodes, handleComplete);
+    await Promise.all(workers.map(({ workerRef }) => terminateWorker(workerRef)));
   };
 
   const { scenarioResults } = setupScenario(scenario);

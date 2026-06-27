@@ -21,10 +21,22 @@ let peerExchangeService: PeerExchangeService | null = null;
 let checkTimer: NodeJS.Timeout | null = null;
 let selfPeerId: string | null = null;
 
-const getStatistics = (node: Libp2p, pexService: PeerExchangeService): WorkerResult => ({
+const countOpenUniqueConnections = (node: Libp2p): number => {
+  const seen = new Set<string>();
+  return node.getConnections().filter(({ remotePeer, status }) => {
+    if (status !== 'open') return false;
+    const remotePeerId = remotePeer.toString();
+    if (seen.has(remotePeerId)) return false;
+    seen.add(remotePeerId);
+    return true;
+  }).length;
+};
+
+const getStatistics = (node: Libp2p, pexService: PeerExchangeService, index: number): WorkerResult => ({
+  index,
   me: selfPeerId,
   verified: pexService.peerRegistry.getSize(),
-  connections: node.getConnections().length,
+  connections: countOpenUniqueConnections(node),
   ttfvpMs: ttfvp ?? -1,
   latencyP50: percentile(latencies, 50),
   latencyP95: percentile(latencies, 95),
@@ -56,7 +68,7 @@ const registerPubsub = (pubsubTopic: string) => {
   pubsub.addEventListener('message', subHandler);
 };
 
-const terminateAndCleanUp = async (node: Libp2p, stopEngine: () => Promise<void>) => {
+const terminateAndCleanUp = async (node: Libp2p, stopEngine: () => Promise<void>, workerIndex: number) => {
   if (checkTimer) {
     clearInterval(checkTimer);
     checkTimer = null;
@@ -64,7 +76,7 @@ const terminateAndCleanUp = async (node: Libp2p, stopEngine: () => Promise<void>
   if (!pubsub || !peerExchangeService) return;
 
   pubsub.removeEventListener('message', subHandler);
-  parentPort?.postMessage({ type: 'done', stats: getStatistics(node, peerExchangeService) });
+  parentPort?.postMessage({ type: 'done', stats: getStatistics(node, peerExchangeService, workerIndex) });
 
   // Cleanly stop the entire DI container (libp2p, dialQueue, pexService, etc.)
   await stopEngine();
@@ -117,11 +129,11 @@ const runNode = async () => {
     if (message.type === 'statistics')
       parentPort?.postMessage({
         type: 'statistics',
-        stats: getStatistics(node, pexService),
+        stats: getStatistics(node, pexService, index),
       });
     else if (message.type === 'terminate') {
       terminateThread = true;
-      await terminateAndCleanUp(node, engine.stop); // Pass the container's unified stop method
+      await terminateAndCleanUp(node, engine.stop, index);
       process.exit(0);
     }
   });

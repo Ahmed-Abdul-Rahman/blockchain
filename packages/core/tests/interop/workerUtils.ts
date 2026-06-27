@@ -37,6 +37,7 @@ export const createWorker = (
   onComplete: (results: WorkerResult[]) => void,
   onWorkerError: (index: number, error: unknown) => void,
   terminationPromises: Promise<boolean>[],
+  latestStatsByIndex?: Map<number, WorkerResult>,
 ): WorkerDetails => {
   const { index, totalNodes } = workerData;
   const worker = new Worker(workerPath, {
@@ -55,8 +56,9 @@ export const createWorker = (
       if (workerResults.length === totalNodes) onComplete(workerResults);
     } else if (message.type === 'statistics') {
       const stats = message.stats as WorkerResult;
+      latestStatsByIndex?.set(index, stats);
       console.log(
-        `[${index + 1}/${totalNodes}] done: node=${stats.me}, verified=${stats.verified}, connections=${stats.connections}`,
+        `[${index + 1}/${totalNodes}] stats: node=${stats.me}, verified=${stats.verified}, connections=${stats.connections}`,
       );
     } else if (message.type === 'terminate') {
       terminationPromises.push(

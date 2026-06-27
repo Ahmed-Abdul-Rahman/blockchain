@@ -1,6 +1,7 @@
 import { Worker } from 'node:worker_threads';
 
 export type WorkerResult = {
+  index?: number;
   me?: string | null;
   verified: number;
   connections: number;
