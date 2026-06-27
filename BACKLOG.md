@@ -35,7 +35,7 @@ The core architecture has successfully transitioned to a robust, Dependency-Inje
 
 ## 🛡️ Category 2: Network Reliability & Robustness
 
-### Task 2.1: Implement Background Anti-Entropy Sync (Split-Brain Recovery) - Data convergence
+### Task 2.1: Implement Background Anti-Entropy Sync (Split-Brain Recovery) - Data convergence - Completed
 * **Severity:** High (Critical for Data Consistency)
 * **The Issue:** The current `KReplica` strategy is *reactive* (replicating data as it arrives via pubsub). If the network suffers a temporary partition (Split-Brain), nodes on Side A will miss all gossip events from Side B.
 * **The Impact:** When the partition heals, nodes will have diverging databases and missing messages, permanently breaking the chat history.
