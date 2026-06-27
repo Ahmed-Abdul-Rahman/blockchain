@@ -5,6 +5,7 @@ import { multiaddr } from '@multiformats/multiaddr';
 import { DialQueueMetrics } from '../metrics/interfaces/DialQueueMetrics.js';
 import { DeChatComponents, DeChatFactory } from '../types.js';
 import { PeerInfoLite } from './types.js';
+import { normalizeDialAddrs } from './utils.js';
 
 export class DialQueue implements Startable {
   private node: Libp2p;
@@ -146,22 +147,22 @@ export class DialQueue implements Startable {
    */
   private async dialPeer(peerInfo: PeerInfoLite): Promise<boolean> {
     const { peerId: peerIdStr, addresses } = peerInfo;
-    const dialable = (addresses ?? []).filter((addr) => addr.includes('/ip4/') || addr.includes('/ip6/'));
-    if (dialable.length === 0) return false;
+    const dialable = normalizeDialAddrs(addresses ?? [], peerIdStr);
+
+    for (const addr of dialable) {
+      try {
+        await this.node.dial(multiaddr(addr));
+        return true;
+      } catch (error) {
+        logger.debug(`Failed to dial peer ${peerIdStr} at ${addr}`, error);
+      }
+    }
 
     try {
-      for (const addr of dialable) {
-        try {
-          await this.node.dial(multiaddr(addr));
-          return true;
-        } catch (error) {
-          logger.debug(`Failed to dial peer ${peerIdStr} at ${addr}`, error);
-        }
-      }
-      return false;
+      await this.node.dial(peerIdFromString(peerIdStr));
+      return true;
     } catch (error) {
-      logger.warn(`Unexpected error dialing peer ${peerIdStr}`, error);
-      logger.debug(error);
+      logger.debug(`Failed to dial peer ${peerIdStr} via peer-id fallback`, error);
       return false;
     }
   }

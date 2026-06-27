@@ -76,6 +76,36 @@ export const sleep = (ms: number): Promise<unknown> => new Promise((r) => setTim
 
 export const filterAddrs = (addrs: string[]): string[] => (addrs || []).slice(0, 4);
 
+/**
+ * Normalizes a multiaddr for outbound dialing on the same host (e.g. interop workers).
+ * Rewrites wildcard listen IPs and ensures a /p2p/ component is present.
+ */
+export const normalizeDialAddr = (addr: string, peerId: string): string | null => {
+  if (!addr.includes('/ip4/') && !addr.includes('/ip6/')) return null;
+
+  let normalized = addr.replace('/ip4/0.0.0.0/', '/ip4/127.0.0.1/');
+  if (!normalized.includes('/p2p/')) {
+    normalized = `${normalized}/p2p/${peerId}`;
+  }
+  return normalized;
+};
+
+/** Returns unique, dial-ready multiaddrs for a peer. */
+export const normalizeDialAddrs = (addrs: readonly string[], peerId: string): string[] => {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const addr of addrs) {
+    const normalized = normalizeDialAddr(addr, peerId);
+    if (normalized && !seen.has(normalized)) {
+      seen.add(normalized);
+      result.push(normalized);
+    }
+  }
+
+  return result;
+};
+
 export const publishWithRetry = async (
   pubsub: GossipSub,
   topic: string,
