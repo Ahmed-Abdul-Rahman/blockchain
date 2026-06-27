@@ -88,7 +88,9 @@ export class PeerExchangeService implements Startable {
    * @param peers
    */
   enqueueDial(peers: PeerInfoLite[]): void {
-    this.dialQ.enqueue(peers.filter(({ peerId }) => this.shouldDial(peerId)));
+    this.dialQ.enqueue(
+      peers.filter(({ peerId, addresses }) => this.shouldDial(peerId) && (addresses?.length ?? 0) > 0),
+    );
   }
 
   /**
@@ -146,10 +148,12 @@ export class PeerExchangeService implements Startable {
           const share = sampleList(
             this.peerRegistry.getCandidates(this.config.maxSharedPeers * 2),
             this.config.maxSharedPeers,
-          ).map(({ peerId, addresses }) => ({
-            peerId,
-            addresses: filterAddrs(addresses),
-          }));
+          )
+            .filter((p) => p.addresses.length > 0)
+            .map(({ peerId, addresses }) => ({
+              peerId,
+              addresses: filterAddrs(addresses),
+            }));
           const response: PEX_PEER_LIST = { type: 'PEER_LIST', peers: share };
           await writeToStream(stream, response);
         }
@@ -168,10 +172,12 @@ export class PeerExchangeService implements Startable {
     logger.info('Registered Peer Exchange Topic');
     while (this.isPeerExchangeStarted) {
       try {
-        const peers = sampleList(this.peerRegistry.getCandidates(256), this.config.maxSharedPeers).map((p) => ({
-          peerId: p.peerId,
-          addresses: filterAddrs(p.addresses),
-        }));
+        const peers = sampleList(this.peerRegistry.getCandidates(256), this.config.maxSharedPeers)
+          .filter((p) => p.addresses.length > 0)
+          .map((p) => ({
+            peerId: p.peerId,
+            addresses: filterAddrs(p.addresses),
+          }));
         const baseDelay = peers.length ? this.config.gossipIntervalMs : 1000;
         const jitter = random(1, 100); // Add random jitter to avoid thundering herd problem or sync storms across nodes
         await delay(baseDelay + jitter); // Delay always to avoid CPU consumption when no peers present
@@ -253,7 +259,9 @@ export class PeerExchangeService implements Startable {
 
       logger.trace('Received pex gossip message from: ', originPeerInfo?.peerId);
       // absorb and reward
-      const updatedPeers = (peers || []).slice(0, this.config.maxSharedPeers);
+      const updatedPeers = (peers || [])
+        .filter((p) => (p.addresses?.length ?? 0) > 0)
+        .slice(0, this.config.maxSharedPeers);
       this.peerRegistry.upsertMany(updatedPeers);
       if (originPeerInfo) this.peerRegistry.upsert(originPeerInfo);
 

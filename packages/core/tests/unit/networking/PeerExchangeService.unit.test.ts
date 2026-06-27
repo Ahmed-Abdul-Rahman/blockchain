@@ -75,14 +75,21 @@ describe('PeerExchangeService', () => {
     expect(mockNode.handle).toHaveBeenCalledWith(pexProtocol, expect.any(Function));
   });
 
-  it('should enqueue peers for dialing if they are new (Bloom Filter)', () => {
-    const peers = [{ peerId: 'peer-A', addresses: [] }];
-    pexService.enqueueDial(peers);
-    expect(mockDialQ.enqueue).toHaveBeenCalledWith(peers);
+  it('should enqueue peers for dialing if they are new (Bloom Filter) and have addresses', () => {
+    const peersWithAddrs = [{ peerId: 'peer-A', addresses: ['/ip4/127.0.0.1/tcp/4001/p2p/peer-A'] }];
+    pexService.enqueueDial(peersWithAddrs);
+    expect(mockDialQ.enqueue).toHaveBeenCalledWith(peersWithAddrs);
 
     mockDialQ.enqueue.mockClear();
 
-    pexService.enqueueDial(peers);
+    // Bloom filter blocks re-dial of the same peer
+    pexService.enqueueDial(peersWithAddrs);
+    expect(mockDialQ.enqueue).toHaveBeenCalledWith([]);
+
+    mockDialQ.enqueue.mockClear();
+
+    // Peers without addresses are never enqueued
+    pexService.enqueueDial([{ peerId: 'peer-B', addresses: [] }]);
     expect(mockDialQ.enqueue).toHaveBeenCalledWith([]);
   });
 

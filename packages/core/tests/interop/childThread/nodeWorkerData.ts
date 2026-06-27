@@ -1,7 +1,9 @@
 import { parentPort, threadId, workerData } from 'node:worker_threads';
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
+import { logger } from '@dechat/common';
 import { sha256 } from '@dechat/crypto';
 import { Libp2p, Message, ServiceMap } from '@libp2p/interface';
+import { multiaddr } from '@multiformats/multiaddr';
 import { delay, differenceWith, random } from 'es-toolkit';
 import { GossipSubPropagation } from '../../../src/data-propagation/broadcast/GossipSubPropagation';
 import { PeerExchangeService } from '../../../src/networking/PeerExchangeService';
@@ -17,6 +19,11 @@ const GossipPropTopicA = '/deChat/v1/topic/test-chat-a';
 const GossipPropTopicB = '/deChat/v1/topic/test-chat-b';
 const DirectStreamProtocol = '/deChat/v1/protocol/direct';
 const latencies: number[] = [];
+
+// Prevent libp2p background dial rejections from crashing the worker thread.
+process.on('unhandledRejection', (reason) => {
+  logger.warn(`[Worker ${threadId}] Suppressed unhandledRejection: ${String(reason)}`);
+});
 
 let terminateThread = false;
 let pubsub: GossipSub | null = null;
@@ -314,6 +321,30 @@ const runNodeDataReplication = async () => {
     } else if (message.type === 'report_hashes') {
       const hashes = (await replicaStore.keys()) as readonly string[];
       parentPort?.postMessage({ type: 'hashes_report', index, hashes });
+    } else if (message.type === 'report_listen_addrs') {
+      const peerId = node.peerId.toString();
+      const addrs = node
+        .getMultiaddrs()
+        .map((addr) => addr.toString().replace('/ip4/0.0.0.0/', '/ip4/127.0.0.1/'))
+        .filter((addr) => addr.includes('/ip4/127.0.0.1/'))
+        .map((addr) => (addr.includes('/p2p/') ? addr : `${addr}/p2p/${peerId}`));
+      parentPort?.postMessage({ type: 'listen_addrs_report', index, peerId, addrs });
+    } else if (message.type === 'connect_peers') {
+      const multiaddrs = (message.multiaddrs ?? []) as string[];
+      const selfPeerId = node.peerId.toString();
+
+      for (const addrStr of multiaddrs) {
+        try {
+          const normalized = addrStr.replace('/ip4/0.0.0.0/', '/ip4/127.0.0.1/');
+          const ma = multiaddr(normalized);
+          const addrPeerId = ma.getPeerId()?.toString();
+          if (addrPeerId === selfPeerId) continue;
+          await node.dial(ma);
+        } catch (error) {
+          logger.debug(`[Worker ${index}] Failed to dial ${addrStr}: ${(error as Error).message}`);
+        }
+      }
+      parentPort?.postMessage({ type: 'connect_peers_done', index });
     } else if (message.type === 'set_expected_hashes') {
       // Record the hashes we expect anti-entropy to deliver, WITHOUT triggering a
       // manual fetch. hasTargetData in the final stats then reflects pure convergence.

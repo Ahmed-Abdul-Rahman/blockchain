@@ -46,7 +46,17 @@ export const configureNode = async (
   nodeCleanUp: () => Promise<void>;
 }> => {
   const args = workerData as WorkerData;
-  const { index, nodeSeed, networkId, testType, replicationType, dataSyncEnabled = false, syncIntervalMs } = args;
+  const {
+    index,
+    nodeSeed,
+    networkId,
+    testType,
+    replicationType,
+    dataSyncEnabled = false,
+    syncIntervalMs,
+    bootstrapMultiaddrs = [],
+    enableMdns = true,
+  } = args;
 
   let strategies: DeChatStrategies = {
     broadcast: gossipSubPropagation(),
@@ -73,12 +83,12 @@ export const configureNode = async (
     {
       network: {
         listenAddrs: ['/ip4/0.0.0.0/tcp/0'],
-        bootstrapPeers: [],
+        bootstrapPeers: bootstrapMultiaddrs,
         maxConnections: 150,
         minConnections: 8,
         maxIncomingPendingConnections: 20,
       },
-      discovery: { enableMdns: true, onBoardingPeerTime },
+      discovery: { enableMdns, onBoardingPeerTime },
       ...(syncIntervalMs ? { strategies: { synchronizer: { syncIntervalMs } } } : {}),
     },
     strategies,
