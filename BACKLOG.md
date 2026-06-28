@@ -14,7 +14,7 @@ The core architecture has successfully transitioned to a robust, Dependency-Inje
 
 ## 🏎️ Category 1: Performance & CPU Optimizations
 
-### Task 1.1: Replace JSON Serialization with Binary Formats
+### Task 1.1: Replace JSON Serialization with Binary Formats — Completed (Phase 1)
 * **Severity:** High
 * **The Issue:** The `GenericDataSerializer` currently uses `JSON.stringify` and `JSON.parse`. `JSON.parse` is synchronous and blocks the Node.js event loop.
 * **The Impact:** In a P2P network, nodes parse hundreds of messages per second during a broadcast storm. If a peer sends a large payload (e.g., 256KB), your node freezes while parsing it, causing latency spikes and dropping other concurrent TCP/WebRTC connections.
@@ -22,6 +22,7 @@ The core architecture has successfully transitioned to a robust, Dependency-Inje
   2. Implement **Protocol Buffers** (using `protobufjs` or `protons`) or **CBOR** (using `cbor-x`).
   3. Define strict schema boundaries for `PropagatedMessage` to ensure payload sizes are known and validated before allocation.
 * **Affected Modules:** `src/data-replication/serializers.ts`, `GenericDataSerializer`
+* **Completed (2026-06-28, PR #35):** Unified wire encoding behind `components.serializer` with CBOR default (`cbor-x`), config-driven JSON fallback, length-prefixed stream framing, and `ReplicationContent` as `Uint8Array`. All propagation, replication, PEX, and auth paths use DI. `canonicalSerialize` unchanged for content hashing. Protobuf envelopes and strict pre-allocation schemas deferred to Phase 2.
 
 ### Task 1.2: Optimize Kademlia XOR Distance Hot-Path
 * **Severity:** Medium
@@ -35,7 +36,7 @@ The core architecture has successfully transitioned to a robust, Dependency-Inje
 
 ## 🛡️ Category 2: Network Reliability & Robustness
 
-### Task 2.1: Implement Background Anti-Entropy Sync (Split-Brain Recovery) - Data convergence
+### Task 2.1: Implement Background Anti-Entropy Sync (Split-Brain Recovery) - Data convergence - Completed
 * **Severity:** High (Critical for Data Consistency)
 * **The Issue:** The current `KReplica` strategy is *reactive* (replicating data as it arrives via pubsub). If the network suffers a temporary partition (Split-Brain), nodes on Side A will miss all gossip events from Side B.
 * **The Impact:** When the partition heals, nodes will have diverging databases and missing messages, permanently breaking the chat history.

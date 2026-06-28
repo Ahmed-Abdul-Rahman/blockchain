@@ -38,7 +38,16 @@ export { createNode } from './src/node';
 export { InMemoryReplicaStore } from './src/replica-store/InMemoryReplicaStore';
 export { LevelDbReplicaStore } from './src/replica-store/LevelDbReplicaStore';
 export { ReplicaStoreInterface } from './src/replica-store/ReplicaStoreInterface';
-export { getGenericDataSerailizer } from './src/shared/serializers';
+export type { DataSerializer, FramedStreamCodec, WireCodec, WireFormatName } from './src/shared/serialization';
+export {
+  canonicalSerialize,
+  createCborWireSerializer,
+  createFramedStreamCodec,
+  createJsonWireSerializer,
+  createWireSerializer,
+  getGenericDataSerailizer,
+  WIRE_FORMAT,
+} from './src/shared/serialization';
 
 export type {
   DeChatComponents,

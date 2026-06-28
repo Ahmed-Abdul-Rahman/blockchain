@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DECHAT_DEFAULTS } from '../../../src/config/defaults';
 import { NoopPeerExchangeMetrics } from '../../../src/metrics';
 import { PeerExchangeService, peerExchangeService } from '../../../src/networking/PeerExchangeService';
+import { createCborWireSerializer } from '../../../src/shared/serialization';
 import { DeChatComponents } from '../../../src/types';
 
 describe('PeerExchangeService', () => {
@@ -53,6 +54,7 @@ describe('PeerExchangeService', () => {
 
     mockComponents = {
       libp2p: mockNode as any,
+      serializer: createCborWireSerializer(),
       config: DECHAT_DEFAULTS,
       dialQueue: mockDialQ as any,
       scorer: mockScorer as any,
@@ -107,9 +109,11 @@ describe('PeerExchangeService', () => {
     const fakeEvent = new CustomEvent('message', {
       detail: {
         topic: pexTopic,
-        data: new TextEncoder().encode(
-          JSON.stringify({ from: 'malicious-peer', type: 'INVALID', peers: 'not-an-array' }),
-        ),
+        data: createCborWireSerializer().serialize({
+          from: 'malicious-peer',
+          type: 'INVALID',
+          peers: 'not-an-array',
+        }),
       },
     });
 

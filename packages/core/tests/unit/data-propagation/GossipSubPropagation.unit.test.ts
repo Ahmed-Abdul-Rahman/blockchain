@@ -1,6 +1,7 @@
 /** biome-ignore-all lint/suspicious/noExplicitAny: <its a test file> */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GossipSubPropagation } from '../../../src/data-propagation/broadcast/GossipSubPropagation';
+import { createCborWireSerializer } from '../../../src/shared/serialization';
 import { DeChatComponents } from '../../../src/types';
 
 describe('GossipSubPropagation', () => {
@@ -24,6 +25,7 @@ describe('GossipSubPropagation', () => {
 
     mockComponents = {
       libp2p: mockNode as any,
+      serializer: createCborWireSerializer(),
       config: {
         strategies: {
           propagation: {
@@ -79,7 +81,12 @@ describe('GossipSubPropagation', () => {
       detail: {
         topic: 'test-topic',
         // FIX: Provide a valid PropagatedMessage with an 'id'
-        data: new TextEncoder().encode(JSON.stringify({ id: 'msg1', payload: 'data' })),
+        data: createCborWireSerializer().serialize({
+          id: 'msg1',
+          payload: 'data',
+          from: 'peer-a',
+          timestamp: Date.now(),
+        }),
       },
     });
 

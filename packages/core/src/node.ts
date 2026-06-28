@@ -21,7 +21,7 @@ import { peerDiscoveryManager } from './networking/PeerDiscoveryManager';
 import { peerExchangeService } from './networking/PeerExchangeService';
 import { peerRegistry } from './networking/PeerRegistry';
 import { simplePeerScorer } from './networking/SimplePeerScorer';
-import { getGenericDataSerailizer } from './shared/serializers';
+import { createWireSerializer } from './shared/serialization';
 import { DeChatComponents, DeChatStrategies } from './types';
 import { getMetricsInstances } from './utils';
 
@@ -40,6 +40,8 @@ export const createNode = async (
     config,
     strategies: {},
   } as Partial<DeChatComponents>;
+
+  components.serializer = createWireSerializer(config.serialization.wireFormat);
 
   const peerDiscovery: (
     | ((components: MulticastDNSComponents) => PeerDiscovery)
@@ -101,7 +103,6 @@ export const createNode = async (
   components.pexService = peerExchangeService()(components as DeChatComponents);
   components.peerAuthenticator = peerAuthenticator()(components as DeChatComponents);
   components.peerDiscovery = peerDiscoveryManager()(components as DeChatComponents);
-  components.serializer = getGenericDataSerailizer();
 
   if (strategies) {
     if (strategies.broadcast) components.strategies!.broadcast = strategies.broadcast(components as DeChatComponents);

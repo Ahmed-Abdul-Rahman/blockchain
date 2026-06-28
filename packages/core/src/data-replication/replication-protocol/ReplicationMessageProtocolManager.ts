@@ -104,7 +104,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
       const content: ReplicationContent = {
         type: 'replication_content',
         hash,
-        replicationContent: Array.from(result.data),
+        replicationContent: result.data,
       };
       await this.sendMessage(content, from).catch((error) =>
         logger.error('[ReplicationMessageProtocolManager] Failed sending replication content:', error),
@@ -129,7 +129,7 @@ export class ReplicationMessageProtocolManager implements ReplicationProtocolInt
     const isExplicitRequest = this.resolvePendingRequest(hash, peerIdStr, msg.payload);
 
     if (!isExplicitRequest && this.delegate) {
-      const bytes = new Uint8Array(msg.payload.replicationContent);
+      const bytes = msg.payload.replicationContent;
       await this.delegate.onPeerDeliveredContent(hash, bytes, peerIdStr);
     }
   }

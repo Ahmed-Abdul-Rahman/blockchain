@@ -21,6 +21,7 @@ import { PeerExchangeService } from '../../../src/networking/PeerExchangeService
 import { SimplePeerScorer } from '../../../src/networking/SimplePeerScorer';
 import { createNode } from '../../../src/node';
 import { ReplicaStoreInterface, replicaStore } from '../../../src/replica-store/ReplicaStoreInterface';
+import { WireCodec } from '../../../src/shared/serialization/types';
 import { DeChatStrategies } from '../../../src/types';
 import { WorkerData } from '../types';
 
@@ -43,6 +44,7 @@ export const configureNode = async (
   replicaStore: ReplicaStoreInterface | undefined;
   contentHasher: ContentHashStrategyInterface | undefined;
   dataReplication: DataReplicationInterface | undefined;
+  serializer: WireCodec;
   nodeCleanUp: () => Promise<void>;
 }> => {
   const args = workerData as WorkerData;
@@ -110,6 +112,7 @@ export const configureNode = async (
     replicaStore: components.strategies.replicaStore,
     contentHasher: components.strategies.contentHasher,
     dataReplication: components.strategies.dataReplication,
+    serializer: components.serializer,
     nodeCleanUp: stop,
   };
 };

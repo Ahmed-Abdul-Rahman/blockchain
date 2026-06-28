@@ -3,7 +3,7 @@
 import { logger } from '@dechat/common';
 import { IncomingStreamData, Libp2p, PeerId } from '@libp2p/interface';
 import { peerIdFromString } from '@libp2p/peer-id';
-import { readMessagesFromStream, writeToStream } from '../../shared/streamUtils';
+import { createFramedStreamCodec, FramedStreamCodec } from '../../shared/serialization/framedStreamCodec';
 import { DeChatComponents, DeChatFactory } from '../../types';
 import { MessageHandler, PropagatedMessage, PropagationContext } from '../types';
 import { DirectPropagationInterface } from './DirectPropagationInterface';
@@ -19,10 +19,13 @@ export class DirectStreamPropagation implements DirectPropagationInterface {
   /** Flag to stop the protocol handling */
   private stopped = false;
 
+  private readonly framedStream: FramedStreamCodec;
+
   constructor(components: DeChatComponents) {
     this.node = components.libp2p;
     this.config = components.config.strategies.propagation.direct;
     this.protocolHandlers = new Map();
+    this.framedStream = createFramedStreamCodec(components.serializer);
   }
 
   start(): void | Promise<void> {}
@@ -30,7 +33,7 @@ export class DirectStreamPropagation implements DirectPropagationInterface {
   private async handleIncomingStream<T>({ stream, connection }: IncomingStreamData, protocol: string) {
     if (this.stopped) return;
     try {
-      await readMessagesFromStream(
+      await this.framedStream.readMessagesFromStream(
         stream,
         (message) => {
           const receivedMessage = message as PropagatedMessage<T>;
@@ -57,7 +60,7 @@ export class DirectStreamPropagation implements DirectPropagationInterface {
     }
     const receiverPeerId = typeof peerId === 'string' ? peerIdFromString(peerId) : peerId;
     const stream = await this.node.dialProtocol(receiverPeerId, protocol);
-    await writeToStream(stream, message);
+    await this.framedStream.writeToStream(stream, message);
   }
 
   onReceive<T>(

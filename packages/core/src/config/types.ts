@@ -169,6 +169,10 @@ export interface DeChatConfig {
     /** Enable metrics for node behaviour analysis */
     enabled: boolean;
   };
+  serialization: {
+    /** Wire encoding used package-wide via components.serializer */
+    wireFormat: 'cbor' | 'json';
+  };
 }
 
 export type ValidationRule = {

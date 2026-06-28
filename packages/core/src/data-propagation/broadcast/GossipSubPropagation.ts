@@ -3,9 +3,8 @@ import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { logger } from '@dechat/common';
 import { Libp2p, Message, SignedMessage } from '@libp2p/interface';
 import { LRUCache } from 'lru-cache';
-import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
-import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { GossipSubPropagationMetrics } from '../../metrics/interfaces/GossipSubPropagationMetrics';
+import { WireCodec } from '../../shared/serialization/types';
 import { DeChatComponents, DeChatFactory } from '../../types';
 import { MessageHandler, PropagatedMessage, PropagationContext } from '../types';
 import { BroadcastPropagationInterface } from './BroadcastPropagationInterface';
@@ -25,10 +24,13 @@ export class GossipSubPropagation implements BroadcastPropagationInterface {
 
   readonly metrics: GossipSubPropagationMetrics;
 
+  private readonly serializer: WireCodec;
+
   constructor(components: DeChatComponents) {
     this.node = components.libp2p;
     this.config = components.config.strategies.propagation.broadcast;
     this.metrics = components.metrics.gossipSubPropMetrics;
+    this.serializer = components.serializer;
     this.pubsub = this.node.services.pubsub as GossipSub;
     this.topicsHandlers = new Map();
     this.seenMessages = new Map();
@@ -46,7 +48,7 @@ export class GossipSubPropagation implements BroadcastPropagationInterface {
     if (!handlers || handlers.size === 0 || !data || data.length > this.config.maxMsgBytes) return;
 
     try {
-      const msg = JSON.parse(uint8ArrayToString(data)) as PropagatedMessage<any>;
+      const msg = this.serializer.deserialize<PropagatedMessage<any>>(data);
 
       if (!msg || !msg.id) return;
       if (this.seenMessages.has(topic) && this.seenMessages.get(topic)?.has(msg.id)) {
@@ -89,7 +91,7 @@ export class GossipSubPropagation implements BroadcastPropagationInterface {
     const handler = this.topicsHandlers.get(topic);
     if (!handler) throw new Error(`[GossipSubPropagation] Cannot publish to unregistered topic "${topic}"`);
 
-    const data = uint8ArrayFromString(JSON.stringify(message));
+    const data = this.serializer.serialize(message);
     await this.pubsub.publish(topic, data);
     this.metrics.messagePublished(topic);
   }

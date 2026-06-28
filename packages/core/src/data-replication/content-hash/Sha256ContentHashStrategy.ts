@@ -1,5 +1,5 @@
 import { sha256 } from '@dechat/crypto';
-import { canonicalSerialize } from '../../shared/serializers';
+import { canonicalSerialize } from '../../shared/serialization/canonicalSerializer';
 import { DeChatFactory } from '../../types';
 import { ContentHashStrategyInterface } from './types';
 

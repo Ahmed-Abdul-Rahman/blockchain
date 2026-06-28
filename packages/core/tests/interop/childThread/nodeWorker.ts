@@ -5,6 +5,7 @@ import { Libp2p, Message } from '@libp2p/interface';
 import { random } from 'es-toolkit';
 import { PeerExchangeService } from '../../../src/networking/PeerExchangeService';
 import { createNode } from '../../../src/node';
+import { WireCodec } from '../../../src/shared/serialization/types';
 import { WorkerData, WorkerResult } from '../types';
 
 const percentile = (xs: number[], p: number): number => {
@@ -20,6 +21,7 @@ let ttfvp: number | null = null;
 let peerExchangeService: PeerExchangeService | null = null;
 let checkTimer: NodeJS.Timeout | null = null;
 let selfPeerId: string | null = null;
+let wireSerializer: WireCodec | null = null;
 
 const getStatistics = (node: Libp2p, pexService: PeerExchangeService): WorkerResult => ({
   me: selfPeerId,
@@ -33,7 +35,8 @@ const getStatistics = (node: Libp2p, pexService: PeerExchangeService): WorkerRes
 
 const subHandler = (evt: CustomEvent<Message>) => {
   try {
-    const msg = JSON.parse(new TextDecoder().decode(evt.detail.data));
+    if (!wireSerializer) return;
+    const msg = wireSerializer.deserialize<{ type: string; ts: number }>(evt.detail.data);
     if (msg.type === 'ping') {
       const oneWay = Date.now() - msg.ts;
       latencies.push(oneWay);
@@ -110,6 +113,7 @@ const runNode = async () => {
   // Join pubsub topic
   pubsub = node.services.pubsub as GossipSub;
   peerExchangeService = pexService;
+  wireSerializer = engine.components.serializer;
 
   registerPubsub(pubsubTopic);
 
@@ -129,12 +133,11 @@ const runNode = async () => {
   // Send load
   const sendLoop = async () => {
     const intervalMs = Math.max(1, Math.floor(1000 / Math.max(1, messageRate)));
-    const enc = new TextEncoder();
     while (!terminateThread) {
       await delay(intervalMs);
-      const payload = enc.encode(JSON.stringify({ type: 'ping', ts: Date.now(), from: selfPeerId }));
+      if (!pubsub || !wireSerializer) continue;
+      const payload = wireSerializer.serialize({ type: 'ping', ts: Date.now(), from: selfPeerId });
       try {
-        if (!pubsub) continue;
         await pubsub.publish(pubsubTopic, payload);
       } catch {}
     }

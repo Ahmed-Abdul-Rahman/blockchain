@@ -4,15 +4,20 @@ import { createEd25519PeerId } from '@libp2p/peer-id-factory';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DeChatComponents } from '../../../src/types';
 
-// 1. Mock network stream utilities to avoid complex buffer/iterable orchestration
-vi.mock('../../../src/shared/streamUtils', () => ({
-  readFromStream: vi.fn(),
-  writeToStream: vi.fn(),
+const { mockReadFromStream, mockWriteToStream } = vi.hoisted(() => ({
+  mockReadFromStream: vi.fn(),
+  mockWriteToStream: vi.fn(),
 }));
 
-import { readFromStream, writeToStream } from '../../../src/shared/streamUtils';
+vi.mock('../../../src/shared/serialization/framedStreamCodec', () => ({
+  createFramedStreamCodec: vi.fn(() => ({
+    readFromStream: mockReadFromStream,
+    writeToStream: mockWriteToStream,
+    readMessagesFromStream: vi.fn(),
+    setupRPCStream: vi.fn(),
+  })),
+}));
 
-// 2. Mock cryptography to securely test logical branches without CPU overhead
 vi.mock('@noble/ed25519', () => ({
   verifyAsync: vi.fn().mockResolvedValue(true),
   signAsync: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
@@ -22,6 +27,7 @@ vi.mock('@noble/ed25519', () => ({
 
 import * as ed from '@noble/ed25519';
 import { PeerAuthenticator, peerAuthenticator } from '../../../src/networking/PeerAuthenticator';
+import { createCborWireSerializer } from '../../../src/shared/serialization';
 
 describe('PeerAuthenticator', () => {
   let authenticator: PeerAuthenticator;
@@ -54,6 +60,7 @@ describe('PeerAuthenticator', () => {
     mockComponents = {
       libp2p: mockNode as any,
       pexService: mockPexService as any,
+      serializer: createCborWireSerializer(),
       config: {
         peerAuthenticator: {
           authProtocol,
@@ -63,7 +70,6 @@ describe('PeerAuthenticator', () => {
           nodeKey: { secret: new Uint8Array(), pub: new Uint8Array() },
         },
       } as any,
-      // FIX: Changed "auth" to "authMetrics" to match the class implementation
       metrics: { authMetrics: mockMetrics } as any,
     };
 
@@ -89,12 +95,11 @@ describe('PeerAuthenticator', () => {
   it('runAuthClient should throw if nodeKey is missing', async () => {
     authenticator.start();
 
-    // FIX: Simulate missing nodeKey directly to trigger the runtime check
     (authenticator as any).config.nodeKey = undefined;
     const targetPeerId = await createEd25519PeerId();
 
     await expect(authenticator.runAuthClient(targetPeerId as any)).rejects.toThrow(
-      'PeerAuthenticator requires nodeKey', // FIX: Match updated exact error string
+      'PeerAuthenticator requires nodeKey',
     );
   });
 
@@ -106,16 +111,14 @@ describe('PeerAuthenticator', () => {
     const mockStream = { close: vi.fn() };
     mockNode.dialProtocol.mockResolvedValue(mockStream);
 
-    // Mock the server returning a success payload
-    (readFromStream as any).mockResolvedValueOnce({ isVerified: true });
+    mockReadFromStream.mockResolvedValueOnce({ isVerified: true });
 
     const result = await authenticator.runAuthClient(targetPeerId as any);
 
     expect(result).toBe(true);
     expect(mockNode.dialProtocol).toHaveBeenCalledWith(targetPeerId, authProtocol);
 
-    // Verify it sent the signed payload to the stream
-    expect(writeToStream).toHaveBeenCalledWith(
+    expect(mockWriteToStream).toHaveBeenCalledWith(
       mockStream,
       expect.objectContaining({
         pub: expect.any(String),
@@ -137,8 +140,7 @@ describe('PeerAuthenticator', () => {
     const mockStream = { close: vi.fn() };
     const connection = { remotePeer: remotePeerId, remoteAddr: { toString: () => '/ip4/127.0.0.1/tcp/8080' } };
 
-    // Fake incoming message
-    (readFromStream as any).mockResolvedValueOnce({
+    mockReadFromStream.mockResolvedValueOnce({
       pub: Buffer.from('valid-pub-key').toString('base64url'),
       sig: Buffer.from('valid-sig').toString('base64url'),
       nonce: 'unique-nonce-123',
@@ -147,10 +149,8 @@ describe('PeerAuthenticator', () => {
 
     (ed.verifyAsync as any).mockResolvedValueOnce(true);
 
-    // Trigger the internal handler directly
     await handler({ stream: mockStream, connection });
 
-    // Assertions
     expect(mockPexService.addPeers).toHaveBeenCalledWith([
       {
         peerId: remotePeerId.toString(),
@@ -158,7 +158,7 @@ describe('PeerAuthenticator', () => {
       },
     ]);
     expect(mockPexService.initiatePeerExchange).toHaveBeenCalled();
-    expect(writeToStream).toHaveBeenCalledWith(mockStream, { isVerified: true });
+    expect(mockWriteToStream).toHaveBeenCalledWith(mockStream, { isVerified: true });
     expect(mockMetrics.verificationSucceeded).toHaveBeenCalled();
 
     nowSpy.mockRestore();
@@ -172,21 +172,20 @@ describe('PeerAuthenticator', () => {
     const mockStream = { close: vi.fn() };
     const connection = { remotePeer: await createEd25519PeerId(), remoteAddr: {} };
 
-    (readFromStream as any).mockResolvedValueOnce({
+    mockReadFromStream.mockResolvedValueOnce({
       pub: Buffer.from('valid-pub-key').toString('base64url'),
       sig: Buffer.from('bad-sig').toString('base64url'),
       nonce: 'unique-nonce-456',
       timestamp: 1_000_000,
     });
 
-    // Mock crypto to fail the verification
     (ed.verifyAsync as any).mockResolvedValueOnce(false);
 
     await handler({ stream: mockStream, connection });
 
     expect(mockStream.close).toHaveBeenCalled();
     expect(mockMetrics.verificationFailed).toHaveBeenCalledWith('invalid_signature');
-    expect(mockPexService.addPeers).not.toHaveBeenCalled(); // Ensure peer is NOT trusted
+    expect(mockPexService.addPeers).not.toHaveBeenCalled();
 
     nowSpy.mockRestore();
   });
@@ -198,18 +197,17 @@ describe('PeerAuthenticator', () => {
     const mockStream = { close: vi.fn() };
     const connection = { remotePeer: await createEd25519PeerId(), remoteAddr: {} };
 
-    (readFromStream as any).mockResolvedValueOnce({
+    mockReadFromStream.mockResolvedValueOnce({
       pub: 'dummy-pub',
       sig: 'dummy-sig',
       nonce: 'nonce-789',
-      // Time is over 60 seconds older than our mocked now() of 1000000
       timestamp: 500000,
     });
 
     await handler({ stream: mockStream, connection });
 
     expect(mockStream.close).toHaveBeenCalled();
-    expect(ed.verifyAsync).not.toHaveBeenCalled(); // Shouldn't even bother wasting CPU checking crypto
+    expect(ed.verifyAsync).not.toHaveBeenCalled();
   });
 
   it('should drop messages with previously used nonces (Replay Attack Prevention)', async () => {
@@ -227,16 +225,13 @@ describe('PeerAuthenticator', () => {
       timestamp: 1_000_000,
     };
 
-    // Send the message the first time
-    (readFromStream as any).mockResolvedValueOnce(payload);
+    mockReadFromStream.mockResolvedValueOnce(payload);
     await handler({ stream: mockStream, connection });
     expect(mockMetrics.verificationSucceeded).toHaveBeenCalledTimes(1);
 
-    // Send the EXACT SAME message again
-    (readFromStream as any).mockResolvedValueOnce(payload);
+    mockReadFromStream.mockResolvedValueOnce(payload);
     await handler({ stream: mockStream, connection });
 
-    // It should have blocked it, so successes stays at 1 and stream is closed
     expect(mockMetrics.verificationSucceeded).toHaveBeenCalledTimes(1);
     expect(mockStream.close).toHaveBeenCalled();
 

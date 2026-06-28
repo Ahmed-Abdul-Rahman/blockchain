@@ -8,6 +8,7 @@ import { delay, differenceWith, random } from 'es-toolkit';
 import { GossipSubPropagation } from '../../../src/data-propagation/broadcast/GossipSubPropagation';
 import { PeerExchangeService } from '../../../src/networking/PeerExchangeService';
 import { ReplicaStoreInterface } from '../../../src/replica-store/ReplicaStoreInterface';
+import { WireCodec } from '../../../src/shared/serialization/types';
 import { WorkerData, WorkerResult } from '../types';
 import { configureNode, percentile } from './workerUitls';
 
@@ -33,6 +34,7 @@ let checkTimer: NodeJS.Timeout | null = null;
 let selfPeerId: string | null = null;
 let directStreamMsgsReceivedCount = 0;
 let targetHashesToFetch: string[] | null = null;
+let wireSerializer: WireCodec | null = null;
 
 const hashedMessages = new Map<string, unknown>();
 
@@ -89,7 +91,8 @@ const getStatistics = async (
 
 const subHandler = (evt: CustomEvent<Message>) => {
   try {
-    const msg = JSON.parse(new TextDecoder().decode(evt.detail.data));
+    if (!wireSerializer) return;
+    const msg = wireSerializer.deserialize<{ type: string; ts: number }>(evt.detail.data);
     if (msg.type === 'ping') {
       const oneWay = Date.now() - msg.ts;
       latencies.push(oneWay);
@@ -162,12 +165,11 @@ const sendLoop = async () => {
   const args = workerData as WorkerData;
   const { pubsubTopic, messageRate } = args;
   const intervalMs = Math.max(1, Math.floor(1000 / Math.max(1, messageRate)));
-  const enc = new TextEncoder();
   while (!terminateThread) {
     await delay(intervalMs);
-    const payload = enc.encode(JSON.stringify({ type: 'ping', ts: Date.now(), from: selfPeerId }));
+    if (!pubsub || !wireSerializer) continue;
+    const payload = wireSerializer.serialize({ type: 'ping', ts: Date.now(), from: selfPeerId });
     try {
-      if (!pubsub) continue;
       await pubsub.publish(pubsubTopic, payload);
     } catch {}
   }
@@ -185,6 +187,7 @@ const runNodeDataPropagation = async () => {
   const directStream = engine.directStream;
 
   pexService = engine.pexService;
+  wireSerializer = engine.serializer;
 
   await engine.start();
 
@@ -251,6 +254,7 @@ const runNodeDataReplication = async () => {
   const contentHasher = engine.contentHasher;
 
   pexService = engine.pexService;
+  wireSerializer = engine.serializer;
 
   await engine.start();
 

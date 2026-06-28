@@ -1,40 +1,6 @@
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { logger } from '@dechat/common';
-import { Stream } from '@libp2p/interface';
 import { cloneDeep } from 'es-toolkit';
-import * as lp from 'it-length-prefixed';
-import map from 'it-map';
-import { pipe } from 'it-pipe';
-import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
-
-export const processDataFromStream = async (
-  stream: Stream,
-  onMessage: (message: unknown) => void,
-  onError?: (error: unknown) => void,
-): Promise<void> => {
-  if (!stream) {
-    logger.info('Cannot read from stream as it is null');
-    return;
-  }
-  await pipe(
-    stream.source,
-    (source) => lp.decode(source),
-    (source) => map(source, (buffer) => uint8ArrayToString(buffer.subarray())),
-    async (source) => {
-      for await (const message of source) {
-        try {
-          onMessage(JSON.parse(message));
-        } catch (error) {
-          if (onError) onError?.(error);
-          else {
-            logger.warn('Error occured while reading data from stream');
-            logger.debug(error);
-          }
-        }
-      }
-    },
-  );
-};
 
 export const trivialSampling = <T>(array: T[], limit: number): number[] => {
   const chosenIndices: number[] = [];
