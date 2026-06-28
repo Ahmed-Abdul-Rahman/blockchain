@@ -1,7 +1,7 @@
 # Task: Unified Wire Serialization (Phase 1)
 
 **Backlog ref:** BACKLOG.md Task 1.1  
-**Status:** Approved — in progress  
+**Status:** Completed (2026-06-28, PR #35)  
 **Goal:** Replace ad-hoc JSON wire encoding across `@dechat/core` with a single DI-injected wire codec (CBOR default), while keeping `canonicalSerialize` unchanged for content hashing.
 
 ### Approved decisions (2026-06-28)
@@ -624,4 +624,4 @@ packages/core/tests/unit/shared/
 - [x] Step 2 — Propagation, streams, networking
 - [x] Step 3 — Replication DI + Uint8Array
 - [x] Step 4 — Node wiring + exports
-- [ ] Step 5 — Interop verification (`test:int:startup`, `test:int:data-sync`)
+- [x] Step 5 — Interop verification (`test:int:startup`, `test:int:data-sync`) — CI green on PR #35
