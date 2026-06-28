@@ -15,6 +15,8 @@
     "test:file": "vitest run",
     "test": "../../node_modules/.bin/vitest run **/*.unit.test.ts",
     "test:coverage": "../../node_modules/.bin/vitest run --coverage",
+    "bench:wire": "../../node_modules/.bin/tsx --conditions=development tests/perf/runWireCodecBench.ts",
+    "bench:wire:dist": "node dist/tests/perf/runWireCodecBench.js",
     "test:int": "yarn test:int:startup && yarn test:int:data-sync",
     "test:int:startup": "NODE_ENV=perf LOG_LEVEL=INFO node --trace-warnings dist/tests/interop/interOpTestRunner.startup.int.js",
     "test:int:data-sync": "NODE_ENV=perf LOG_LEVEL=INFO node --trace-warnings dist/tests/interop/interOpTestRunner.dataSync.int.js",
