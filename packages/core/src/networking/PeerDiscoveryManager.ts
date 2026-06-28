@@ -78,6 +78,12 @@ export class PeerDiscoveryManager implements Startable {
 
   private peerDiscoveryHandler(event: CustomEvent<PeerInfo>): void {
     const peerId = event.detail.id.toString();
+    const multiaddrs = event.detail.multiaddrs ?? [];
+    if (multiaddrs.length === 0) {
+      logger.debug('Peer discovered without dialable addresses, skipping onboarding:', peerId);
+      return;
+    }
+
     logger.info('Peer Discovered:', peerId);
 
     if (this.pexService.peerRegistry.getSize() > 0) {

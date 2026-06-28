@@ -66,6 +66,7 @@ export type WorkerData = {
   messageRate: number; // msgs per second
   dataSyncEnabled: boolean;
   syncIntervalMs?: number; // anti-entropy sync interval override
+  enableMdns?: boolean; // default true; set false to isolate network partitions
 };
 
 export type WorkerDataConfig = {
@@ -79,6 +80,7 @@ export type WorkerDataConfig = {
   messageRate: number; // msgs per second
   dataSyncEnabled: boolean;
   syncIntervalMs?: number; // anti-entropy sync interval override
+  enableMdns?: boolean; // default true; set false to isolate network partitions
 };
 
 export type WorkerDetails = { workerData: WorkerData; workerRef: Worker };

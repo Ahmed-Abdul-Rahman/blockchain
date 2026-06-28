@@ -1,5 +1,6 @@
 /** biome-ignore-all lint/suspicious/noExplicitAny: <its a test file> */
 
+import { peerIdFromString } from '@libp2p/peer-id';
 import { createEd25519PeerId } from '@libp2p/peer-id-factory';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DECHAT_DEFAULTS } from '../../../src/config/defaults';
@@ -91,5 +92,48 @@ describe('DialQueue', () => {
     setTimeout(() => {
       expect(mockComponents.libp2p!.dial).not.toHaveBeenCalled();
     }, 100);
+  });
+
+  it('should normalize wildcard addrs and fall back to peer-id dialing', async () => {
+    vi.useFakeTimers();
+
+    const remotePeer = await createEd25519PeerId();
+    const remoteId = remotePeer.toString();
+    const wildcardAddr = `/ip4/0.0.0.0/tcp/40123/p2p/${remoteId}`;
+
+    mockComponents.libp2p!.dial = vi.fn().mockImplementation(async (target: unknown) => {
+      if (typeof target === 'string' && target.includes('0.0.0.0')) {
+        throw new Error('undialable wildcard addr');
+      }
+      return true;
+    });
+
+    await queue.enqueue([{ peerId: remoteId, addresses: [wildcardAddr] }]);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(mockComponents.libp2p!.dial).toHaveBeenCalledWith(
+      expect.objectContaining({ toString: expect.any(Function) }),
+    );
+
+    const dialTargets = vi.mocked(mockComponents.libp2p!.dial).mock.calls.map(([target]) => String(target));
+    expect(dialTargets.some((target) => target.includes('/ip4/127.0.0.1/tcp/40123'))).toBe(true);
+
+    vi.useRealTimers();
+  });
+
+  it('should fall back to peer-id dialing when all multiaddrs fail', async () => {
+    vi.useFakeTimers();
+
+    const remotePeer = await createEd25519PeerId();
+    const remoteId = remotePeer.toString();
+
+    mockComponents.libp2p!.dial = vi.fn().mockRejectedValue(new Error('dial failed'));
+
+    await queue.enqueue([{ peerId: remoteId, addresses: [`/ip4/127.0.0.1/tcp/40123/p2p/${remoteId}`] }]);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(mockComponents.libp2p!.dial).toHaveBeenCalledWith(peerIdFromString(remoteId));
+
+    vi.useRealTimers();
   });
 });

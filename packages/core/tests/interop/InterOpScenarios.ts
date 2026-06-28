@@ -321,6 +321,208 @@ const collectExpectedHashes = async (producers: WorkerDetails[]): Promise<string
   return Array.from(new Set(reports.flat()));
 };
 
+/**
+ * Requests dialable listen multiaddrs from workers (127.0.0.1 preferred for same-host interop).
+ */
+type ListenAddrReport = { index: number; peerId: string; addrs: string[] };
+
+const collectListenAddrReports = async (workers: WorkerDetails[]): Promise<ListenAddrReport[]> => {
+  const reports = await Promise.all(
+    workers.map(
+      ({ workerRef }) =>
+        new Promise<ListenAddrReport>((resolve) => {
+          // biome-ignore lint/suspicious/noExplicitAny: <Worker message format is dynamic>
+          const listener = (msg: any) => {
+            if (msg.type === 'listen_addrs_report') {
+              workerRef.off('message', listener);
+              resolve({
+                index: msg.index,
+                peerId: msg.peerId ?? '',
+                addrs: msg.addrs ?? [],
+              });
+            }
+          };
+          workerRef.on('message', listener);
+          workerRef.postMessage({ type: 'report_listen_addrs' });
+        }),
+    ),
+  );
+
+  return reports.map((report) => ({
+    ...report,
+    addrs: Array.from(new Set(report.addrs)),
+  }));
+};
+
+const collectListenAddrs = async (workers: WorkerDetails[]): Promise<string[]> => {
+  const reports = await collectListenAddrReports(workers);
+  return Array.from(new Set(reports.flatMap((r) => r.addrs)));
+};
+
+/**
+ * Spawns an isolated partition: mDNS off, bootstrap-only within the partition.
+ * Nodes start one at a time so each new member bootstraps to all previously
+ * started peers (avoids PEX gossiping peer IDs without dialable multiaddrs).
+ */
+const spawnIsolatedPartition = async (
+  workerDataConfig: WorkerDataConfig,
+  indices: readonly number[],
+  seedPrefix: string,
+  workers: WorkerDetails[],
+  workerResults: WorkerResult[],
+  handleComplete: (results: WorkerResult[]) => void,
+  handleWorkerError: (index: number, err: unknown) => Promise<void>,
+  terminationPromises: Promise<boolean>[],
+  firstNodeBootMs: number,
+  partitionStabilizeMs: number,
+): Promise<WorkerDetails[]> => {
+  const partitionWorkers: WorkerDetails[] = [];
+  let bootstrapAddrs: string[] = [];
+
+  const makeWorkerData = (index: number, bootstrapMultiaddrs: string[]): WorkerData =>
+    ({
+      ...workerDataConfig,
+      index,
+      nodeSeed: `${seedPrefix}-${index}`,
+      enableMdns: false,
+      bootstrapMultiaddrs,
+    }) as WorkerData;
+
+  for (const idx of indices) {
+    const worker = createWorker(
+      nodeWorkerDataPropPath,
+      makeWorkerData(idx, [...bootstrapAddrs]),
+      workerResults,
+      handleComplete,
+      handleWorkerError,
+      terminationPromises,
+    );
+    partitionWorkers.push(worker);
+    workers.push(worker);
+
+    await delay(firstNodeBootMs);
+    bootstrapAddrs = await collectListenAddrs(partitionWorkers);
+  }
+
+  await delay(partitionStabilizeMs);
+  console.log(`[Split-Brain] Partition ${seedPrefix} (${indices.length} nodes) addrs: ${bootstrapAddrs.length}`);
+  return partitionWorkers;
+};
+
+/** Instructs each worker to dial every other peer's multiaddrs (never its own). */
+const connectWorkersCrossPartition = async (workers: WorkerDetails[], reports: ListenAddrReport[]): Promise<void> => {
+  await Promise.all(
+    workers.map(
+      ({ workerRef, workerData }) =>
+        new Promise<void>((resolve) => {
+          const selfReport = reports.find((r) => r.index === workerData.index);
+          const targetAddrs = Array.from(
+            new Set(reports.filter((r) => r.peerId !== selfReport?.peerId).flatMap((r) => r.addrs)),
+          );
+
+          // biome-ignore lint/suspicious/noExplicitAny: <Worker message format is dynamic>
+          const listener = (msg: any) => {
+            if (msg.type === 'connect_peers_done') {
+              workerRef.off('message', listener);
+              resolve();
+            }
+          };
+          workerRef.on('message', listener);
+          workerRef.postMessage({ type: 'connect_peers', multiaddrs: targetAddrs });
+        }),
+    ),
+  );
+};
+
+export const simulateSplitBrainConvergence = (workerDataConfig: WorkerDataConfig): Promise<AggregatedResult> => {
+  const FIRST_NODE_BOOT_MS = 15_000;
+  const PARTITION_STABILIZE_MS = 90_000;
+  const REPLICATE_SETTLE_MS = 30_000;
+  const HEAL_CONNECT_MS = 45_000;
+  const syncIntervalMs = workerDataConfig.syncIntervalMs ?? 15_000;
+  const ANTI_ENTROPY_WAIT_MS = syncIntervalMs * 6 + 30_000;
+
+  const scenario: RunWorkersScenario = async (workers, workerResults, handleComplete, handleWorkerError) => {
+    const terminationPromises: Promise<boolean>[] = [];
+    const { totalNodes } = workerDataConfig;
+
+    if (totalNodes < 4 || totalNodes % 2 !== 0) {
+      throw new Error(
+        `[Split-Brain] totalNodes must be an even number >= 4 (got ${totalNodes}). ` +
+          'Each partition needs at least 2 nodes for gossip replication.',
+      );
+    }
+
+    const half = totalNodes / 2;
+    const partitionAIndices = Array.from({ length: half }, (_, i) => i);
+    const partitionBIndices = Array.from({ length: half }, (_, i) => i + half);
+
+    // 1. Spin up two isolated partitions (no mDNS, bootstrap-only within each side).
+    const partitionA = await spawnIsolatedPartition(
+      workerDataConfig,
+      partitionAIndices,
+      'Test-SplitBrain-A',
+      workers,
+      workerResults,
+      handleComplete,
+      handleWorkerError,
+      terminationPromises,
+      FIRST_NODE_BOOT_MS,
+      PARTITION_STABILIZE_MS,
+    );
+
+    const partitionB = await spawnIsolatedPartition(
+      workerDataConfig,
+      partitionBIndices,
+      'Test-SplitBrain-B',
+      workers,
+      workerResults,
+      handleComplete,
+      handleWorkerError,
+      terminationPromises,
+      FIRST_NODE_BOOT_MS,
+      PARTITION_STABILIZE_MS,
+    );
+
+    // 2. Each side produces and replicates messages independently while partitioned.
+    postMessageToWorkers(partitionA, { type: 'produce_messages_replication' });
+    await delay(REPLICATE_SETTLE_MS);
+    const sideAHashes = await collectExpectedHashes(partitionA);
+    console.log(`[Split-Brain] Side A produced ${sideAHashes.length} unique hashes`);
+
+    postMessageToWorkers(partitionB, { type: 'produce_messages_replication' });
+    await delay(REPLICATE_SETTLE_MS);
+    const sideBHashes = await collectExpectedHashes(partitionB);
+    console.log(`[Split-Brain] Side B produced ${sideBHashes.length} unique hashes`);
+
+    const expectedUnion = Array.from(new Set([...sideAHashes, ...sideBHashes]));
+    console.log(`[Split-Brain] Expected union after heal: ${expectedUnion.length} unique hashes`);
+
+    // 3. Heal the partition: each node dials every peer on the other side (and within its side).
+    const addrReports = await collectListenAddrReports([...partitionA, ...partitionB]);
+    console.log(
+      `[Split-Brain] Healing partition via ${addrReports.flatMap((r) => r.addrs).length} dialable addrs across ${addrReports.length} nodes`,
+    );
+    await connectWorkersCrossPartition(workers, addrReports);
+    await delay(HEAL_CONNECT_MS);
+    // Retry once so stragglers pick up peers that finished authenticating late.
+    await connectWorkersCrossPartition(workers, addrReports);
+    await delay(HEAL_CONNECT_MS);
+
+    // 4. Tell every node the full union we expect anti-entropy to deliver (no manual fetch).
+    for (const { workerRef } of workers) {
+      workerRef.postMessage({ type: 'set_expected_hashes', hashes: expectedUnion });
+    }
+    await delay(ANTI_ENTROPY_WAIT_MS);
+
+    terminateWorkers(workers);
+    await Promise.all(terminationPromises);
+  };
+
+  const { scenarioResults } = setupScenario(scenario);
+  return scenarioResults;
+};
+
 export const simulateOfflinePeerRevivalConvergence = (
   workerDataConfig: WorkerDataConfig,
 ): Promise<AggregatedResult> => {

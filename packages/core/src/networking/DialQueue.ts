@@ -1,9 +1,11 @@
 import { logger } from '@dechat/common';
 import { Connection, Libp2p, Startable } from '@libp2p/interface';
 import { peerIdFromString } from '@libp2p/peer-id';
+import { multiaddr } from '@multiformats/multiaddr';
 import { DialQueueMetrics } from '../metrics/interfaces/DialQueueMetrics.js';
 import { DeChatComponents, DeChatFactory } from '../types.js';
 import { PeerInfoLite } from './types.js';
+import { normalizeDialAddrs } from './utils.js';
 
 export class DialQueue implements Startable {
   private node: Libp2p;
@@ -77,6 +79,10 @@ export class DialQueue implements Startable {
       if (this.dialQueue.length >= this.config.maxQueueLength) break;
       if (this.node.peerId.toString() === peer.peerId) continue; // don't enqueue self
       if (this.getRemotePeerConnections(peer.peerId).length > 3) continue;
+      if (!peer.addresses?.length) {
+        logger.debug(`Skipping dial enqueue for ${peer.peerId}: no known multiaddrs`);
+        continue;
+      }
       this.dialQueue.push(peer);
       this.metrics.peerEnqueued(peer.peerId);
     }
@@ -111,13 +117,17 @@ export class DialQueue implements Startable {
 
           try {
             this.metrics.dialAttempt();
-            await this.node.dial(peerIdFromString(peerIdStr));
+            const dialed = await this.dialPeer(peerInfo);
+            if (!dialed) {
+              this.metrics.dialFailed('error');
+              continue;
+            }
             this.metrics.dialSucceeded();
             connectedPeerIds.add(peerIdStr);
             currentCount++;
           } catch (error) {
             // TODO: If the dialing failed consistently maybe for twice or thrice remove this peer from registry
-            logger.warn(`Failed to dial peer ${peerIdStr} `, error);
+            logger.warn(`Unexpected dial error for peer ${peerIdStr}`, error);
             logger.debug(error);
             this.metrics.dialFailed('error');
           }
@@ -130,6 +140,31 @@ export class DialQueue implements Startable {
         this.isQueueRunning = false;
       }
     }, this.config.intervalMs);
+  }
+
+  /**
+   * Dials a peer using known multiaddrs when available, falling back to peer-id lookup.
+   */
+  private async dialPeer(peerInfo: PeerInfoLite): Promise<boolean> {
+    const { peerId: peerIdStr, addresses } = peerInfo;
+    const dialable = normalizeDialAddrs(addresses ?? [], peerIdStr);
+
+    for (const addr of dialable) {
+      try {
+        await this.node.dial(multiaddr(addr));
+        return true;
+      } catch (error) {
+        logger.debug(`Failed to dial peer ${peerIdStr} at ${addr}`, error);
+      }
+    }
+
+    try {
+      await this.node.dial(peerIdFromString(peerIdStr));
+      return true;
+    } catch (error) {
+      logger.debug(`Failed to dial peer ${peerIdStr} via peer-id fallback`, error);
+      return false;
+    }
   }
 
   /**
