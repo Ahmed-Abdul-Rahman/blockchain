@@ -9,7 +9,4 @@ export interface BaseMessage<T> {
   payload: T;
 }
 
-export interface DataSerializer {
-  serialize: <T>(data: T) => Uint8Array;
-  deserialize: <T>(bytes: Uint8Array) => T;
-}
+export type { DataSerializer, WireCodec } from './serialization/types';

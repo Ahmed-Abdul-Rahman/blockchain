@@ -5,7 +5,7 @@ import * as ed from '@noble/ed25519';
 import { LRUCache } from 'lru-cache';
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { AuthMetrics } from '../metrics/interfaces/AuthMetrics';
-import { readFromStream, writeToStream } from '../shared/streamUtils';
+import { createFramedStreamCodec, FramedStreamCodec } from '../shared/serialization/framedStreamCodec';
 import { DeChatComponents, DeChatFactory } from '../types';
 import { AuthSignMessage, AuthSignResponse } from './types';
 
@@ -19,6 +19,8 @@ export class PeerAuthenticator implements Startable {
   private metrics: AuthMetrics;
 
   private nonceCache: LRUCache<string, number>;
+
+  private readonly framedStream: FramedStreamCodec;
 
   constructor(components: DeChatComponents) {
     if (!components.config.peerAuthenticator.nodeKey) {
@@ -34,6 +36,7 @@ export class PeerAuthenticator implements Startable {
       max: this.config.maxCount,
       ttl: this.config.replayCacheWindowMs,
     });
+    this.framedStream = createFramedStreamCodec(components.serializer);
   }
 
   start(): void {
@@ -56,7 +59,7 @@ export class PeerAuthenticator implements Startable {
       const remotePeerId = connection.remotePeer.toString();
       const timestamp = Date.now();
 
-      const authResponse = (await readFromStream(stream)) as AuthSignMessage;
+      const authResponse = (await this.framedStream.readFromStream(stream)) as AuthSignMessage;
 
       if (
         !authResponse ||
@@ -90,7 +93,7 @@ export class PeerAuthenticator implements Startable {
       this.pexService.addPeers([{ peerId: remotePeerId, addresses: [connection.remoteAddr.toString()] }]);
       this.pexService.initiatePeerExchange();
 
-      await writeToStream(stream, { isVerified } as AuthSignResponse);
+      await this.framedStream.writeToStream(stream, { isVerified } as AuthSignResponse);
       this.metrics.verificationSucceeded();
     } catch {
       logger.warn('Authentication failed with Peer: ', connection.remotePeer.toString(), ' severing connection');
@@ -129,8 +132,8 @@ export class PeerAuthenticator implements Startable {
     };
 
     const stream = await this.node.dialProtocol(targetPeerId, this.config.authProtocol);
-    await writeToStream(stream, authMessage);
-    const response = (await readFromStream(stream)) as AuthSignResponse;
+    await this.framedStream.writeToStream(stream, authMessage);
+    const response = (await this.framedStream.readFromStream(stream)) as AuthSignResponse;
 
     return !!response.isVerified;
   }

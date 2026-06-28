@@ -1,7 +1,7 @@
 /** biome-ignore-all lint/suspicious/noExplicitAny: <its a test file> */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { InMemoryReplicaStore } from '../../../src/replica-store/InMemoryReplicaStore';
-import { getGenericDataSerailizer } from '../../../src/shared/serializers';
+import { createCborWireSerializer } from '../../../src/shared/serialization';
 import { DeChatComponents } from '../../../src/types';
 
 describe('InMemoryReplicaStore', () => {
@@ -10,7 +10,7 @@ describe('InMemoryReplicaStore', () => {
 
   beforeEach(() => {
     mockComponents = {
-      serializer: getGenericDataSerailizer(),
+      serializer: createCborWireSerializer(),
     } as any;
 
     store = new InMemoryReplicaStore(mockComponents);

@@ -1,6 +1,6 @@
 import { logger } from '@dechat/common';
 import { IncomingStreamData, Libp2p, PeerId, Startable } from '@libp2p/interface';
-import { setupRPCStream } from '../shared/streamUtils';
+import { createFramedStreamCodec, FramedStreamCodec } from '../shared/serialization/framedStreamCodec';
 import { DeChatComponents, DeChatFactory } from '../types';
 import { PrefixTrie } from './PrefixTrie';
 import { AntiEntropyMessage, SyncOutcome } from './types';
@@ -15,6 +15,8 @@ export class AntiEntropyNetworkExchange implements Startable {
   private readonly config: DeChatComponents['config']['strategies']['synchronizer'];
 
   private readonly trie: PrefixTrie;
+
+  private readonly framedStream: FramedStreamCodec;
 
   /**
    * Callback triggered when the handler side discovers missing hashes.
@@ -33,6 +35,7 @@ export class AntiEntropyNetworkExchange implements Startable {
     this.node = components.libp2p;
     this.config = components.config.strategies.synchronizer;
     this.trie = components.strategies.prefixTrie;
+    this.framedStream = createFramedStreamCodec(components.serializer);
   }
 
   /**
@@ -43,7 +46,7 @@ export class AntiEntropyNetworkExchange implements Startable {
     this.node.handle(this.config.protocol, async ({ stream, connection }: IncomingStreamData) => {
       logger.debug(`[AntiEntropyNetworkExchange] Incoming bidirectional sync from ${connection.remotePeer.toString()}`);
       try {
-        const { sendRequest } = setupRPCStream<AntiEntropyMessage>(stream, (message) =>
+        const { sendRequest } = this.framedStream.setupRPCStream<AntiEntropyMessage>(stream, (message) =>
           this.handleIncomingMessage(message),
         );
         const outcome = await this.executeSyncFlow(sendRequest);
@@ -74,7 +77,7 @@ export class AntiEntropyNetworkExchange implements Startable {
     try {
       const stream = await this.node.dialProtocol(peerId, this.config.protocol);
 
-      const { sendRequest } = setupRPCStream<AntiEntropyMessage>(stream, (message) =>
+      const { sendRequest } = this.framedStream.setupRPCStream<AntiEntropyMessage>(stream, (message) =>
         this.handleIncomingMessage(message),
       );
 

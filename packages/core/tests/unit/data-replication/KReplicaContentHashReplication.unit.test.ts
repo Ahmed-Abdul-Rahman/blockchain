@@ -40,6 +40,7 @@ describe('KReplicaContentReplication', () => {
     mockComponents = {
       libp2p: { peerId: { toString: () => 'self-peer-id' } } as any,
       peerRegistry: mockRegistry,
+      serializer: mockSerializer,
       config: {
         strategies: {
           // Fixed path based on error trace
@@ -50,7 +51,6 @@ describe('KReplicaContentReplication', () => {
         contentHasher: mockHashStrategy,
         replicaStore: mockStorage,
         replicationProtocol: mockReplicationProtocol,
-        serializer: mockSerializer,
       } as any,
     };
 

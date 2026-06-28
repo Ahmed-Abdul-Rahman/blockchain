@@ -4,13 +4,12 @@ import { Libp2p, Message, PeerId, Startable, Stream } from '@libp2p/interface';
 import bloomFilters from 'bloom-filters';
 import { delay, random } from 'es-toolkit';
 import { LRUCache } from 'lru-cache';
-import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
-import { toString as uint8ArrayToString } from 'uint8arrays/to-string';
 import { PeerExchangeServiceMetrics } from '../metrics/interfaces/PeerExchangeServiceMetrics';
-import { writeToStream } from '../shared/streamUtils';
+import { createFramedStreamCodec, FramedStreamCodec } from '../shared/serialization/framedStreamCodec';
+import { WireCodec } from '../shared/serialization/types';
 import { DeChatComponents, DeChatFactory } from '../types';
 import { GET_PEERS_MSG, PEX_GOSSIP, PEX_PEER_LIST, PeerInfoLite } from './types';
-import { filterAddrs, processDataFromStream, publishWithRetry, sampleList } from './utils';
+import { filterAddrs, publishWithRetry, sampleList } from './utils';
 
 export class PeerExchangeService implements Startable {
   private node: Libp2p;
@@ -44,6 +43,10 @@ export class PeerExchangeService implements Startable {
 
   readonly metrics: PeerExchangeServiceMetrics;
 
+  private readonly serializer: WireCodec;
+
+  private readonly framedStream: FramedStreamCodec;
+
   constructor(components: DeChatComponents) {
     this.node = components.libp2p;
     this.scorer = components.scorer;
@@ -51,6 +54,8 @@ export class PeerExchangeService implements Startable {
     this.peerRegistry = components.peerRegistry;
     this.config = components.config.pexService;
     this.metrics = components.metrics.pexService;
+    this.serializer = components.serializer;
+    this.framedStream = createFramedStreamCodec(components.serializer);
 
     this.peersSeen = new bloomFilters.ScalableBloomFilter(1000, 0.01);
     this.lastGossipByPeer = new LRUCache<string, number>({
@@ -135,7 +140,7 @@ export class PeerExchangeService implements Startable {
    */
   private async onPexProtocolMessage(stream: Stream, fromId?: string): Promise<void> {
     logger.trace('PeerExchangeService - onPexProtocolMessage - entry');
-    await processDataFromStream(
+    await this.framedStream.readMessagesFromStream(
       stream,
       async (message) => {
         const req = message as GET_PEERS_MSG;
@@ -144,7 +149,7 @@ export class PeerExchangeService implements Startable {
           return;
         }
         if (req.type === 'GET_PEERS') {
-          if (fromId) this.scorer.reward(fromId, 1); // good behavior: asks, not floods
+          if (fromId) this.scorer.reward(fromId, 1);
           const share = sampleList(
             this.peerRegistry.getCandidates(this.config.maxSharedPeers * 2),
             this.config.maxSharedPeers,
@@ -155,12 +160,10 @@ export class PeerExchangeService implements Startable {
               addresses: filterAddrs(addresses),
             }));
           const response: PEX_PEER_LIST = { type: 'PEER_LIST', peers: share };
-          await writeToStream(stream, response);
+          await this.framedStream.writeToStream(stream, response);
         }
       },
-      () => {
-        if (fromId) this.scorer.penalize(fromId, 1);
-      },
+      256 * 1024,
     );
     logger.trace('PeerExchangeService - onPexProtocolMessage - exit');
   }
@@ -192,7 +195,7 @@ export class PeerExchangeService implements Startable {
               addresses: this.node.getMultiaddrs().map((multiAddr) => multiAddr.toString()),
             },
           };
-          await publishWithRetry(this.pubsub, this.config.pexTopic, uint8ArrayFromString(JSON.stringify(msg)), {
+          await publishWithRetry(this.pubsub, this.config.pexTopic, this.serializer.serialize(msg), {
             retries: 7,
             baseDelay: this.config.gossipIntervalMs,
           });
@@ -236,10 +239,14 @@ export class PeerExchangeService implements Startable {
     if (!data || event.detail.topic !== this.config.pexTopic) return;
     logger.trace('PeerExchangeService - onGossip - entry');
     try {
-      const parsedData = JSON.parse(uint8ArrayToString(data));
+      const parsedData = this.serializer.deserialize<unknown>(data);
 
       if (!this.validatePexMessage(parsedData)) {
-        this.scorer.penalize(parsedData.from, 5);
+        const fromPeer =
+          typeof parsedData === 'object' && parsedData !== null && 'from' in parsedData
+            ? String((parsedData as { from: unknown }).from)
+            : 'unknown';
+        this.scorer.penalize(fromPeer, 5);
         return;
       }
 
@@ -293,9 +300,9 @@ export class PeerExchangeService implements Startable {
       const req: GET_PEERS_MSG = { type: 'GET_PEERS', want };
       let receivedPeers: PeerInfoLite[] = [];
 
-      await writeToStream(stream, req);
+      await this.framedStream.writeToStream(stream, req);
 
-      await processDataFromStream(stream, (message) => {
+      await this.framedStream.readMessagesFromStream(stream, (message) => {
         const response = message as PEX_PEER_LIST;
         if (!response) this.scorer.penalize(peerIdString, 2);
         if (response.type === 'PEER_LIST') receivedPeers = response.peers ?? [];

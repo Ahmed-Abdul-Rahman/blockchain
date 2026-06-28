@@ -22,7 +22,7 @@ export interface ReplicationRequest {
 export interface ReplicationContent {
   type: 'replication_content';
   hash: ContentHash;
-  replicationContent: Array<number>;
+  replicationContent: Uint8Array;
 }
 
 export interface ReplicationError {

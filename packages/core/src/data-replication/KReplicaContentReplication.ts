@@ -2,7 +2,6 @@ import { PriorityQueue } from '@datastructures-js/priority-queue';
 import { logger } from '@dechat/common';
 import { calculateXorDistance, toHashBigInt } from '@dechat/crypto';
 import { ReplicaStoreInterface } from '../replica-store/ReplicaStoreInterface';
-import { getGenericDataSerailizer } from '../shared/serializers';
 import { DataSerializer } from '../shared/types';
 import { DeChatComponents, DeChatFactory } from '../types';
 import { ContentHashStrategyInterface } from './content-hash/types';
@@ -44,7 +43,7 @@ export class KReplicaContentReplication implements DataReplicationInterface, Rep
 
     this.selfPeerId = components.libp2p.peerId.toString();
     this.config = components.config.strategies.replication;
-    this.serializer = getGenericDataSerailizer();
+    this.serializer = components.serializer;
     this.getKnownPeers = () => components.peerRegistry.getPeers();
     this.hashStrategy = components.strategies.contentHasher;
     this.storage = components.strategies.replicaStore;
@@ -164,7 +163,7 @@ export class KReplicaContentReplication implements DataReplicationInterface, Rep
         const response = await this.replicationProtocol.requestDataAndAwaitResponse(hash, target.peerId);
 
         if (response.type === 'replication_content') {
-          const rawBytes = new Uint8Array(response.replicationContent);
+          const rawBytes = response.replicationContent;
           await this.storage.put(hash, rawBytes); // We requested it, so we keep it.
           logger.info(`Successfully retrieved missing data ${hash} via DHT iterative routing.`);
           return this.serializer.deserialize<T>(rawBytes);

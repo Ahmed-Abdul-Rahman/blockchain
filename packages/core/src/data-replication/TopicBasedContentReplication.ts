@@ -5,7 +5,6 @@ import { sampleSize } from 'es-toolkit';
 import { BroadcastPropagationInterface } from '../data-propagation/broadcast/BroadcastPropagationInterface';
 import { PropagationContext } from '../data-propagation/types';
 import { ReplicaStoreInterface } from '../replica-store/ReplicaStoreInterface';
-import { getGenericDataSerailizer } from '../shared/serializers';
 import { DataSerializer } from '../shared/types';
 import { DeChatComponents, DeChatFactory } from '../types';
 import { ContentHashStrategyInterface } from './content-hash/types';
@@ -58,7 +57,7 @@ export class TopicBasedContentReplication implements DataReplicationInterface, S
     this.replicationProtocol = components.strategies.replicationProtocol;
     this.broadcastPropagation = components.strategies.broadcast;
     this.getKnownPeers = () => components.peerRegistry.getPeers();
-    this.serializer = getGenericDataSerailizer();
+    this.serializer = components.serializer;
     this.inflightTracker = inflightRequestTracker();
   }
 
@@ -209,7 +208,7 @@ export class TopicBasedContentReplication implements DataReplicationInterface, S
         const response = await this.replicationProtocol.requestDataAndAwaitResponse(hash, peerId);
 
         if (response.type === 'replication_content') {
-          const rawBytes = new Uint8Array(response.replicationContent);
+          const rawBytes = response.replicationContent;
           await this.storage.put(hash, rawBytes);
           logger.info(`[TopicBasedContentReplication] Successfully retrieved missing data ${hash}.`);
           return this.serializer.deserialize<T>(rawBytes);

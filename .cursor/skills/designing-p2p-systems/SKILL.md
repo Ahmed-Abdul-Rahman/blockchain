@@ -142,6 +142,7 @@ Existing ADRs:
 
 - [ADR-0001](docs/adr/0001-topic-based-replication-for-chat-rooms.md) — topic replication for chat
 - [ADR-0002](docs/adr/0002-tombstone-event-sourcing-for-deletions.md) — append-only + TOMBSTONE
+- [ADR-0003](docs/adr/0003-adaptive-anti-entropy-scheduling.md) — adaptive anti-entropy scheduling (proposed)
 
 ## Further reading
 

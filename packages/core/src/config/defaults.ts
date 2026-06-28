@@ -84,6 +84,9 @@ export const DECHAT_DEFAULTS: DeChatConfig = {
   metrics: {
     enabled: false,
   },
+  serialization: {
+    wireFormat: 'cbor',
+  },
 };
 
 /**

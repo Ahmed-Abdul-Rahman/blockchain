@@ -1,6 +1,7 @@
 /** biome-ignore-all lint/suspicious/noExplicitAny: <its a test file> */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DirectStreamPropagation } from '../../../src/data-propagation/direct/DirectStreamPropagation';
+import { createCborWireSerializer } from '../../../src/shared/serialization';
 import { DeChatComponents } from '../../../src/types';
 
 describe('DirectStreamPropagation', () => {
@@ -17,10 +18,13 @@ describe('DirectStreamPropagation', () => {
 
     mockComponents = {
       libp2p: mockNode as any,
+      serializer: createCborWireSerializer(),
       config: {
         strategies: {
           propagation: {
-            direct: {},
+            direct: {
+              maxMessageBytes: 256 * 1024,
+            },
           },
         },
       } as any,

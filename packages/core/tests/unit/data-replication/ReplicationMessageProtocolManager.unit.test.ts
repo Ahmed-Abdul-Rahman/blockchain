@@ -86,7 +86,10 @@ describe('ReplicationMessageProtocolManager', () => {
 
     // FIX: Wrap inside 'payload' to match PropagatedMessage
     await (protocolManager as any).handleIncomingDirect(
-      { payload: { type: 'replication_content', hash: 'hash-2', replicationContent: [9, 9] }, from: 'target-peer' },
+      {
+        payload: { type: 'replication_content', hash: 'hash-2', replicationContent: new Uint8Array([9, 9]) },
+        from: 'target-peer',
+      },
       { from: 'target-peer' },
     );
 
