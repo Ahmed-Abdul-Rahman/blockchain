@@ -58,6 +58,29 @@ export const DECHAT_DEFAULTS: DeChatConfig = {
         baseBackoffMs: 1_000,
         maxBackoffMs: 10_000,
       },
+      adaptive: {
+        enabled: false,
+        scheduler: 'heuristic',
+        minIntervalMs: 15_000,
+        maxIntervalMs: 300_000,
+        jitterMs: 5_000,
+        idleSkipStreak: 3,
+        idleActivityThreshold: 0.05,
+        convergenceWindowSize: 20,
+        minPeerWeight: 0.1,
+        peerConvergence: {
+          alpha: 0.15,
+          beta: 0.05,
+          gamma: 0.1,
+          idleDecayMs: 30 * 60_000,
+          neutralScore: 0.5,
+        },
+        bandit: {
+          epsilon: 0.2,
+          epsilonDecayPerAttempts: 0,
+          epsilonFloor: 0.05,
+        },
+      },
     },
     propagation: {
       direct: {

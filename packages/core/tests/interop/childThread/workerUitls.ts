@@ -1,6 +1,7 @@
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { Libp2p } from 'libp2p';
 import { threadId, workerData } from 'worker_threads';
+import { DECHAT_DEFAULTS } from '../../../src/config/defaults';
 import { antiEntropyManager } from '../../../src/data-convergence/AntiEntropyManager';
 import { antiEntropyNetworkExchangeEngine } from '../../../src/data-convergence/AntiEntropyNetworkExchange';
 import {
@@ -22,7 +23,7 @@ import { SimplePeerScorer } from '../../../src/networking/SimplePeerScorer';
 import { createNode } from '../../../src/node';
 import { ReplicaStoreInterface, replicaStore } from '../../../src/replica-store/ReplicaStoreInterface';
 import { WireCodec } from '../../../src/shared/serialization/types';
-import { DeChatStrategies } from '../../../src/types';
+import { DeChatComponents, DeChatStrategies } from '../../../src/types';
 import { WorkerData } from '../types';
 
 export const percentile = (xs: number[], p: number): number => {
@@ -45,6 +46,7 @@ export const configureNode = async (
   contentHasher: ContentHashStrategyInterface | undefined;
   dataReplication: DataReplicationInterface | undefined;
   serializer: WireCodec;
+  antiEntropyMetrics: DeChatComponents['antiEntropyMetrics'];
   nodeCleanUp: () => Promise<void>;
 }> => {
   const args = workerData as WorkerData;
@@ -56,6 +58,7 @@ export const configureNode = async (
     replicationType,
     dataSyncEnabled = false,
     syncIntervalMs,
+    adaptive,
     bootstrapMultiaddrs = [],
     enableMdns = true,
   } = args;
@@ -91,7 +94,16 @@ export const configureNode = async (
         maxIncomingPendingConnections: 20,
       },
       discovery: { enableMdns, onBoardingPeerTime },
-      ...(syncIntervalMs ? { strategies: { synchronizer: { syncIntervalMs } } } : {}),
+      ...(syncIntervalMs || adaptive
+        ? {
+            strategies: {
+              synchronizer: {
+                ...(syncIntervalMs ? { syncIntervalMs } : {}),
+                ...(adaptive ? { adaptive: { ...DECHAT_DEFAULTS.strategies.synchronizer.adaptive, ...adaptive } } : {}),
+              },
+            },
+          }
+        : {}),
     },
     strategies,
   );
@@ -113,6 +125,7 @@ export const configureNode = async (
     contentHasher: components.strategies.contentHasher,
     dataReplication: components.strategies.dataReplication,
     serializer: components.serializer,
+    antiEntropyMetrics: components.antiEntropyMetrics,
     nodeCleanUp: stop,
   };
 };

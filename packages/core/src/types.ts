@@ -3,12 +3,14 @@ import { DeChatConfig } from './config/types';
 import { AntiEntropyManager } from './data-convergence/AntiEntropyManager';
 import { AntiEntropyNetworkExchange } from './data-convergence/AntiEntropyNetworkExchange';
 import { PrefixTrie } from './data-convergence/PrefixTrie';
+import { AntiEntropyMetricsStore } from './data-convergence/scheduling/AntiEntropyMetricsStore';
 import { BroadcastPropagationInterface } from './data-propagation/broadcast/BroadcastPropagationInterface';
 import { DirectPropagationInterface } from './data-propagation/direct/DirectPropagationInterface';
 import { ContentHashStrategyInterface } from './data-replication/content-hash/types';
 import { DataReplicationInterface } from './data-replication/DataReplicationInterface';
 import { ReplicationProtocolInterface } from './data-replication/replication-protocol/ReplicationProtocolInterface';
 import { AuthMetrics, DialQueueMetrics, PeerExchangeServiceMetrics, PeerRegistryMetrics } from './metrics';
+import { AntiEntropyMetrics } from './metrics/interfaces/AntiEntropyMetrics';
 import { GossipSubPropagationMetrics } from './metrics/interfaces/GossipSubPropagationMetrics';
 import { DialQueue } from './networking/DialQueue';
 import { PeerAuthenticator } from './networking/PeerAuthenticator';
@@ -36,6 +38,7 @@ export interface DeChatMetrics {
   peerRegistry: PeerRegistryMetrics;
   authMetrics: AuthMetrics;
   gossipSubPropMetrics: GossipSubPropagationMetrics;
+  antiEntropy: AntiEntropyMetrics;
 }
 
 export interface DeChatComponents {
@@ -49,6 +52,8 @@ export interface DeChatComponents {
   peerAuthenticator: PeerAuthenticator;
   serializer: DataSerializer;
   metrics: DeChatMetrics;
+  /** Queryable anti-entropy state for scheduler and replication activity hooks */
+  antiEntropyMetrics?: AntiEntropyMetricsStore;
   strategies: {
     broadcast?: BroadcastPropagationInterface;
     direct?: DirectPropagationInterface;
