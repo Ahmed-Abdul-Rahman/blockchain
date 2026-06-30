@@ -95,6 +95,7 @@ const getStatistics = async (
             outboundAttempts: antiEntropySnapshot.outboundAttempts,
             usefulSyncs: antiEntropySnapshot.usefulSyncs,
             lastSyncHashes: antiEntropySnapshot.lastSyncHashes,
+            idleSkips: antiEntropySnapshot.skipCounts.idle_skip,
           },
         }
       : {}),

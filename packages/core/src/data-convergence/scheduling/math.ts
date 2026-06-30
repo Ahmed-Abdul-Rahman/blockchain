@@ -24,6 +24,13 @@ export const equalJitter = (maxMs: number): number => {
 export const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
 
 /**
+ * Compute scheduling urgency from a 7-element state vector (ADR-0003 indices 0–6).
+ * Higher urgency → shorter next interval in HeuristicSyncScheduler.
+ */
+export const computeUrgency = (stateVector: readonly number[]): number =>
+  Math.max(stateVector[5], 1 - stateVector[4], stateVector[1], 1 - stateVector[0]);
+
+/**
  * Weighted random selection. Falls back to uniform random when all weights are equal
  * or the total weight is non-positive, so unexplored peers stay reachable.
  */

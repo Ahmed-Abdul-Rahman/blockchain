@@ -18,6 +18,8 @@ export type WorkerResult = {
     outboundAttempts: number;
     usefulSyncs: number;
     lastSyncHashes: number;
+    /** Scheduled ticks skipped due to idle dormancy (adaptive mode) */
+    idleSkips?: number;
   };
 };
 

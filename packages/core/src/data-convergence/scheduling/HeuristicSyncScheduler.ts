@@ -1,6 +1,6 @@
 import { PeerId } from '@libp2p/interface';
 import { DeChatConfig } from '../../config/types';
-import { clamp, equalJitter, lerp, weightedRandomPick } from './math';
+import { clamp, computeUrgency, equalJitter, lerp, weightedRandomPick } from './math';
 import { PeerConvergenceTracker } from './PeerConvergenceTracker';
 import { SyncAttemptRecord, SyncScheduler, SyncTickContext } from './types';
 
@@ -45,16 +45,7 @@ export class HeuristicSyncScheduler implements SyncScheduler {
   }
 
   nextIntervalMs(ctx: SyncTickContext): number {
-    const sv = ctx.stateVector;
-
-    // Urgency rises with activity, staleness, timeouts, and low success rate
-    const urgency = Math.max(
-      sv[5], // replicationActivityRate
-      1 - sv[4], // timeSinceLastUsefulSync (inverted: higher = longer since useful sync)
-      sv[1], // syncTimeoutRate
-      1 - sv[0], // 1 - syncSuccessRate
-    );
-
+    const urgency = computeUrgency(ctx.stateVector);
     const base = lerp(this.config.maxIntervalMs, this.config.minIntervalMs, urgency);
     const clamped = clamp(base, this.config.minIntervalMs, this.config.maxIntervalMs);
     return clamped + equalJitter(this.config.jitterMs);

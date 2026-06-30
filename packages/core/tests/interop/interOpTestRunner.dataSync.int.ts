@@ -216,6 +216,81 @@ describe('Interop - Data Convergence (Anti-Entropy) Tests', () => {
     printTestReport(report);
   });
 
+  it(`should converge a late-joining peer with adaptive heuristic scheduler enabled`, async () => {
+    const totalNodes = totalNodesArg ?? 6;
+    const runDurationSec = runDurationSecArg ?? 300;
+    const messageRate = messageRateArg ?? 5;
+    const pubsubTopic = pubsubTopicArg ?? '/bench/1';
+    const networkId = networkIdArg ?? 'benchnet-1';
+    const bootstrapMultiaddrs = [];
+    const syncIntervalMs = 15_000;
+
+    const aggregatedResults = await simulateAntiEntropyConvergence({
+      testType: 'REPLICATION',
+      replicationType: 'TOPIC_BASED',
+      dataSyncEnabled: true,
+      syncIntervalMs,
+      adaptive: {
+        enabled: true,
+        scheduler: 'heuristic',
+        minIntervalMs: 5_000,
+        maxIntervalMs: 60_000,
+      },
+      totalNodes,
+      runDurationSec,
+      messageRate,
+      pubsubTopic,
+      networkId,
+      bootstrapMultiaddrs,
+    });
+
+    const { workerResults } = aggregatedResults;
+    const lateJoiner = workerResults.find((r) => r.hasTargetData !== undefined);
+    const producers = workerResults.filter((r) => r.hasTargetData === undefined);
+    const maxProducerReplicaCount = Math.max(0, ...producers.map((r) => r.replicaCount ?? 0));
+
+    let passed = true;
+
+    if (!lateJoiner || !lateJoiner.hasTargetData) {
+      passed = false;
+      console.log(
+        `⚠️ [Adaptive] Late joiner failed to converge. replicaCount: ${lateJoiner?.replicaCount}, ` +
+          `antiEntropy: ${JSON.stringify(lateJoiner?.antiEntropy)}`,
+      );
+    }
+
+    if (lateJoiner && (lateJoiner.replicaCount ?? 0) < maxProducerReplicaCount) {
+      passed = false;
+      console.log(
+        `⚠️ [Adaptive] Late joiner store incomplete: ${lateJoiner.replicaCount} < producer max ${maxProducerReplicaCount}`,
+      );
+    }
+
+    if ((lateJoiner?.antiEntropy?.usefulSyncs ?? 0) <= 0) {
+      passed = false;
+      console.log(`⚠️ [Adaptive] Late joiner reported no useful anti-entropy syncs`);
+    }
+
+    assert.ok(lateJoiner?.hasTargetData, `Adaptive: late joiner failed to converge via anti-entropy`);
+    assert.ok(
+      (lateJoiner?.replicaCount ?? 0) >= maxProducerReplicaCount,
+      `Adaptive: late joiner store (${lateJoiner?.replicaCount}) did not reach producer size (${maxProducerReplicaCount})`,
+    );
+    assert.ok(
+      (lateJoiner?.antiEntropy?.usefulSyncs ?? 0) > 0,
+      'Adaptive: late joiner should report at least one useful anti-entropy sync',
+    );
+
+    const report = generateTestReport(
+      'Anti-Entropy Adaptive Heuristic Convergence',
+      totalNodes,
+      runDurationSec,
+      aggregatedResults,
+      passed,
+    );
+    printTestReport(report);
+  });
+
   it(`should converge a revived (dropped then restored) peer's store via background anti-entropy sync`, async () => {
     const totalNodes = totalNodesArg ?? 12;
     const runDurationSec = runDurationSecArg ?? 300;

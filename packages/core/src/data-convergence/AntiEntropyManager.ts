@@ -6,6 +6,7 @@ import { AntiEntropyMetrics } from '../metrics/interfaces/AntiEntropyMetrics';
 import { DeChatComponents, DeChatFactory } from '../types';
 import { AntiEntropyNetworkExchange } from './AntiEntropyNetworkExchange';
 import { AntiEntropyMetricsStore, createAntiEntropyMetricsStore, createSyncScheduler } from './scheduling';
+import { computeUrgency } from './scheduling/math';
 import { SyncAttemptRecord, SyncAttemptResult, SyncScheduler, SyncTickContext } from './scheduling/types';
 import { SyncIncompleteReason } from './types';
 
@@ -102,6 +103,14 @@ export class AntiEntropyManager implements Startable {
     logger.info('[AntiEntropyManager] Stopped background sync.');
   }
 
+  /** Human-readable scheduler mode for logs (fixed vs adaptive strategy name). */
+  private schedulerModeLabel(): string {
+    if (!this.adaptiveConfig.enabled) {
+      return 'fixed';
+    }
+    return this.adaptiveConfig.scheduler;
+  }
+
   /**
    * Schedules the next sync tick using the scheduler's dynamic interval.
    */
@@ -110,7 +119,19 @@ export class AntiEntropyManager implements Startable {
       return;
     }
 
-    const delayMs = this.scheduler.nextIntervalMs(this.buildTickContext());
+    const ctx = this.buildTickContext();
+    const delayMs = this.scheduler.nextIntervalMs(ctx);
+    const wouldIdleSkipWithoutFloor =
+      this.adaptiveConfig.enabled && this.scheduler.shouldSkipTick({ ...ctx, forceFloorSync: false });
+    const wouldSkip = wouldIdleSkipWithoutFloor && !ctx.forceFloorSync;
+
+    logger.debug(
+      `[AntiEntropyManager] Scheduling next tick in ${delayMs}ms ` +
+        `(mode=${this.schedulerModeLabel()}, urgency=${computeUrgency(ctx.stateVector).toFixed(2)}, ` +
+        `zeroHashStreak=${ctx.consecutiveZeroHashComplete}, wouldSkip=${wouldSkip}, ` +
+        `forceFloor=${ctx.forceFloorSync}, activity=${ctx.stateVector[5].toFixed(2)})`,
+    );
+
     this.syncTimer = setTimeout(() => {
       void this.performScheduledSync()
         .catch((err) => logger.error(`[AntiEntropyManager] Scheduled sync failed: ${(err as Error).message}`))
@@ -162,18 +183,27 @@ export class AntiEntropyManager implements Startable {
     this.metricsExport.scheduledTickStarted();
 
     const ctx = this.buildTickContext();
+    const wouldIdleSkipWithoutFloor =
+      this.adaptiveConfig.enabled && this.scheduler.shouldSkipTick({ ...ctx, forceFloorSync: false });
 
-    if (this.scheduler.shouldSkipTick(ctx) && !ctx.forceFloorSync) {
+    if (wouldIdleSkipWithoutFloor && !ctx.forceFloorSync) {
       this.metricsStore.recordSkip('idle_skip');
       this.metricsExport.scheduledTickSkipped('idle_skip');
-      logger.debug('[AntiEntropyManager] Skipping scheduled sync; room appears idle.');
+      logger.debug(
+        `[AntiEntropyManager] Skipping scheduled sync; room appears idle ` +
+          `(mode=${this.schedulerModeLabel()}, zeroHashStreak=${ctx.consecutiveZeroHashComplete}, ` +
+          `activity=${ctx.stateVector[5].toFixed(2)})`,
+      );
       return;
     }
 
-    if (ctx.forceFloorSync && this.scheduler.shouldSkipTick(ctx)) {
+    if (ctx.forceFloorSync && wouldIdleSkipWithoutFloor) {
       this.metricsStore.recordSkip('floor_sync_forced');
       this.metricsExport.scheduledTickSkipped('floor_sync_forced');
-      logger.debug('[AntiEntropyManager] Floor sync override; forcing tick despite idle state.');
+      logger.debug(
+        `[AntiEntropyManager] Floor sync override; forcing tick despite idle state ` +
+          `(mode=${this.schedulerModeLabel()}, timeSinceLastSyncMs=${ctx.timeSinceLastSyncMs})`,
+      );
     }
 
     if (this.isSyncing) {
@@ -194,7 +224,14 @@ export class AntiEntropyManager implements Startable {
     const candidates = connections.map((c) => c.remotePeer);
     const targetPeerId = this.scheduler.pickPeer(candidates);
     const peerIdStr = targetPeerId.toString();
+    const peerScore = this.metricsStore.getPeerConvergenceTracker().getScore(peerIdStr);
     const startedAt = Date.now();
+
+    logger.debug(
+      `[AntiEntropyManager] Outbound sync tick ` +
+        `(mode=${this.schedulerModeLabel()}, peer=${peerIdStr}, convergenceScore=${peerScore.toFixed(2)}, ` +
+        `candidates=${candidates.length})`,
+    );
 
     this.metricsExport.outboundSyncStarted(peerIdStr);
     this.isSyncing = true;
