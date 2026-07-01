@@ -8,7 +8,13 @@ import {
   simulateOfflinePeerRevivalConvergence,
   simulateSplitBrainConvergence,
 } from './InterOpScenarios';
-import { generateTestReport, printTestReport, readInteropCliArgs } from './interopTestReporter';
+import {
+  assertLateJoinerConvergence,
+  generateTestReport,
+  printTestReport,
+  readInteropCliArgs,
+  summarizeAntiEntropyMetrics,
+} from './interopTestReporter';
 
 const { totalNodesArg, runDurationSecArg, messageRateArg, pubsubTopicArg, networkIdArg } = readInteropCliArgs();
 
@@ -245,41 +251,8 @@ describe('Interop - Data Convergence (Anti-Entropy) Tests', () => {
     });
 
     const { workerResults } = aggregatedResults;
-    const lateJoiner = workerResults.find((r) => r.hasTargetData !== undefined);
-    const producers = workerResults.filter((r) => r.hasTargetData === undefined);
-    const maxProducerReplicaCount = Math.max(0, ...producers.map((r) => r.replicaCount ?? 0));
 
-    let passed = true;
-
-    if (!lateJoiner || !lateJoiner.hasTargetData) {
-      passed = false;
-      console.log(
-        `⚠️ [Adaptive] Late joiner failed to converge. replicaCount: ${lateJoiner?.replicaCount}, ` +
-          `antiEntropy: ${JSON.stringify(lateJoiner?.antiEntropy)}`,
-      );
-    }
-
-    if (lateJoiner && (lateJoiner.replicaCount ?? 0) < maxProducerReplicaCount) {
-      passed = false;
-      console.log(
-        `⚠️ [Adaptive] Late joiner store incomplete: ${lateJoiner.replicaCount} < producer max ${maxProducerReplicaCount}`,
-      );
-    }
-
-    if ((lateJoiner?.antiEntropy?.usefulSyncs ?? 0) <= 0) {
-      passed = false;
-      console.log(`⚠️ [Adaptive] Late joiner reported no useful anti-entropy syncs`);
-    }
-
-    assert.ok(lateJoiner?.hasTargetData, `Adaptive: late joiner failed to converge via anti-entropy`);
-    assert.ok(
-      (lateJoiner?.replicaCount ?? 0) >= maxProducerReplicaCount,
-      `Adaptive: late joiner store (${lateJoiner?.replicaCount}) did not reach producer size (${maxProducerReplicaCount})`,
-    );
-    assert.ok(
-      (lateJoiner?.antiEntropy?.usefulSyncs ?? 0) > 0,
-      'Adaptive: late joiner should report at least one useful anti-entropy sync',
-    );
+    const passed = assertLateJoinerConvergence(workerResults);
 
     const report = generateTestReport(
       'Anti-Entropy Adaptive Heuristic Convergence',
@@ -287,6 +260,7 @@ describe('Interop - Data Convergence (Anti-Entropy) Tests', () => {
       runDurationSec,
       aggregatedResults,
       passed,
+      { antiEntropy: summarizeAntiEntropyMetrics(workerResults) },
     );
     printTestReport(report);
   });

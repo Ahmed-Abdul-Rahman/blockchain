@@ -20,6 +20,16 @@ export type WorkerResult = {
     lastSyncHashes: number;
     /** Scheduled ticks skipped due to idle dormancy (adaptive mode) */
     idleSkips?: number;
+    /** Forced syncs at maxIntervalMs ceiling despite idle state */
+    floorSyncForces?: number;
+    /** Total scheduled tick evaluations */
+    scheduledTicks?: number;
+    /** Consecutive zero-hash complete syncs at snapshot time */
+    zeroHashStreak?: number;
+    /** Replication activity score from state vector index 5 */
+    activityScore?: number;
+    /** Ms from set_expected_hashes to first full target hash coverage */
+    convergenceMs?: number;
   };
 };
 
@@ -47,6 +57,21 @@ export type Summary = {
   };
 };
 
+export type AntiEntropyInteropSummary = {
+  readonly lateJoiner?: WorkerResult['antiEntropy'];
+  readonly producerIdleSkipsTotal: number;
+  readonly producerOutboundAttemptsTotal: number;
+  readonly producerFloorSyncForcesTotal: number;
+  readonly producerScheduledTicksTotal: number;
+};
+
+export type AbComparisonReport = {
+  readonly fixedWallMs: number;
+  readonly heuristicWallMs: number;
+  readonly fixed: AntiEntropyInteropSummary;
+  readonly heuristic: AntiEntropyInteropSummary;
+};
+
 export interface TestReport {
   testName: string;
   totalNodes: number;
@@ -54,11 +79,19 @@ export interface TestReport {
   summary: Summary;
   passed: boolean;
   timestamp: string;
+  antiEntropy?: AntiEntropyInteropSummary;
+  scenarioWallMs?: number;
+  abComparison?: AbComparisonReport;
 }
 
 export type AggregatedResult = {
   workerResults: WorkerResult[];
   summary: Summary;
+};
+
+export type AbComparisonResult = {
+  readonly fixed: { readonly result: AggregatedResult; readonly wallMs: number };
+  readonly heuristic: { readonly result: AggregatedResult; readonly wallMs: number };
 };
 
 export type WorkerData = {

@@ -95,3 +95,267 @@ The core architecture has successfully transitioned to a robust, Dependency-Inje
   2. Encrypt the inner application payload *before* passing it to `GenericDataSerializer`.
   3. The `core` network layer should only route opaque ciphertext blobs identified by a `ContentHash`. 
 * **Affected Modules:** App-layer integration (outside of `core`, but `core` must treat payloads as strictly opaque `Uint8Array`s).
+
+---
+
+## 🧪 Category 5: Adaptive Anti-Entropy — Scale Testing & Realistic Network Simulation
+
+**Context:** Adaptive anti-entropy scheduling shipped in PR [#36](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/36) (ADR [0003](docs/adr/0003-adaptive-anti-entropy-scheduling.md)). CI validates correctness via worker-thread interop (`packages/core/tests/interop/`). [Testground](https://github.com/testground/testground) was evaluated and **deferred** — libp2p moved to Docker Compose for the same class of problems ([rationale](https://github.com/libp2p/test-plans/issues/103)). This category implements a **two-tier** scale-testing strategy instead.
+
+**Prior art / references:**
+- Current interop harness: `InterOpScenarios.ts`, `interOpTestRunner.dataSync.int.ts`, `nodeWorker.ts`, `nodeWorkerData.ts`
+- Dormant-room scheduling bench: `packages/core/tests/perf/antiEntropyScheduler.bench.ts` (`yarn workspace @dechat/core bench:anti-entropy`)
+- libp2p Compose pattern: [libp2p/test-plans#103](https://github.com/libp2p/test-plans/issues/103), [libp2p/unified-testing](https://github.com/libp2p/unified-testing)
+
+---
+
+### Task 5.1: Tier 1 — Extend In-Process Interop (Worker-Thread Harness)
+
+> **Implementation plan:** [tasks/tier1-adaptive-interop.md](tasks/tier1-adaptive-interop.md) — groomed checklist, CI strategy, phased PRs.
+
+* **Severity:** Medium (confidence / regression prevention for adaptive scheduler)
+* **Status:** Implemented — pending nightly soak
+* **Depends on:** Task 2.1 adaptive scheduling (PR #36) — **done**
+* **Goal:** Increase statistical confidence in adaptive anti-entropy behaviour **without** new infrastructure. Build on the existing single-host worker-thread interop that already runs in CI.
+
+#### The gap today
+
+| Gap | Current state |
+|-----|---------------|
+| Adaptive test waits | `simulateAntiEntropyConvergence` uses fixed sleeps unless `ADAPTIVE_INTEROP_STRICT=true` |
+| CI env | `.github/workflows/ci.yaml` does **not** set `ADAPTIVE_INTEROP_STRICT` |
+| Metrics in reports | Worker snapshot exports `outboundAttempts`, `usefulSyncs`, `lastSyncHashes`, `idleSkips` — not surfaced in `interopTestReporter` summary |
+| Scale | Default 6 nodes; `sim:peak` script references 50 nodes but is not in CI |
+| A/B comparison | No interop scenario runs fixed vs heuristic side-by-side with comparable assertions |
+| Node parametrization | `--nodes` / `--duration` exist via `interopTestReporter.ts` but adaptive scenarios are not exercised at multiple sizes |
+
+#### Deliverables
+
+1. **Enable strict metric polling for adaptive scenario in CI**
+   - Set `ADAPTIVE_INTEROP_STRICT=true` for the adaptive interop test job only (or entire `test:int:data-sync` once stable).
+   - `pollLateJoinerConvergence` in `InterOpScenarios.ts` already polls `antiEntropy.usefulSyncs` every 2s — use this instead of `ANTI_ENTROPY_WAIT_MS` sleep for the adaptive test.
+   - Keep sleep fallback when `ADAPTIVE_INTEROP_STRICT=false` for local debugging / transitional stability.
+
+2. **Enrich worker snapshot + interop report**
+   - Extend `WorkerResult.antiEntropy` snapshot in `nodeWorkerData.ts` with fields already available in `AntiEntropyMetricsStore`:
+     - `floorSyncForces` (`skipCounts.floor_sync_forced`)
+     - `scheduledTicks` (`scheduledTickStarted` counter)
+     - `convergenceMs` (time from late-joiner spawn to first useful sync, measured in worker)
+   - Update `generateTestReport` / `printTestReport` in `interopTestReporter.ts` to print adaptive metrics per node (at least late joiner + aggregate).
+   - Optional: write JSON artifact to `packages/core/tests/interop/reports/` for nightly diffing.
+
+3. **In-process A/B scenario: fixed vs heuristic**
+   - New scenario (or parameterized variant of `simulateAntiEntropyConvergence`):
+     - **Run A:** `adaptive.enabled: false`, `syncIntervalMs: 15_000`
+     - **Run B:** `adaptive.enabled: true`, `scheduler: 'heuristic'`, same base interval bounds
+   - Same topology: N−1 producers, 1 late joiner, same `expectedHashes`.
+   - Assertions:
+     - Both runs: `hasTargetData === true`, `replicaCount >= maxProducerReplicaCount`, `usefulSyncs > 0`
+     - Run B (heuristic): `idleSkips > 0` on at least one producer after convergence phase (dormant room)
+     - Run B wall time ≤ Run A wall time OR document acceptable trade-off in report (heuristic may be slower to converge but cheaper on wire — report both)
+   - File: `interOpTestRunner.dataSync.int.ts` — mark as **nightly** initially if flaky at default CI timeouts.
+
+4. **Parametrized scale runs (nightly, not PR gate)**
+   - Add GitHub Actions workflow `interop-scale-nightly.yml` (or scheduled job on `develop`):
+     - Adaptive late-joiner at `--nodes 12`, `--nodes 24`, `--nodes 50`
+     - `NODE_OPTIONS: --max-old-space-size=6144` (match data-sync job)
+     - Timeout: 60–90 min for 50-node run
+   - Document commands in `packages/core/tests/interop/README.md` (create if missing).
+
+5. **Port additional adaptive scenarios to strict polling**
+   - `simulateSplitBrainConvergence`, `simulateOfflinePeerRevivalConvergence` — add optional `ADAPTIVE_INTEROP_STRICT` polling paths similar to late joiner (poll `usefulSyncs` / hash coverage instead of fixed sleep).
+
+#### Files to touch
+
+| File | Change |
+|------|--------|
+| `.github/workflows/ci.yaml` | `ADAPTIVE_INTEROP_STRICT=true` on data-sync job (or scoped step) |
+| `.github/workflows/interop-scale-nightly.yml` | **New** — scheduled scale matrix |
+| `packages/core/tests/interop/InterOpScenarios.ts` | A/B helper, strict polling for more scenarios |
+| `packages/core/tests/interop/interOpTestRunner.dataSync.int.ts` | A/B test case, scale parametrization |
+| `packages/core/tests/interop/childThread/nodeWorkerData.ts` | Extended `antiEntropy` snapshot |
+| `packages/core/tests/interop/types.ts` | Extended `WorkerResult.antiEntropy` type |
+| `packages/core/tests/interop/interopTestReporter.ts` | Report adaptive metrics |
+| `packages/core/tests/interop/README.md` | **New** — env vars, nightly vs PR commands |
+
+#### Acceptance criteria
+
+- [ ] PR CI (`test:int:data-sync`) passes with `ADAPTIVE_INTEROP_STRICT=true` on adaptive scenario
+- [ ] Interop report prints `idleSkips`, `usefulSyncs`, `floorSyncForces` for late joiner
+- [ ] A/B scenario: both modes converge; heuristic shows `idleSkips > 0` on dormant producers
+- [ ] Nightly 50-node adaptive run completes without worker-thread leak (all workers terminated)
+- [ ] No change to production `adaptive.enabled` default (`false`)
+
+#### Out of scope (Tier 1)
+
+- Real network latency / bandwidth simulation (Tier 2)
+- Cross-container / multi-host deployment
+- Testground or Kubernetes
+
+---
+
+### Task 5.2: Tier 2 — Docker Compose Interop (Real Network Isolation at Scale)
+
+* **Severity:** Medium–High (realistic P2P conditions; catches bugs invisible on localhost worker threads)
+* **Status:** Backlog
+* **Depends on:** Task 5.1 (strict polling + enriched metrics) — recommended first
+* **Goal:** Run the same DeChat convergence scenarios in **isolated containers** with configurable network conditions (latency, jitter, bandwidth, partitions), following the pattern libp2p adopted after leaving Testground.
+
+#### Why Tier 2 (not Testground)
+
+| Need | Compose approach |
+|------|------------------|
+| 50–200 peers, real TCP between containers | `docker compose up --scale node=N` |
+| Latency / jitter / loss | `tc netem` on container egress (documented, no Testground SDK) |
+| Barriers / choreography | Stock Redis + existing scenario timing from `InterOpScenarios.ts` |
+| Debuggability | `docker exec`, `LOG_LEVEL=debug`, attach debugger to any container |
+| TypeScript-native | Reuse `@dechat/core` build — no Go test plan / Testground daemon |
+| CI | GitHub Actions `docker compose` job (nightly); optional manual `act` locally |
+
+#### Proposed layout
+
+```
+packages/core/tests/compose-interop/
+├── README.md                    # setup, scenarios, netem profiles
+├── docker-compose.yml           # base: node image, redis, network
+├── docker-compose.scale.yml     # override for N-node scale profiles
+├── Dockerfile                   # multi-stage: yarn build @dechat/core
+├── scripts/
+│   ├── run-scenario.sh          # entry: late-joiner | split-brain | dormant-room | ab-fixed-heuristic
+│   ├── wait-redis-barrier.sh    # sync producers before late joiner
+│   └── apply-netem.sh           # latency/jitter profile per role
+├── netem/
+│   ├── lan.toml                 # ~1ms RTT (baseline)
+│   ├── wan.toml                 # ~100ms RTT, 10ms jitter
+│   └── lossy.toml               # 1% packet loss + 200ms RTT
+└── scenarios/
+    ├── late-joiner-adaptive.ts  # thin orchestrator (ports InterOpScenarios choreography)
+    ├── split-brain.ts
+    └── dormant-room-ab.ts       # fixed vs heuristic cohort comparison
+```
+
+#### Architecture
+
+```mermaid
+flowchart TB
+  subgraph compose["docker compose network"]
+    R[Redis barrier]
+    P1[Producer 0]
+    P2[Producer 1]
+    PN[Producer N-1]
+    L[Late joiner]
+    R --> P1
+    R --> P2
+    R --> PN
+    R --> L
+    P1 <-- TCP/libp2p --> P2
+    P2 <-- TCP/libp2p --> PN
+    L <-- TCP/libp2p --> P1
+  end
+  Orchestrator[run-scenario.sh] --> R
+  Orchestrator --> L
+```
+
+Each **node container** runs a extracted entrypoint (refactor from `nodeWorker.ts` / `nodeWorkerData.ts`):
+- Env: `NODE_SEED`, `NODE_INDEX`, `TOTAL_NODES`, `ROLE=producer|late-joiner`, `ADAPTIVE_ENABLED`, `SYNC_INTERVAL_MS`, bootstrap multiaddrs
+- HTTP or Redis pub/sub for: `produce_messages`, `set_expected_hashes`, `report_statistics`, `report_hashes`
+- Exit 0/1 with JSON stats on stdout (same shape as `WorkerResult` for report reuse)
+
+#### Scenarios to port (priority order)
+
+| Priority | Scenario | Source | Adaptive focus |
+|----------|----------|--------|----------------|
+| P0 | Late joiner convergence | `simulateAntiEntropyConvergence` | `usefulSyncs > 0`, time-to-converge |
+| P0 | Fixed vs heuristic A/B | Task 5.1 A/B | `idleSkips`, outbound attempts, wall time |
+| P1 | Split-brain heal | `simulateSplitBrainConvergence` | Floor sync under partition heal |
+| P1 | Offline revival | `simulateOfflinePeerRevivalConvergence` | Dormancy → activity transition |
+| P2 | Dormant room at scale | `antiEntropyScheduler.bench.ts` (live P2P) | N producers idle, measure skip rate |
+| P2 | Peer churn | `simulatePeerChurn` | Activity tracker under connect/disconnect |
+
+#### Network profiles (netem)
+
+| Profile | Parameters | Tests |
+|---------|------------|-------|
+| `lan` | negligible delay | Baseline parity with worker interop |
+| `wan` | `delay 50ms 10ms`, `rate 10mbit` | Realistic mobile/WAN chat |
+| `partition` | `iptables` drop between cohort A/B for T seconds | Split-brain + heal |
+| `lossy` | `loss 1% 25%`, `delay 100ms` | Retry / partial sync behaviour |
+
+Apply via `apply-netem.sh` on container start (libp2p test-plans pattern). Do **not** require dynamic mid-test shaping in v1.
+
+#### Deliverables
+
+1. **Extract reusable node runner** from worker thread code
+   - New module: `packages/core/tests/interop/nodeRunner.ts` (or `compose-interop/nodeMain.ts`)
+   - Shared by worker threads (import) and container entrypoint (direct `node` execution)
+   - Avoid duplicating `configureNode`, message handlers, anti-entropy snapshot logic
+
+2. **Docker image + compose stack**
+   - Multi-stage Dockerfile: `yarn install`, `yarn workspace @dechat/core build`, runtime Node 22
+   - `docker-compose.yml`: Redis 7, `node` service, named network `dechat-interop`
+   - Scale producers via `docker compose run` or compose profiles
+
+3. **Orchestration scripts**
+   - Bash driver (libp2p/unified-testing conventions) — scenarios as documented shell scripts
+   - Redis keys: `barrier:mesh-ready`, `barrier:producers-done`, `stats:{index}`
+
+4. **Metrics collection**
+   - Reuse `interopTestReporter.ts` types; orchestrator aggregates container JSON outputs
+   - Write `packages/core/tests/compose-interop/reports/<scenario>-<timestamp>.md`
+   - Compare fixed vs heuristic: outbound attempts, idle skips, convergence time, connection count p95
+
+5. **CI integration (nightly only)**
+   - Workflow: `compose-interop-nightly.yml`
+   - Jobs: `late-joiner-adaptive` (12 nodes, lan), `late-joiner-wan` (12 nodes, wan profile)
+   - Not a PR gate until stable (< 15 min, < 5% flake rate over 7 nights)
+
+6. **Documentation**
+   - `compose-interop/README.md`: prerequisites (Docker 24+), local run, netem profiles, debugging (`docker logs`, `LOG_LEVEL=debug`)
+
+#### Files to create / modify
+
+| Path | Action |
+|------|--------|
+| `packages/core/tests/compose-interop/**` | **New** tree |
+| `packages/core/tests/interop/nodeRunner.ts` | **New** — shared node lifecycle extracted from worker |
+| `packages/core/tests/interop/childThread/nodeWorker.ts` | Refactor to delegate to `nodeRunner` |
+| `packages/core/package.json` | Scripts: `test:compose:late-joiner`, `test:compose:ab` |
+| `.github/workflows/compose-interop-nightly.yml` | **New** scheduled workflow |
+| `BACKLOG.md` | This task |
+
+#### Acceptance criteria
+
+- [ ] `docker compose` late-joiner scenario (6 producers + 1 late joiner, lan) converges with `adaptive.enabled: true`
+- [ ] Same scenario with `wan` netem profile converges within 2× lan wall time (configurable threshold)
+- [ ] A/B report: heuristic shows fewer outbound attempts OR higher `idleSkips` vs fixed in dormant phase
+- [ ] Split-brain scenario: both partitions converge union after heal
+- [ ] No zombie containers after run (`docker compose down -v` in CI teardown)
+- [ ] Orchestrator reuses `WorkerResult` / report types — no second metrics schema
+
+#### Risks & mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| Compose slower than worker interop | Nightly only; keep Tier 1 as PR gate |
+| GossipSub mesh formation flakes across containers | Reuse `STABILIZE_MS` (120s) from `InterOpScenarios.ts`; Redis barrier after N peers verified |
+| Bootstrap / multiaddr discovery across containers | Explicit `listen` on `0.0.0.0`; publish addrs to Redis; prefer `/ip4/.../tcp/...` over 127.0.0.1 |
+| Image build time in CI | Layer cache; build once per workflow, scale containers from same image |
+| macOS vs Linux netem differences | CI runs on `ubuntu-latest`; document Linux-only netem for local dev |
+
+#### Out of scope (Tier 2 v1)
+
+- Browser / WebRTC nodes in compose
+- 500+ nodes / Kubernetes (revisit only if Compose hits limits — kompose or k3s)
+- Testground migration
+- Cross-version libp2p interop (DeChat-only)
+
+#### Estimated effort
+
+| Phase | Effort | Output |
+|-------|--------|--------|
+| 5.2a — Extract `nodeRunner` + Dockerfile | 2–3 days | Container runs single node |
+| 5.2b — Late joiner + Redis barriers | 2–3 days | First compose scenario green locally |
+| 5.2c — Netem profiles + A/B report | 2 days | wan profile + markdown report |
+| 5.2d — Nightly CI + split-brain | 2 days | Scheduled workflow |
+
+**Total:** ~8–10 dev-days after Tier 1 complete.

@@ -5,6 +5,7 @@ import { sha256 } from '@dechat/crypto';
 import { Libp2p, Message, ServiceMap } from '@libp2p/interface';
 import { multiaddr } from '@multiformats/multiaddr';
 import { delay, differenceWith, random } from 'es-toolkit';
+import type { AntiEntropyMetricsSnapshot } from '../../../src/data-convergence/scheduling/AntiEntropyMetricsStore';
 import { AntiEntropyMetricsStore } from '../../../src/data-convergence/scheduling/AntiEntropyMetricsStore';
 import { GossipSubPropagation } from '../../../src/data-propagation/broadcast/GossipSubPropagation';
 import { PeerExchangeService } from '../../../src/networking/PeerExchangeService';
@@ -37,6 +38,23 @@ let directStreamMsgsReceivedCount = 0;
 let targetHashesToFetch: string[] | null = null;
 let wireSerializer: WireCodec | null = null;
 let antiEntropyMetrics: AntiEntropyMetricsStore | undefined;
+let convergenceWatchStartedAt: number | null = null;
+let convergenceMsRecorded: number | null = null;
+
+const mapAntiEntropySnapshot = (
+  snapshot: AntiEntropyMetricsSnapshot,
+  convergenceMs?: number,
+): NonNullable<WorkerResult['antiEntropy']> => ({
+  outboundAttempts: snapshot.outboundAttempts,
+  usefulSyncs: snapshot.usefulSyncs,
+  lastSyncHashes: snapshot.lastSyncHashes,
+  idleSkips: snapshot.skipCounts.idle_skip,
+  floorSyncForces: snapshot.skipCounts.floor_sync_forced,
+  scheduledTicks: snapshot.scheduledTicks,
+  zeroHashStreak: snapshot.consecutiveZeroHashComplete,
+  activityScore: snapshot.stateVector[5],
+  ...(convergenceMs !== undefined ? { convergenceMs } : {}),
+});
 
 const hashedMessages = new Map<string, unknown>();
 
@@ -55,12 +73,18 @@ const getReplicationResult = async (replicaStore: ReplicaStoreInterface) => {
 
   const diff = differenceWith(generated.map(normalize), replicated.map(normalize), (gen, rep) => gen === rep);
 
+  const hasTargetData = targetHashesToFetch
+    ? (await Promise.all(targetHashesToFetch.map((h) => replicaStore.has(h)))).every(Boolean)
+    : undefined;
+
+  if (hasTargetData && convergenceWatchStartedAt !== null && convergenceMsRecorded === null) {
+    convergenceMsRecorded = Date.now() - convergenceWatchStartedAt;
+  }
+
   return {
     replicaCount: await replicaStore.size(),
     replicaDataDiff: diff,
-    hasTargetData: targetHashesToFetch
-      ? (await Promise.all(targetHashesToFetch.map((h) => replicaStore.has(h)))).every(Boolean)
-      : undefined,
+    hasTargetData,
   };
 };
 
@@ -75,6 +99,14 @@ const getStatistics = async (
   const replicationResults = replicaStore ? await getReplicationResult(replicaStore) : {};
 
   const antiEntropySnapshot = antiEntropyMetrics?.snapshot();
+  const convergenceMs =
+    convergenceMsRecorded ??
+    (antiEntropySnapshot &&
+    convergenceWatchStartedAt !== null &&
+    'hasTargetData' in replicationResults &&
+    replicationResults.hasTargetData
+      ? Date.now() - convergenceWatchStartedAt
+      : undefined);
 
   return {
     me: selfPeerId,
@@ -91,12 +123,7 @@ const getStatistics = async (
     directStreamMsgsReceivedCount,
     ...(antiEntropySnapshot
       ? {
-          antiEntropy: {
-            outboundAttempts: antiEntropySnapshot.outboundAttempts,
-            usefulSyncs: antiEntropySnapshot.usefulSyncs,
-            lastSyncHashes: antiEntropySnapshot.lastSyncHashes,
-            idleSkips: antiEntropySnapshot.skipCounts.idle_skip,
-          },
+          antiEntropy: mapAntiEntropySnapshot(antiEntropySnapshot, convergenceMs),
         }
       : {}),
     ...replicationResults,
@@ -368,6 +395,8 @@ const runNodeDataReplication = async () => {
       // Record the hashes we expect anti-entropy to deliver, WITHOUT triggering a
       // manual fetch. hasTargetData in the final stats then reflects pure convergence.
       targetHashesToFetch = message.hashes;
+      convergenceWatchStartedAt = Date.now();
+      convergenceMsRecorded = null;
     } else if (message.type === 'terminate') {
       terminateThread = true;
       await terminateAndCleanUp(node, broadcastProp, engine.nodeCleanUp, replicaStore);

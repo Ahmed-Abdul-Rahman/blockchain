@@ -910,5 +910,15 @@ packages/core/tests/unit/data-convergence/scheduling/
 - [x] Step 3 — Scheduler refactor + fixed mode regression
 - [x] Step 4 — Heuristic peer pick + idle skip (Phase 1)
 - [x] Step 5 — Adaptive interval (Phase 2)
-- [ ] Step 6 — CI / interop verification (skipped locally; CI on PR)
+- [x] Step 6 — CI / interop verification (PR #36 green)
 - [ ] Step 7 — Bandit scheduler (optional)
+
+### Follow-up backlog (scale testing)
+
+Deferred Testground evaluation (see [libp2p/test-plans#103](https://github.com/libp2p/test-plans/issues/103)).
+
+| Task | Plan doc | Summary |
+|------|----------|---------|
+| **5.1 Tier 1** | [tasks/tier1-adaptive-interop.md](tier1-adaptive-interop.md) | Strict CI polling, richer metrics, fixed vs heuristic A/B, nightly 12/24/50-node runs — **implement next** |
+| **5.2 Tier 2** | TBD (`tasks/tier2-compose-interop.md`) | Docker Compose interop — after Tier 1 nightly green |
+| **Step 7 Bandit** | `todo.md` Step 7 | After Tier 1 nightly green (7 consecutive passes) |
