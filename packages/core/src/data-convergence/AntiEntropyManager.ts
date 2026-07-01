@@ -1,16 +1,27 @@
-import { logger, pickRandom } from '@dechat/common';
+import { logger } from '@dechat/common';
 import { Libp2p, PeerId, Startable } from '@libp2p/interface';
+import { DeChatConfig } from '../config/types';
 import { DataReplicationInterface } from '../data-replication/DataReplicationInterface';
+import { AntiEntropyMetrics } from '../metrics/interfaces/AntiEntropyMetrics';
 import { DeChatComponents, DeChatFactory } from '../types';
 import { AntiEntropyNetworkExchange } from './AntiEntropyNetworkExchange';
+import { AntiEntropyMetricsStore, createAntiEntropyMetricsStore, createSyncScheduler } from './scheduling';
+import { computeUrgency } from './scheduling/math';
+import { SyncAttemptRecord, SyncAttemptResult, SyncScheduler, SyncTickContext } from './scheduling/types';
+import { SyncIncompleteReason } from './types';
 
 /**
  * Orchestrates the background Anti-Entropy Data Convergence process.
- * Periodically selects a random peer, computes state differences,
- * and requests missing data to guarantee eventual consistency.
+ * Delegates when/with-whom decisions to a pluggable SyncScheduler;
+ * the data plane (trie diff, auth, replication) stays deterministic.
  */
 export class AntiEntropyManager implements Startable {
-  private syncTimer: ReturnType<typeof setInterval> | null = null;
+  /** Recursive setTimeout handle for the next scheduled sync tick */
+  private syncTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Whether the manager is actively scheduling sync ticks */
+  private running = false;
+
   private isSyncing = false;
 
   /** Active backoff timer between partial-sync retries, tracked so stop() can cancel it. */
@@ -22,7 +33,11 @@ export class AntiEntropyManager implements Startable {
   private readonly node: Libp2p;
   private readonly exchangeEngine: AntiEntropyNetworkExchange;
   private readonly dataReplication: DataReplicationInterface;
-  private config: DeChatComponents['config']['strategies']['synchronizer'];
+  private readonly config: DeChatComponents['config']['strategies']['synchronizer'];
+  private readonly adaptiveConfig: DeChatConfig['strategies']['synchronizer']['adaptive'];
+  private readonly scheduler: SyncScheduler;
+  private readonly metricsStore: AntiEntropyMetricsStore;
+  private readonly metricsExport: AntiEntropyMetrics;
 
   constructor(components: DeChatComponents) {
     if (!components.strategies?.dataReplication) {
@@ -31,12 +46,19 @@ export class AntiEntropyManager implements Startable {
     if (!components.strategies?.networkExchanger) {
       throw new Error('AntiEntropyManager requires antiEntropyExchange strategy to be registered first.');
     }
+
     this.node = components.libp2p;
     this.config = components.config.strategies.synchronizer;
+    this.adaptiveConfig = this.config.adaptive;
     this.exchangeEngine = components.strategies.networkExchanger;
     this.dataReplication = components.strategies.dataReplication;
+    this.metricsExport = components.metrics.antiEntropy;
 
-    // Wire before any Startable.start() so inbound syncs never race an unset callback.
+    this.metricsStore = createAntiEntropyMetricsStore(this.config);
+    components.antiEntropyMetrics = this.metricsStore;
+
+    this.scheduler = createSyncScheduler(this.config, this.metricsStore);
+
     this.bindMissingHashesListener();
   }
 
@@ -50,28 +72,26 @@ export class AntiEntropyManager implements Startable {
     }
 
     this.bindMissingHashesListener();
+    this.running = true;
+    this.scheduleNext();
 
-    // Start the background cron job
-    this.syncTimer = setInterval(() => {
-      this.performScheduledSync().catch((err) =>
-        logger.error(`[AntiEntropyManager] Scheduled sync failed: ${(err as Error).message}`),
-      );
-    }, this.config.syncIntervalMs);
-
-    logger.info(`[AntiEntropyManager] Started background sync (Interval: ${this.config.syncIntervalMs}ms)`);
+    logger.info(
+      `[AntiEntropyManager] Started background sync (adaptive=${this.adaptiveConfig.enabled}, ` +
+        `scheduler=${this.adaptiveConfig.scheduler})`,
+    );
   }
 
   /**
    * Stops the background scheduler and cleans up listeners.
    */
   public stop(): void {
+    this.running = false;
+
     if (this.syncTimer) {
-      clearInterval(this.syncTimer);
+      clearTimeout(this.syncTimer);
       this.syncTimer = null;
     }
 
-    // Cancel any pending retry backoff and release a loop that may be awaiting it,
-    // so teardown never leaves a dangling timer (CI hang risk).
     if (this.retryTimer) {
       clearTimeout(this.retryTimer);
       this.retryTimer = null;
@@ -83,11 +103,51 @@ export class AntiEntropyManager implements Startable {
     logger.info('[AntiEntropyManager] Stopped background sync.');
   }
 
+  /** Human-readable scheduler mode for logs (fixed vs adaptive strategy name). */
+  private schedulerModeLabel(): string {
+    if (!this.adaptiveConfig.enabled) {
+      return 'fixed';
+    }
+    return this.adaptiveConfig.scheduler;
+  }
+
+  /**
+   * Schedules the next sync tick using the scheduler's dynamic interval.
+   */
+  private scheduleNext(): void {
+    if (!this.running) {
+      return;
+    }
+
+    const ctx = this.buildTickContext();
+    const delayMs = this.scheduler.nextIntervalMs(ctx);
+    const wouldIdleSkipWithoutFloor =
+      this.adaptiveConfig.enabled && this.scheduler.shouldSkipTick({ ...ctx, forceFloorSync: false });
+    const wouldSkip = wouldIdleSkipWithoutFloor && !ctx.forceFloorSync;
+
+    logger.debug(
+      `[AntiEntropyManager] Scheduling next tick in ${delayMs}ms ` +
+        `(mode=${this.schedulerModeLabel()}, urgency=${computeUrgency(ctx.stateVector).toFixed(2)}, ` +
+        `zeroHashStreak=${ctx.consecutiveZeroHashComplete}, wouldSkip=${wouldSkip}, ` +
+        `forceFloor=${ctx.forceFloorSync}, activity=${ctx.stateVector[5].toFixed(2)})`,
+    );
+
+    this.syncTimer = setTimeout(() => {
+      void this.performScheduledSync()
+        .catch((err) => logger.error(`[AntiEntropyManager] Scheduled sync failed: ${(err as Error).message}`))
+        .finally(() => this.scheduleNext());
+    }, delayMs);
+  }
+
   /**
    * Binds the listener-side callback used when inbound bidirectional syncs discover gaps.
    */
   private bindMissingHashesListener(): void {
     this.exchangeEngine.onMissingHashesDiscovered = (hashes: readonly string[], peerId: PeerId) => {
+      const peerIdStr = peerId.toString();
+      this.metricsStore.recordInboundHashes(peerIdStr, hashes.length);
+      this.metricsExport.inboundSyncDiscoveredHashes(peerIdStr, hashes.length);
+
       this.fetchMissingData(hashes, peerId).catch((err) =>
         logger.error(`[AntiEntropyManager] Failed to fetch listener data: ${(err as Error).message}`),
       );
@@ -95,41 +155,114 @@ export class AntiEntropyManager implements Startable {
   }
 
   /**
-   * The core scheduled task. Picks a peer and initiates the exchange.
+   * Builds tick context from current metrics for scheduler policy evaluation.
+   */
+  private buildTickContext(): SyncTickContext {
+    const now = Date.now();
+    const timeSinceLastSyncMs = this.metricsStore.getTimeSinceLastSyncMs(now);
+    const maxInterval = this.adaptiveConfig.maxIntervalMs ?? this.config.syncIntervalMs;
+
+    // Floor sync: force a tick when we have not synced within maxIntervalMs
+    const forceFloorSync = this.adaptiveConfig.enabled && timeSinceLastSyncMs >= maxInterval;
+
+    return {
+      now,
+      timeSinceLastSyncMs,
+      timeSinceLastUsefulSyncMs: this.metricsStore.getTimeSinceLastUsefulSyncMs(now),
+      consecutiveZeroHashComplete: this.metricsStore.getConsecutiveZeroHashComplete(),
+      stateVector: this.metricsStore.getStateVector(now),
+      forceFloorSync,
+    };
+  }
+
+  /**
+   * The core scheduled task. Evaluates skip policy, picks a peer, and initiates sync.
    */
   private async performScheduledSync(): Promise<void> {
-    // Mutex lock to prevent overlapping syncs on slow networks
+    this.metricsStore.recordScheduledTickStarted();
+    this.metricsExport.scheduledTickStarted();
+
+    const ctx = this.buildTickContext();
+    const wouldIdleSkipWithoutFloor =
+      this.adaptiveConfig.enabled && this.scheduler.shouldSkipTick({ ...ctx, forceFloorSync: false });
+
+    if (wouldIdleSkipWithoutFloor && !ctx.forceFloorSync) {
+      this.metricsStore.recordSkip('idle_skip');
+      this.metricsExport.scheduledTickSkipped('idle_skip');
+      logger.debug(
+        `[AntiEntropyManager] Skipping scheduled sync; room appears idle ` +
+          `(mode=${this.schedulerModeLabel()}, zeroHashStreak=${ctx.consecutiveZeroHashComplete}, ` +
+          `activity=${ctx.stateVector[5].toFixed(2)})`,
+      );
+      return;
+    }
+
+    if (ctx.forceFloorSync && wouldIdleSkipWithoutFloor) {
+      this.metricsStore.recordSkip('floor_sync_forced');
+      this.metricsExport.scheduledTickSkipped('floor_sync_forced');
+      logger.debug(
+        `[AntiEntropyManager] Floor sync override; forcing tick despite idle state ` +
+          `(mode=${this.schedulerModeLabel()}, timeSinceLastSyncMs=${ctx.timeSinceLastSyncMs})`,
+      );
+    }
+
     if (this.isSyncing) {
+      this.metricsStore.recordSkip('mutex');
+      this.metricsExport.scheduledTickSkipped('mutex');
       logger.debug('[AntiEntropyManager] Skipping scheduled sync; a sync is already in progress.');
       return;
     }
 
-    const connections = this.node.getConnections(); // TODO: should it use the peer registry instead?
+    // TODO: consider PeerRegistry authenticated peers instead of raw connections
+    const connections = this.node.getConnections();
     if (connections.length === 0) {
-      return; // No peers to sync with
+      this.metricsStore.recordSkip('no_peers');
+      this.metricsExport.scheduledTickSkipped('no_peers');
+      return;
     }
 
-    // Pick a random active connection
-    const { item: randomConnection } = pickRandom(connections);
-    const targetPeerId = randomConnection.remotePeer;
+    const candidates = connections.map((c) => c.remotePeer);
+    const targetPeerId = this.scheduler.pickPeer(candidates);
+    const peerIdStr = targetPeerId.toString();
+    const peerScore = this.metricsStore.getPeerConvergenceTracker().getScore(peerIdStr);
+    const startedAt = Date.now();
 
+    logger.debug(
+      `[AntiEntropyManager] Outbound sync tick ` +
+        `(mode=${this.schedulerModeLabel()}, peer=${peerIdStr}, convergenceScore=${peerScore.toFixed(2)}, ` +
+        `candidates=${candidates.length})`,
+    );
+
+    this.metricsExport.outboundSyncStarted(peerIdStr);
     this.isSyncing = true;
+
     try {
-      await this.syncUntilConvergedOrExhausted(targetPeerId);
+      const result = await this.syncUntilConvergedOrExhausted(targetPeerId);
+      const durationMs = Date.now() - startedAt;
+
+      const record: SyncAttemptRecord = {
+        peerId: peerIdStr,
+        startedAt,
+        durationMs,
+        result,
+      };
+
+      this.metricsStore.recordOutboundAttempt(record);
+      this.metricsExport.outboundSyncCompleted(record);
+      this.scheduler.onOutboundSyncComplete(record);
     } finally {
-      this.isSyncing = false; // Always release the lock
+      this.isSyncing = false;
     }
   }
 
   /**
    * Runs the exchange against a single peer and, on a partial (incomplete) outcome,
-   * retries with exponential backoff up to `config.retry.maxRetries`. Hashes discovered
-   * on each attempt are fetched immediately so partial progress is never wasted, and a
-   * partial result is never logged as convergence. The loop aborts early if the manager
-   * is stopped mid-backoff.
+   * retries with exponential backoff up to `config.retry.maxRetries`.
    */
-  private async syncUntilConvergedOrExhausted(targetPeerId: PeerId): Promise<void> {
+  private async syncUntilConvergedOrExhausted(targetPeerId: PeerId): Promise<SyncAttemptResult> {
     const { maxRetries } = this.config.retry;
+    let totalHashesDiscovered = 0;
+    let lastPartialReason: SyncIncompleteReason = 'timeout';
 
     for (let attempt = 0; ; attempt++) {
       logger.debug(
@@ -140,15 +273,14 @@ export class AntiEntropyManager implements Startable {
       const outcome = await this.exchangeEngine.syncWithPeer(targetPeerId);
 
       if (!outcome) {
-        // Stream could not be established; no diff info gained and nothing to retry against.
         logger.debug(
           `[AntiEntropyManager] Sync failed with peer ${targetPeerId.toString()} (exchange could not start).`,
         );
-        return;
+        return { kind: 'failed', durationMs: 0 };
       }
 
-      // Fetch whatever was discovered, even on a partial diff, so the work isn't wasted.
       if (outcome.hashes.length > 0) {
+        totalHashesDiscovered += outcome.hashes.length;
         await this.fetchMissingData(outcome.hashes, targetPeerId);
       }
 
@@ -156,19 +288,36 @@ export class AntiEntropyManager implements Startable {
         if (outcome.hashes.length === 0) {
           logger.debug(`[AntiEntropyManager] Fully converged with ${targetPeerId.toString()}. No missing data.`);
         }
-        return;
+        return {
+          kind: 'complete',
+          hashesDiscovered: totalHashesDiscovered,
+          durationMs: 0,
+        };
       }
 
-      // Partial outcome: do NOT treat as convergence. Retry with backoff if budget remains.
+      lastPartialReason = outcome.reason;
+
       if (attempt >= maxRetries) {
         logger.debug(
           `[AntiEntropyManager] Incomplete sync with ${targetPeerId.toString()} (reason=${outcome.reason}); ` +
             `exhausted ${maxRetries} retries, deferring to next scheduled cycle.`,
         );
-        return;
+        return {
+          kind: 'partial',
+          hashesDiscovered: totalHashesDiscovered,
+          durationMs: 0,
+          reason: lastPartialReason,
+        };
       }
 
-      if (!this.isRunning()) return; // Stopped during the exchange; do not schedule more work.
+      if (!this.isRunning()) {
+        return {
+          kind: 'partial',
+          hashesDiscovered: totalHashesDiscovered,
+          durationMs: 0,
+          reason: lastPartialReason,
+        };
+      }
 
       const backoffMs = this.computeBackoffMs(attempt);
       logger.debug(
@@ -177,7 +326,14 @@ export class AntiEntropyManager implements Startable {
       );
       await this.waitWithBackoff(backoffMs);
 
-      if (!this.isRunning()) return; // Stopped while waiting on the backoff.
+      if (!this.isRunning()) {
+        return {
+          kind: 'partial',
+          hashesDiscovered: totalHashesDiscovered,
+          durationMs: 0,
+          reason: lastPartialReason,
+        };
+      }
     }
   }
 
@@ -208,25 +364,33 @@ export class AntiEntropyManager implements Startable {
   }
 
   private isRunning(): boolean {
-    return this.syncTimer !== null;
+    return this.running;
   }
 
   /**
    * Delegates the actual retrieval of missing data to the Data Replication engine.
-   *
-   * @param hashes The exact sha256 missing message hashes.
-   * @param targetPeerId The peer we know has the data.
    */
   private async fetchMissingData(hashes: readonly string[], targetPeerId: PeerId): Promise<void> {
     logger.info(`[AntiEntropyManager] Fetching ${hashes.length} missing messages from ${targetPeerId.toString()}`);
 
+    const peerIdStr = targetPeerId.toString();
+
     for (const hash of hashes) {
+      const fetchStart = Date.now();
+      this.metricsStore.recordFetchHashStarted(peerIdStr, hash);
+      this.metricsExport.fetchHashStarted(peerIdStr, hash);
+
       try {
-        // TODO: Improvement - send all hashes at once and get back the data in one shot to improve performance
-        await this.dataReplication.requestMissingData(hash, targetPeerId.toString());
+        await this.dataReplication.requestMissingData(hash, peerIdStr);
+        const durationMs = Date.now() - fetchStart;
+        this.metricsStore.recordFetchHashCompleted(peerIdStr, hash, durationMs, true);
+        this.metricsExport.fetchHashCompleted(peerIdStr, hash, durationMs, true);
       } catch (error) {
+        const durationMs = Date.now() - fetchStart;
+        this.metricsStore.recordFetchHashCompleted(peerIdStr, hash, durationMs, false);
+        this.metricsExport.fetchHashCompleted(peerIdStr, hash, durationMs, false);
         logger.warn(
-          `[AntiEntropyManager] Failed to request missing hash ${hash} from ${targetPeerId.toString()}: ${(error as Error).message}`,
+          `[AntiEntropyManager] Failed to request missing hash ${hash} from ${peerIdStr}: ${(error as Error).message}`,
         );
       }
     }

@@ -31,6 +31,9 @@ export class KReplicaContentReplication implements DataReplicationInterface, Rep
 
   private serializer: DataSerializer;
 
+  /** Reference to components for runtime access to antiEntropyMetrics (set after manager init) */
+  private readonly components: Pick<DeChatComponents, 'antiEntropyMetrics'>;
+
   readonly replicationProtocol: ReplicationProtocolInterface;
 
   public constructor(components: DeChatComponents) {
@@ -49,6 +52,7 @@ export class KReplicaContentReplication implements DataReplicationInterface, Rep
     this.storage = components.strategies.replicaStore;
     this.replicationProtocol = components.strategies.replicationProtocol;
     this.inflightTracker = inflightRequestTracker();
+    this.components = components;
   }
 
   public readonly start = async (): Promise<void> => {
@@ -87,6 +91,8 @@ export class KReplicaContentReplication implements DataReplicationInterface, Rep
   };
 
   public readonly onLocalDataProduced = async <T>(data: T): Promise<void> => {
+    this.components.antiEntropyMetrics?.getActivityTracker().recordLocalProduce();
+
     const hash = this.hashStrategy.hash(data);
 
     if (await this.storage.has(hash)) return;

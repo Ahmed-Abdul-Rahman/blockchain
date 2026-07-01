@@ -17,6 +17,42 @@ const filename = fileURLToPath(import.meta.url);
 const nodeWorkerPath = resolve(dirname(filename), './childThread', './nodeWorker.js');
 const nodeWorkerDataPropPath = resolve(dirname(filename), './childThread', './nodeWorkerData.js');
 
+/** When true, interop scenarios use metric-based polling instead of fixed sleep waits */
+const ADAPTIVE_INTEROP_STRICT = process.env.ADAPTIVE_INTEROP_STRICT === 'true';
+
+/** Poll worker results for anti-entropy useful syncs on the late joiner */
+const pollLateJoinerConvergence = async (
+  workers: WorkerDetails[],
+  lateJoinerIndex: number,
+  timeoutMs: number,
+): Promise<void> => {
+  const lateJoiner = workers.find((w) => w.workerData.index === lateJoinerIndex);
+  if (!lateJoiner) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    // biome-ignore lint/suspicious/noExplicitAny: worker message format is dynamic
+    const listener = (msg: any) => {
+      if (msg.type === 'statistics' && msg.stats?.antiEntropy?.usefulSyncs > 0) {
+        lateJoiner.workerRef.off('message', listener);
+        resolve();
+      }
+    };
+    lateJoiner.workerRef.on('message', listener);
+
+    const poll = setInterval(() => {
+      lateJoiner.workerRef.postMessage({ type: 'statistics' });
+    }, 2_000);
+
+    setTimeout(() => {
+      clearInterval(poll);
+      lateJoiner.workerRef.off('message', listener);
+      resolve();
+    }, timeoutMs);
+  });
+};
+
 export const setupScenario = (
   runWorkersScenario: RunWorkersScenario,
 ): {
@@ -287,7 +323,12 @@ export const simulateAntiEntropyConvergence = (workerDataConfig: WorkerDataConfi
     // 5. Let it connect, tell it which hashes to expect (no manual fetch), then wait for sync
     await delay(LATE_JOINER_CONNECT_MS);
     lateJoiner.workerRef.postMessage({ type: 'set_expected_hashes', hashes: expectedHashes });
-    await delay(ANTI_ENTROPY_WAIT_MS);
+
+    if (ADAPTIVE_INTEROP_STRICT) {
+      await pollLateJoinerConvergence(workers, lateJoinerIndex, 120_000);
+    } else {
+      await delay(ANTI_ENTROPY_WAIT_MS);
+    }
 
     terminateWorkers(workers);
     await Promise.all(terminationPromises);

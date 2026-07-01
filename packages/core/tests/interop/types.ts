@@ -13,6 +13,14 @@ export type WorkerResult = {
   replicaCount?: number;
   replicaDataDiff?: Array<unknown>;
   hasTargetData?: boolean; // Indicates if the node successfully fetched the target DHT hashes
+  /** Anti-entropy sync metrics snapshot (when data sync is enabled) */
+  antiEntropy?: {
+    outboundAttempts: number;
+    usefulSyncs: number;
+    lastSyncHashes: number;
+    /** Scheduled ticks skipped due to idle dormancy (adaptive mode) */
+    idleSkips?: number;
+  };
 };
 
 export type expectedWorkerResult = {
@@ -66,6 +74,13 @@ export type WorkerData = {
   messageRate: number; // msgs per second
   dataSyncEnabled: boolean;
   syncIntervalMs?: number; // anti-entropy sync interval override
+  /** Partial override for adaptive synchronizer config */
+  adaptive?: {
+    enabled?: boolean;
+    scheduler?: 'fixed' | 'heuristic' | 'bandit';
+    minIntervalMs?: number;
+    maxIntervalMs?: number;
+  };
   enableMdns?: boolean; // default true; set false to isolate network partitions
 };
 
@@ -80,6 +95,13 @@ export type WorkerDataConfig = {
   messageRate: number; // msgs per second
   dataSyncEnabled: boolean;
   syncIntervalMs?: number; // anti-entropy sync interval override
+  /** Partial override for adaptive synchronizer config */
+  adaptive?: {
+    enabled?: boolean;
+    scheduler?: 'fixed' | 'heuristic' | 'bandit';
+    minIntervalMs?: number;
+    maxIntervalMs?: number;
+  };
   enableMdns?: boolean; // default true; set false to isolate network partitions
 };
 

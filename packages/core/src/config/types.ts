@@ -125,6 +125,66 @@ export interface DeChatConfig {
         /** Upper bound for a single backoff delay in ms (before jitter) */
         maxBackoffMs: number;
       };
+
+      /** Adaptive anti-entropy scheduling on the control plane (when / with whom to sync) */
+      adaptive: {
+        /** When false, uses fixed syncIntervalMs and uniform random peer pick (legacy behaviour) */
+        enabled: boolean;
+
+        /** Scheduler strategy: 'fixed' | 'heuristic' | 'bandit' (bandit only valid when enabled) */
+        scheduler: 'fixed' | 'heuristic' | 'bandit';
+
+        /** Minimum delay between scheduled outbound sync attempts when adaptive interval is active */
+        minIntervalMs: number;
+
+        /** Maximum delay between scheduled outbound sync attempts; also the floor-sync ceiling */
+        maxIntervalMs: number;
+
+        /** Random jitter added to each computed interval to desynchronize nodes */
+        jitterMs: number;
+
+        /** Consecutive zero-hash complete syncs required before idle skip activates */
+        idleSkipStreak: number;
+
+        /** Normalized replication activity threshold; compared against state vector index 5 */
+        idleActivityThreshold: number;
+
+        /** Sliding window size for sync outcome metrics */
+        convergenceWindowSize: number;
+
+        /** Minimum weight for peer selection so unexplored peers remain reachable */
+        minPeerWeight: number;
+
+        /** EMA parameters for per-peer convergence scoring (sync utility only) */
+        peerConvergence: {
+          /** Boost applied on useful sync (hashes discovered > 0) */
+          alpha: number;
+
+          /** Decay applied on useless sync (complete, zero hashes) */
+          beta: number;
+
+          /** Decay applied on failed or partial sync */
+          gamma: number;
+
+          /** Idle time after which peer scores decay toward neutralScore */
+          idleDecayMs: number;
+
+          /** Neutral starting score for peers with no sync history */
+          neutralScore: number;
+        };
+
+        /** Epsilon-greedy bandit parameters (Phase 3; optional) */
+        bandit?: {
+          /** Exploration probability for epsilon-greedy peer selection */
+          epsilon: number;
+
+          /** Annealing: multiply epsilon by decay factor every N attempts; 0 disables annealing */
+          epsilonDecayPerAttempts: number;
+
+          /** Lower bound for epsilon after annealing */
+          epsilonFloor: number;
+        };
+      };
     };
     propagation: {
       direct: {

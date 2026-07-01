@@ -5,6 +5,7 @@ import { sha256 } from '@dechat/crypto';
 import { Libp2p, Message, ServiceMap } from '@libp2p/interface';
 import { multiaddr } from '@multiformats/multiaddr';
 import { delay, differenceWith, random } from 'es-toolkit';
+import { AntiEntropyMetricsStore } from '../../../src/data-convergence/scheduling/AntiEntropyMetricsStore';
 import { GossipSubPropagation } from '../../../src/data-propagation/broadcast/GossipSubPropagation';
 import { PeerExchangeService } from '../../../src/networking/PeerExchangeService';
 import { ReplicaStoreInterface } from '../../../src/replica-store/ReplicaStoreInterface';
@@ -35,6 +36,7 @@ let selfPeerId: string | null = null;
 let directStreamMsgsReceivedCount = 0;
 let targetHashesToFetch: string[] | null = null;
 let wireSerializer: WireCodec | null = null;
+let antiEntropyMetrics: AntiEntropyMetricsStore | undefined;
 
 const hashedMessages = new Map<string, unknown>();
 
@@ -72,6 +74,8 @@ const getStatistics = async (
 
   const replicationResults = replicaStore ? await getReplicationResult(replicaStore) : {};
 
+  const antiEntropySnapshot = antiEntropyMetrics?.snapshot();
+
   return {
     me: selfPeerId,
     verified: pexService.peerRegistry.getSize(),
@@ -85,6 +89,16 @@ const getStatistics = async (
       seen: gossipSeenMessages.get(key)?.size ?? 0,
     })),
     directStreamMsgsReceivedCount,
+    ...(antiEntropySnapshot
+      ? {
+          antiEntropy: {
+            outboundAttempts: antiEntropySnapshot.outboundAttempts,
+            usefulSyncs: antiEntropySnapshot.usefulSyncs,
+            lastSyncHashes: antiEntropySnapshot.lastSyncHashes,
+            idleSkips: antiEntropySnapshot.skipCounts.idle_skip,
+          },
+        }
+      : {}),
     ...replicationResults,
   };
 };
@@ -255,6 +269,7 @@ const runNodeDataReplication = async () => {
 
   pexService = engine.pexService;
   wireSerializer = engine.serializer;
+  antiEntropyMetrics = engine.antiEntropyMetrics;
 
   await engine.start();
 

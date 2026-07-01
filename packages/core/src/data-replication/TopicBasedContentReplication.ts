@@ -32,6 +32,9 @@ export class TopicBasedContentReplication implements DataReplicationInterface, S
 
   private readonly broadcastPropagation: BroadcastPropagationInterface;
 
+  /** Reference to components for runtime access to antiEntropyMetrics (set after manager init) */
+  private readonly components: Pick<DeChatComponents, 'antiEntropyMetrics'>;
+
   private started = false;
 
   private readonly boundMessageHandler = (data: unknown, context?: PropagationContext) => {
@@ -59,6 +62,7 @@ export class TopicBasedContentReplication implements DataReplicationInterface, S
     this.getKnownPeers = () => components.peerRegistry.getPeers();
     this.serializer = components.serializer;
     this.inflightTracker = inflightRequestTracker();
+    this.components = components;
   }
 
   public async start(): Promise<void> {
@@ -102,6 +106,8 @@ export class TopicBasedContentReplication implements DataReplicationInterface, S
   };
 
   public readonly onLocalDataProduced = async <T>(data: T): Promise<void> => {
+    this.components.antiEntropyMetrics?.getActivityTracker().recordLocalProduce();
+
     const hash = this.hashStrategy.hash(data);
 
     if (await this.storage.has(hash)) return;

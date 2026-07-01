@@ -1,627 +1,914 @@
-# Task: Unified Wire Serialization (Phase 1)
+# Task: Adaptive Anti-Entropy Scheduling
 
-**Backlog ref:** BACKLOG.md Task 1.1  
-**Status:** Completed (2026-06-28, PR #35)  
-**Goal:** Replace ad-hoc JSON wire encoding across `@dechat/core` with a single DI-injected wire codec (CBOR default), while keeping `canonicalSerialize` unchanged for content hashing.
+**Backlog ref:** Follow-up to BACKLOG Task 2.1 (anti-entropy correctness — done)  
+**ADR ref:** [docs/adr/0003-adaptive-anti-entropy-scheduling.md](../docs/adr/0003-adaptive-anti-entropy-scheduling.md)  
+**Status:** Implemented (Steps 0–5); CI verification pending on PR  
+**Goal:** Make `AntiEntropyManager` observable and adaptive on the **control plane only** (when / with whom to sync). Data plane (Merkle trie diff, auth, replication accept/reject) stays deterministic.
 
-### Approved decisions (2026-06-28)
+### Prior completed work (do not re-implement)
 
-1. CBOR as default wire format (protobuf deferred to Phase 2)
-2. 1-byte format prefix on every wire frame
-3. `ReplicationContent.replicationContent` → `Uint8Array`
-4. Remove `processDataFromStream` from networking utils
-5. `JsonWireSerializer` remains available as plug-and-play alternative
+- **Task 1.1 CBOR wire serialization** — completed 2026-06-28, PR #35. See BACKLOG.md.
 
-### Pre-production note
+### Approved decisions (research + ADR synthesis)
 
-No nodes are deployed in production. **No backward-compatibility shims required** — clean cutover to the new wire format. Both codecs remain available; switching is a single config change (`serialization.wireFormat`) applied once in `createNode` and propagated package-wide via `components.serializer`.
+1. **Telemetry first** — no adaptive policy without `AntiEntropyMetrics` + `getStateVector()`
+2. **Heuristics before ML** — ADR Phase 1–2 (EMA peer weight, idle skip, dynamic interval) ship before any bandit
+3. **Bandit optional (Phase 3)** — epsilon-greedy MAB after heuristics plateau; Bengfort/Honu precedent, not greenfield
+4. **Scorer separation** — `peerConvergenceScore` is sync-utility only; never read/write `SimplePeerScorer`
+5. **No LLM / ONNX / deep RL** in this task — separate ADR if pursued later
+6. **Pre-production** — `adaptive.enabled: false` restores current fixed-interval + random-peer behaviour exactly
+
+### Research references (for implementer context)
+
+| Source | Technique | Relevance |
+|--------|-----------|-----------|
+| [ADR-0003](../docs/adr/0003-adaptive-anti-entropy-scheduling.md) | Phased metrics → heuristics | **Source of truth** for this plan |
+| Bengfort et al. ICDCS 2018 — *Anti-Entropy Bandits* | Epsilon-greedy MAB on peer pick | Phase 3 reward design |
+| HonuDB ([rotationalio/honu](https://github.com/rotationalio/honu)) | Production bandit anti-entropy | Reference implementation |
+| FlowGossip (Cornell) | AIMD rate control on gossip | Inspiration for urgency-based interval |
+| IPFS Bitswap | Peer success registry + probabilistic pick | Similar to EMA convergence score |
 
 ---
 
 ## Problem Summary
 
-Serialization is split across three inconsistent patterns today:
+`AntiEntropyManager` today:
 
-| Pattern | Locations | Issue |
-|---|---|---|
-| Raw JSON | `GossipSubPropagation`, `streamUtils`, `PeerExchangeService`, `networking/utils` | Bypasses DI; blocks event loop; no binary field support |
-| `getGenericDataSerailizer()` direct call | `KReplicaContentReplication`, `TopicBasedContentReplication` | Ignores `components.serializer` injected in `createNode` |
-| `components.serializer` via DI | `InMemoryReplicaStore`, `LevelDbReplicaStore`, `TrieBackedReplicaStore` | Correct pattern, but implementation is broken (see below) |
+| Behaviour | Location | Issue |
+|-----------|----------|-------|
+| Fixed `setInterval(syncIntervalMs)` | `AntiEntropyManager.start()` | Dormant rooms sync as often as active chat |
+| `pickRandom(connections)` | `performScheduledSync()` | Useless peers selected as often as useful ones |
+| No sync telemetry | — | Interop tests use `syncIntervalMs * N` sleeps |
+| No pluggable scheduler | — | Cannot A/B fixed vs heuristic vs bandit |
 
-**Existing bug:** `getGenericDataSerailizer()` serializes with `canonicalSerialize` but deserializes with `JSON.parse`. Works accidentally for simple objects but is semantically wrong and will break once wire format diverges from canonical form.
+**What already works (do not change logic):**
+
+- `AntiEntropyNetworkExchange` — Merkle trie drill-down, `SyncOutcome` (`complete` / `partial` + reason)
+- Intra-attempt exponential backoff retry (`config.retry`)
+- Inbound bidirectional sync via `onMissingHashesDiscovered`
+- `isSyncing` mutex
 
 ---
 
 ## Architecture Decision
 
-### Two layers — never merge
+### Control plane vs data plane
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  Identity layer (UNCHANGED in Phase 1)                       │
-│  canonicalSerialize → Sha256ContentHashStrategy              │
-│  Purpose: deterministic content hash for replication identity│
-└──────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────┐
-│  Wire layer (NEW — unified via DI)                           │
-│  WireCodec / DataSerializer                                  │
-│  ├── CborWireSerializer (default)                            │
-│  └── JsonWireSerializer (configurable alternative)           │
-│  Purpose: network propagation, streams, replica store bytes  │
-└──────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────┐
-│  Framing layer (transport-specific, no codec choice)           │
-│  FramedStreamCodec — length-prefix via it-length-prefixed    │
-│  Used by: libp2p streams only (not GossipSub raw publish)    │
-└──────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  CONTROL PLANE (adaptive — this task)                           │
+│  SyncScheduler → pickPeer(), shouldSkipTick(), nextIntervalMs() │
+│  AntiEntropyMetrics → sliding windows, peer EMA, getStateVector() │
+│  AntiEntropyManager → dynamic timer, delegates to scheduler       │
+└─────────────────────────────────────────────────────────────────┘
+                              │ when / whom only
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  DATA PLANE (unchanged)                                         │
+│  AntiEntropyNetworkExchange.executeSyncFlow()                   │
+│  PrefixTrie.findMismatches / getTopN / getBranches              │
+│  DataReplication.requestMissingData() + auth gates              │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### Wire format envelope
+### Scheduler strategy pattern
 
-Every `WireCodec.serialize()` output is prefixed with a 1-byte format ID:
+```typescript
+/** Pluggable outbound sync policy. Must not affect data-plane accept/reject. */
+export interface SyncScheduler {
+  /** Pick one connected peer for outbound sync. */
+  pickPeer(candidates: readonly PeerId[]): PeerId;
 
-| Byte | Format |
-|---|---|
-| `0x00` | JSON |
-| `0x01` | CBOR (default) |
+  /** Whether to skip this scheduled tick (idle skip). Floor sync overrides in manager. */
+  shouldSkipTick(ctx: SyncTickContext): boolean;
 
-`deserialize()` validates the format byte matches the configured codec. No legacy/migration fallback (pre-production).
+  /** Delay until next scheduled outbound sync attempt. */
+  nextIntervalMs(ctx: SyncTickContext): number;
 
-### Config-driven codec selection
+  /** Called after each outbound attempt so policy can update internal state. */
+  onOutboundSyncComplete(record: SyncAttemptRecord): void;
+}
+```
+
+**Implementations:**
+
+| Class | Phase | Behaviour |
+|-------|-------|-----------|
+| `FixedSyncScheduler` | Baseline | Random peer; `config.syncIntervalMs`; never skip |
+| `HeuristicSyncScheduler` | ADR 1–2 | Weighted peer pick + idle skip + urgency interval |
+| `BanditSyncScheduler` | Optional 3 | Epsilon-greedy MAB; delegates interval to heuristic or fixed |
+
+Factory: `createSyncScheduler(config, metrics, peerConvergenceTracker)` in `scheduling/index.ts`.
+
+### Timer model change (critical)
+
+**Current:** `setInterval(fn, syncIntervalMs)` — cannot vary delay per tick.
+
+**New:** recursive `scheduleNext()`:
+
+```typescript
+private scheduleNext(): void {
+  if (!this.isRunning()) return;
+  const delayMs = this.scheduler.nextIntervalMs(this.buildTickContext());
+  this.syncTimer = setTimeout(() => {
+    void this.performScheduledSync()
+      .finally(() => this.scheduleNext());
+  }, delayMs);
+}
+```
+
+`stop()` must `clearTimeout(this.syncTimer)` (rename field comment from interval to timer).
+
+When `adaptive.enabled === false`, `FixedSyncScheduler.nextIntervalMs()` returns `config.syncIntervalMs` — behaviour matches today.
+
+### Config: `syncIntervalMs` vs `adaptive.*`
+
+| `adaptive.enabled` | Interval source | Peer pick |
+|--------------------|-----------------|-----------|
+| `false` | `syncIntervalMs` only (default 60_000) | uniform random |
+| `true` | `nextIntervalMs()` using `minIntervalMs`…`maxIntervalMs` | weighted by convergence score |
+
+**Migration rule:** `syncIntervalMs` remains in config as **legacy fixed-mode interval** and as **default `maxIntervalMs`** when adaptive is enabled but `maxIntervalMs` omitted:
+
+```typescript
+maxIntervalMs: adaptive?.maxIntervalMs ?? syncIntervalMs
+```
+
+---
+
+## Config Extension
 
 **File:** `packages/core/src/config/types.ts`
 
 ```typescript
-serialization: {
-  /** Wire encoding used package-wide via components.serializer */
-  wireFormat: 'cbor' | 'json';
+strategies: {
+  synchronizer: {
+    protocol: string;
+    /** Used when adaptive.enabled=false; also fallback maxIntervalMs when adaptive.maxIntervalMs unset */
+    syncIntervalMs: number;
+    retry: { maxRetries: number; baseBackoffMs: number; maxBackoffMs: number };
+    adaptive: {
+      enabled: boolean;
+      /** 'fixed' | 'heuristic' | 'bandit' — bandit only valid when enabled */
+      scheduler: 'fixed' | 'heuristic' | 'bandit';
+      minIntervalMs: number;
+      maxIntervalMs: number;
+      jitterMs: number;
+      idleSkipStreak: number;
+      /** Normalized activity threshold; compare against StateVector index 5 */
+      idleActivityThreshold: number;
+      convergenceWindowSize: number;
+      minPeerWeight: number;
+      peerConvergence: {
+        alpha: number;  // useful sync boost
+        beta: number;   // zero-hash complete decay
+        gamma: number;  // failed/partial decay
+        idleDecayMs: number;
+        neutralScore: number;
+      };
+      bandit?: {
+        epsilon: number;
+        /** Annealing: epsilon *= decay per N attempts; 0 = no anneal */
+        epsilonDecayPerAttempts: number;
+        epsilonFloor: number;
+      };
+    };
+  };
 };
 ```
 
-**Default:** `'cbor'` in `DECHAT_DEFAULTS`.
+**File:** `packages/core/src/config/defaults.ts`
 
-**Factory:** `createWireSerializer(config.serialization.wireFormat)` called once in `createNode`. All propagation, replication, streams, and stores use `components.serializer` — no per-module codec choice.
-
-### Transport patterns (same codec, different framing)
-
-| Transport | Encode path | Decode path |
-|---|---|---|
-| GossipSub pub/sub | `serializer.serialize(msg)` → `pubsub.publish(topic, bytes)` | `serializer.deserialize(data)` |
-| libp2p streams | `lp.encode([serializer.serialize(msg)])` | `lp.decode` → `serializer.deserialize(frame)` |
-| Replica store | `serializer.serialize(data)` → LevelDB/memory | `serializer.deserialize(rawBytes)` |
-
-Remove the intermediate UTF-8 string round-trip in `streamUtils` (`JSON.stringify` → `uint8ArrayFromString`).
-
----
-
-## Dependency Addition
-
-**File:** `packages/core/package.json`
-
-```json
-"cbor-x": "^1.6.0"
+```typescript
+synchronizer: {
+  protocol: ANTI_ENTROPY_PROTOCOL, // from data-convergence/types
+  syncIntervalMs: 60_000,
+  retry: { maxRetries: 3, baseBackoffMs: 1_000, maxBackoffMs: 10_000 },
+  adaptive: {
+    enabled: false,           // ship disabled; enable in interop after Phase 0 metrics validated
+    scheduler: 'heuristic',
+    minIntervalMs: 15_000,
+    maxIntervalMs: 300_000,
+    jitterMs: 5_000,
+    idleSkipStreak: 3,
+    idleActivityThreshold: 0.05,
+    convergenceWindowSize: 20,
+    minPeerWeight: 0.1,
+    peerConvergence: {
+      alpha: 0.15,
+      beta: 0.05,
+      gamma: 0.10,
+      idleDecayMs: 30 * 60_000,
+      neutralScore: 0.5,
+    },
+    bandit: {
+      epsilon: 0.2,
+      epsilonDecayPerAttempts: 0,
+      epsilonFloor: 0.05,
+    },
+  },
+},
 ```
-
-Run `yarn install` from monorepo root.
-
-CBOR config for DeChat:
-- `useRecords: false` — generic object graphs, no class schema required
-- `structuredClone: true` — proper `Uint8Array` round-trip for signatures and replica blobs
-- `moreTypes: true` — `Date` support if needed
 
 ---
 
 ## New Files
 
-### 1. `packages/core/src/shared/serialization/types.ts`
-
-Define and export:
+### 1. `packages/core/src/data-convergence/scheduling/types.ts`
 
 ```typescript
-/** Wire format identifiers — first byte of every serialized frame */
-export const WIRE_FORMAT = {
-  JSON: 0x00,
-  CBOR: 0x01,
-} as const;
+import { PeerId } from '@libp2p/interface';
+import { SyncIncompleteReason } from '../types';
 
-export type WireFormatId = (typeof WIRE_FORMAT)[keyof typeof WIRE_FORMAT];
+export type SyncSkipReason =
+  | 'mutex'
+  | 'no_peers'
+  | 'idle_skip'
+  | 'floor_sync_forced'; // skipped idle but floor timer fired
 
-/** Wire encoding for network + storage. Distinct from canonical hashing. */
-export interface WireCodec {
-  readonly formatId: WireFormatId;
-  serialize<T>(data: T): Uint8Array;
-  deserialize<T>(bytes: Uint8Array): T;
+export type SyncAttemptResult =
+  | { kind: 'complete'; hashesDiscovered: number; durationMs: number }
+  | { kind: 'partial'; hashesDiscovered: number; durationMs: number; reason: SyncIncompleteReason }
+  | { kind: 'failed'; durationMs: number }; // null outcome from exchange
+
+export interface SyncAttemptRecord {
+  readonly peerId: string;
+  readonly startedAt: number;
+  readonly durationMs: number;
+  readonly result: SyncAttemptResult;
+}
+
+export interface SyncTickContext {
+  readonly now: number;
+  readonly timeSinceLastSyncMs: number;
+  readonly timeSinceLastUsefulSyncMs: number;
+  readonly consecutiveZeroHashComplete: number;
+  readonly stateVector: readonly number[]; // length 7, normalized [0,1]
+  readonly forceFloorSync: boolean;
+}
+
+/** Stable order for future ML — ADR indices 0–6 */
+export const STATE_VECTOR_NAMES = [
+  'syncSuccessRate',
+  'syncTimeoutRate',
+  'meanSyncDuration',
+  'timeSinceLastSync',
+  'timeSinceLastUsefulSync',
+  'replicationActivityRate',
+  'meanHashesPerSync',
+] as const;
+
+export type StateVector = readonly [
+  number, number, number, number, number, number, number,
+];
+
+export interface SyncScheduler {
+  pickPeer(candidates: readonly PeerId[]): PeerId;
+  shouldSkipTick(ctx: SyncTickContext): boolean;
+  nextIntervalMs(ctx: SyncTickContext): number;
+  onOutboundSyncComplete(record: SyncAttemptRecord): void;
 }
 ```
 
-Keep existing `DataSerializer` in `shared/types.ts` as a type alias for backward compatibility:
+---
+
+### 2. `packages/core/src/data-convergence/scheduling/SlidingWindowRingBuffer.ts`
+
+Generic fixed-size circular buffer for metrics:
 
 ```typescript
-export type DataSerializer = WireCodec;
-```
-
-Update `DeChatComponents.serializer` type to `WireCodec` (same shape, adds `formatId`).
-
----
-
-### 2. `packages/core/src/shared/serialization/canonicalSerializer.ts`
-
-**Move** `canonicalSerialize` from `shared/serializers.ts` into this file unchanged.
-
-- No logic changes
-- Existing tests in `canonicalSerializer.unit.test.ts` update import path only
-
----
-
-### 3. `packages/core/src/shared/serialization/jsonWireSerializer.ts`
-
-Extract JSON wire encoding (NOT canonical form):
-
-```typescript
-export const createJsonWireSerializer = (): WireCodec => ({
-  formatId: WIRE_FORMAT.JSON,
-  serialize: (data) => { /* 0x00 prefix + UTF-8(JSON.stringify(data)) */ },
-  deserialize: (bytes) => { /* strip prefix, JSON.parse */ },
-});
-```
-
-Preserve existing buffer-like input normalization from current `deserialize` (Uint8Array, Buffer JSON rep from worker IPC, ArrayBuffer, number[]) — move into a shared `normalizeToUint8Array(bytes: unknown): Uint8Array` helper in `serialization/utils.ts`.
-
----
-
-### 4. `packages/core/src/shared/serialization/cborWireSerializer.ts`
-
-```typescript
-export const createCborWireSerializer = (): WireCodec => ({
-  formatId: WIRE_FORMAT.CBOR,
-  serialize: (data) => { /* 0x01 prefix + cbor-x encode */ },
-  deserialize: (bytes) => { /* read formatId, cbor-x decode body */ },
-});
-```
-
-Use a shared `decodeWireEnvelope(bytes)` helper that validates format ID and returns `{ formatId, payload }`.
-
----
-
-### 5. `packages/core/src/shared/serialization/dispatchingWireSerializer.ts`
-
-Optional composite for migration read path:
-
-```typescript
-/** Tries format byte dispatch; falls back to JSON body if no prefix (v0 compat) */
-export const createDispatchingWireSerializer = (primary: WireCodec): WireCodec => ...
-```
-
-Used internally by `createCborWireSerializer` deserialize, or as explicit migration helper. Decision: build dispatch into each codec's `deserialize` via shared `decodeWireEnvelope` rather than a wrapper — simpler.
-
----
-
-### 6. `packages/core/src/shared/serialization/utils.ts`
-
-Shared helpers:
-- `normalizeToUint8Array(input: unknown): Uint8Array` — worker IPC buffer normalization
-- `prependFormatId(formatId: WireFormatId, payload: Uint8Array): Uint8Array`
-- `stripFormatId(bytes: Uint8Array): { formatId: WireFormatId; payload: Uint8Array }`
-
----
-
-### 7. `packages/core/src/shared/serialization/framedStreamCodec.ts`
-
-Factory bound to a `WireCodec`:
-
-```typescript
-export interface FramedStreamCodec {
-  writeToStream(stream: Stream, message: unknown): Promise<void>;
-  readFromStream(stream: Stream, maxDataLength?: number): Promise<unknown>;
-  readMessagesFromStream(stream: Stream, onMessage: (msg: unknown) => void, maxDataLength?: number): Promise<void>;
-  setupRPCStream<T>(stream: Stream, handler: ..., requestTimeoutMs?: number): { sendRequest: ... };
+export class SlidingWindowRingBuffer<T> {
+  constructor(private readonly capacity: number) {}
+  push(value: T): void;
+  toArray(): readonly T[];
+  readonly length: number;
+  clear(): void;
 }
-
-export const createFramedStreamCodec = (serializer: WireCodec): FramedStreamCodec => ({ ... });
 ```
 
-Implementation:
-- **Write:** `serializer.serialize(msg)` → single-element array → `lp.encode` → `stream.sink`
-- **Read:** `lp.decode` → `serializer.deserialize(buffer)` (no string intermediate)
-- **RPC:** same codec for request/response `BaseMessage<T>` envelopes
+Used for: `syncAttemptOutcome`, `syncAttemptDurationMs`, `syncHashesDiscovered`.
 
 ---
 
-### 8. `packages/core/src/shared/serialization/index.ts`
+### 3. `packages/core/src/data-convergence/scheduling/PeerConvergenceTracker.ts`
 
-Barrel exports:
-- `WireCodec`, `WIRE_FORMAT`, `DataSerializer` (re-export)
-- `createCborWireSerializer`, `createJsonWireSerializer`
-- `createFramedStreamCodec`, `FramedStreamCodec`
-- `canonicalSerialize`
+Per-peer EMA scores per ADR formula. **Does not import `SimplePeerScorer`.**
 
----
+```typescript
+export class PeerConvergenceTracker {
+  constructor(config: DeChatConfig['strategies']['synchronizer']['adaptive']['peerConvergence']);
 
-### 9. `packages/core/tests/unit/shared/cborWireSerializer.unit.test.ts`
+  getScore(peerId: string): number;
+  onUsefulSync(peerId: string, hashesDiscovered: number): void;
+  onUselessSync(peerId: string): void;
+  onFailedSync(peerId: string): void;
+  decayIdlePeers(now: number): void;
+  snapshot(): ReadonlyMap<string, number>; // for tests/debug
+}
+```
 
-Test cases:
-- Round-trip primitives, nested objects, arrays
-- `Uint8Array` field round-trip (PropagatedMessage with signature)
-- Format byte prefix present and correct
-- `normalizeToUint8Array` for worker Buffer JSON representation
-- Invalid format byte throws explicit error
-- Oversized input rejected if we add max-bytes guard
+**Weight for peer pick:**
 
----
+```typescript
+weight(peerId) = Math.max(minPeerWeight, getScore(peerId))
+```
 
-### 10. `packages/core/tests/unit/shared/jsonWireSerializer.unit.test.ts`
-
-Test cases:
-- Round-trip equivalence with plain JSON
-- Format byte prefix
-- Legacy body without prefix (optional v0 compat test)
+Weighted random sample via `es-toolkit` or small local helper (no new dependency).
 
 ---
 
-### 11. `packages/core/tests/unit/shared/framedStreamCodec.unit.test.ts`
+### 4. `packages/core/src/data-convergence/scheduling/ReplicationActivityTracker.ts`
 
-Test cases:
-- Write/read round-trip through mock stream
-- `readMessagesFromStream` delivers multiple messages
-- `setupRPCStream` request/response correlation
-- Respects `maxDataLength`
+5-minute sliding window of local production events:
+
+```typescript
+export class ReplicationActivityTracker {
+  recordLocalProduce(): void;
+  recordRemoteReceive(): void; // optional; gossip proxy
+  /** Events per minute, normalized to msgsPerMin for StateVector */
+  getRatePerMinute(now: number): number;
+}
+```
+
+**Hook sites (Phase 0):**
+
+- `KReplicaContentReplication.onLocalDataProduced` — `recordLocalProduce()`
+- `TopicBasedContentReplication.onLocalDataProduced` — same
+- Optional: `GossipSubPropagationMetrics.messagePublished` on replication topic — defer if duplication
+
+---
+
+### 5. `packages/core/src/data-convergence/scheduling/StateVectorBuilder.ts`
+
+```typescript
+export class StateVectorBuilder {
+  constructor(
+    private readonly metrics: AntiEntropyMetricsStore,
+    private readonly maxIntervalMs: number,
+  ) {}
+
+  build(now: number): StateVector;
+  buildForPeer(peerId: string, now: number): readonly number[]; // 8 elements, index 7 = peer score
+}
+```
+
+Normalization table — **must match ADR exactly** (indices 0–6).
+
+---
+
+### 6. `packages/core/src/data-convergence/scheduling/FixedSyncScheduler.ts`
+
+Preserves current behaviour when `adaptive.enabled === false`.
+
+```typescript
+export class FixedSyncScheduler implements SyncScheduler {
+  constructor(
+    private readonly syncIntervalMs: number,
+    private readonly pickRandom: typeof pickRandom,
+  ) {}
+  // pickPeer: uniform random
+  // shouldSkipTick: always false
+  // nextIntervalMs: syncIntervalMs
+  // onOutboundSyncComplete: no-op
+}
+```
+
+---
+
+### 7. `packages/core/src/data-convergence/scheduling/HeuristicSyncScheduler.ts`
+
+ADR Phase 1–2 logic.
+
+**`pickPeer`:** weighted random by `PeerConvergenceTracker.getScore`; fallback uniform if all weights equal.
+
+**`shouldSkipTick`:**
+
+```typescript
+if (ctx.forceFloorSync) return false;
+if (ctx.consecutiveZeroHashComplete < idleSkipStreak) return false;
+if (ctx.stateVector[5] >= idleActivityThreshold) return false; // replicationActivityRate
+return true;
+```
+
+**`nextIntervalMs`:**
+
+```typescript
+const urgency = Math.max(
+  ctx.stateVector[5],                    // replicationActivityRate
+  1 - ctx.stateVector[4],                // timeSinceLastUsefulSync
+  ctx.stateVector[1],                    // syncTimeoutRate
+  1 - ctx.stateVector[0],                // 1 - syncSuccessRate
+);
+const base = lerp(maxIntervalMs, minIntervalMs, urgency);
+return base + equalJitter(0, jitterMs);
+```
+
+Extract `lerp` / `equalJitter` to `scheduling/math.ts` (reuse pattern from `computeBackoffMs` in manager).
+
+---
+
+### 8. `packages/core/src/data-convergence/scheduling/bandit/` (Phase 3 — optional stretch)
+
+Only after Phase 0–2 green in CI + interop A/B.
+
+```
+bandit/
+├── RewardFunction.ts      # DeChat-adapted Bengfort Table 6.1
+├── EpsilonGreedyPolicy.ts
+├── DynamicArmSet.ts       # add/remove peers on connect/disconnect
+└── BanditSyncScheduler.ts
+```
+
+**Reward function (DeChat — no version vectors):**
+
+| Signal | Reward component |
+|--------|------------------|
+| `complete` + hashes > 0 | `0.5 + 0.1 * min(1, hashes/10)` |
+| `complete` + hashes === 0 | `0.1` (converged, not useless) |
+| `partial` | `0.05 * (hashes / max(1, expected))` partial credit |
+| `failed` | `0` |
+
+**Critical:** Distinguish **converged** (complete, 0 hashes) from **useless streak** (idle skip handles dormancy, not zero reward forever).
+
+**No new npm dependencies** — pure TypeScript bandit.
+
+---
+
+### 9. `packages/core/src/data-convergence/scheduling/index.ts`
+
+```typescript
+export const createSyncScheduler = (
+  config: DeChatConfig['strategies']['synchronizer'],
+  metricsStore: AntiEntropyMetricsStore,
+  peerTracker: PeerConvergenceTracker,
+): SyncScheduler => { ... };
+```
+
+---
+
+### 10. Metrics module
+
+#### `packages/core/src/metrics/interfaces/AntiEntropyMetrics.ts`
+
+Event-sink interface (fire-and-forget hooks):
+
+```typescript
+export type SyncSkipReason = /* import from scheduling/types */;
+
+export interface AntiEntropyMetrics {
+  readonly namespace: 'anti_entropy';
+
+  scheduledTickStarted(): void;
+  scheduledTickSkipped(reason: SyncSkipReason): void;
+
+  outboundSyncStarted(peerId: string): void;
+  outboundSyncCompleted(record: SyncAttemptRecord): void;
+
+  inboundSyncDiscoveredHashes(peerId: string, count: number): void;
+
+  fetchHashStarted(peerId: string, hash: string): void;
+  fetchHashCompleted(peerId: string, hash: string, durationMs: number, success: boolean): void;
+}
+```
+
+#### `packages/core/src/metrics/basic/BasicAntiEntropyMetrics.ts`
+
+Implements hooks **and** owns `AntiEntropyMetricsStore` (ring buffers + gauges + peer tracker updates).
+
+Alternatively split:
+
+- `AntiEntropyMetricsStore` — queryable state for scheduler
+- `BasicAntiEntropyMetrics` — implements `AntiEntropyMetrics` interface, writes to store
+
+**Recommendation:** Single `AntiEntropyMetricsStore` class with both record + query methods; `BasicAntiEntropyMetrics` wraps it for the metrics seam; `NoopAntiEntropyMetrics` discards events.
+
+#### `packages/core/src/metrics/noop/NoopAntiEntropyMetrics.ts`
+
+All methods no-op. Scheduler still works via `PeerConvergenceTracker` updated directly in manager when metrics disabled — **decision:**
+
+When `config.metrics.enabled === false`:
+- Use in-memory `PeerConvergenceTracker` + minimal local counters inside `AntiEntropyManager` OR
+- Always instantiate `AntiEntropyMetricsStore` internally (not exported) but skip `BaseMetrics.snapshot` counters
+
+**Decision:** Always create `AntiEntropyMetricsStore` for scheduler correctness; `metrics.enabled` only controls `BaseMetrics` counter export. Document in ADR consequences update.
+
+#### Store query API
+
+```typescript
+export interface AntiEntropyMetricsStore {
+  recordOutboundAttempt(record: SyncAttemptRecord): void;
+  recordSkip(reason: SyncSkipReason): void;
+  getConsecutiveZeroHashComplete(): number;
+  getTimeSinceLastSyncMs(now: number): number;
+  getTimeSinceLastUsefulSyncMs(now: number): number;
+  getStateVector(now: number): StateVector;
+  getPeerConvergenceTracker(): PeerConvergenceTracker;
+  getActivityTracker(): ReplicationActivityTracker;
+  snapshot(): AntiEntropyMetricsSnapshot; // for tests
+}
+```
+
+---
+
+### 11. Unit tests (new)
+
+| File | Coverage |
+|------|----------|
+| `tests/unit/data-convergence/scheduling/SlidingWindowRingBuffer.unit.test.ts` | capacity, wrap, toArray |
+| `tests/unit/data-convergence/scheduling/PeerConvergenceTracker.unit.test.ts` | α/β/γ, neutral start, decay |
+| `tests/unit/data-convergence/scheduling/StateVectorBuilder.unit.test.ts` | normalization clamps |
+| `tests/unit/data-convergence/scheduling/HeuristicSyncScheduler.unit.test.ts` | idle skip, floor override, urgency interval bounds |
+| `tests/unit/data-convergence/scheduling/FixedSyncScheduler.unit.test.ts` | matches legacy behaviour |
+| `tests/unit/metrics/BasicAntiEntropyMetrics.unit.test.ts` | ring buffers, skip reasons |
+| `tests/unit/data-convergence/scheduling/bandit/EpsilonGreedyPolicy.unit.test.ts` | Phase 3 only |
 
 ---
 
 ## Modified Files
 
-### A. Delete / deprecate: `packages/core/src/shared/serializers.ts`
+### A. `packages/core/src/data-convergence/AntiEntropyManager.ts`
 
-Replace with re-export shim for backward compat (one release cycle):
-
-```typescript
-/** @deprecated Use createCborWireSerializer from './serialization' */
-export { createJsonWireSerializer as getGenericDataSerailizer } from './serialization/jsonWireSerializer';
-export { canonicalSerialize } from './serialization/canonicalSerializer';
-```
-
-Or rename export: `getGenericDataSerailizer` → deprecated alias to `createJsonWireSerializer`.
-
----
-
-### B. `packages/core/src/shared/types.ts`
-
-- Add `export type { WireCodec as DataSerializer } from './serialization/types'` OR keep interface and extend with optional `formatId`
-- `BaseMessage<T>` — no change
-
----
-
-### C. `packages/core/src/node.ts`
-
-```diff
-- import { getGenericDataSerailizer } from './shared/serializers';
-+ import { createCborWireSerializer } from './shared/serialization';
-
-- components.serializer = getGenericDataSerailizer();
-+ components.serializer = createCborWireSerializer();
-```
-
-Optional: allow override via `createNode` parameter:
+**Constructor additions:**
 
 ```typescript
-export const createNode = async (
-  infoHash: string,
-  nodeSeed: string,
-  userOpts?: PartialDeep<DeChatConfig>,
-  strategies?: DeChatStrategies,
-  serializer?: WireCodec,  // optional override for tests
-)
+private readonly scheduler: SyncScheduler;
+private readonly metricsStore: AntiEntropyMetricsStore;
+private readonly adaptiveConfig: DeChatConfig['strategies']['synchronizer']['adaptive'];
 ```
 
----
-
-### D. `packages/core/src/types.ts`
-
-No structural change — `serializer: DataSerializer` already on `DeChatComponents`. Document in JSDoc that all wire encoding must use this field.
-
----
-
-### E. `packages/core/src/data-propagation/broadcast/GossipSubPropagation.ts`
-
-**Changes:**
-1. Add `private readonly serializer: WireCodec` from `components.serializer`
-2. **`publish`:** replace `uint8ArrayFromString(JSON.stringify(message))` with `this.serializer.serialize(message)`
-3. **`gossipListener`:** replace `JSON.parse(uint8ArrayToString(data))` with `this.serializer.deserialize(data)`
-4. Remove unused `uint8ArrayFromString` / `uint8ArrayToString` imports if no longer needed
-5. Size check stays before decode: `data.length > maxMsgBytes` (already present)
-
----
-
-### F. `packages/core/src/data-propagation/direct/DirectStreamPropagation.ts`
-
-**Changes:**
-1. Add `private readonly framedStream: FramedStreamCodec` created in constructor:
-   ```typescript
-   this.framedStream = createFramedStreamCodec(components.serializer);
-   ```
-2. Replace `writeToStream` → `this.framedStream.writeToStream`
-3. Replace `readMessagesFromStream` → `this.framedStream.readMessagesFromStream`
-4. Remove direct `streamUtils` import
-
----
-
-### G. `packages/core/src/shared/streamUtils.ts`
-
-**Option A (recommended):** Convert to thin deprecated re-exports that throw or warn, pointing to `createFramedStreamCodec`.
-
-**Option B:** Keep as module-level functions that require a serializer parameter (breaking change for all callers).
-
-**Decision: Option A with migration shim** — keep file, mark deprecated, delegate to a module-level default only in tests. All production code uses `FramedStreamCodec` from DI.
-
-Actually cleaner: **delete JSON from streamUtils**, replace entire file content with:
+Wire in constructor:
 
 ```typescript
-/** @deprecated Import createFramedStreamCodec and bind to components.serializer */
-export { createFramedStreamCodec } from './serialization/framedStreamCodec';
+this.metricsStore = createAntiEntropyMetricsStore(config.strategies.synchronizer);
+this.scheduler = createSyncScheduler(config.strategies.synchronizer, this.metricsStore);
 ```
 
-Update all callers in same PR — no shim needed since all callers are in `@dechat/core`.
+**`start()`:** replace `setInterval` with `scheduleNext()`.
 
----
+**`performScheduledSync()` changes:**
 
-### H. `packages/core/src/networking/PeerAuthenticator.ts`
+1. Record `scheduledTickStarted()`
+2. Build `SyncTickContext` via `buildTickContext()`
+3. If `shouldSkipTick(ctx)` && !`ctx.forceFloorSync` → record skip `idle_skip`, return
+4. Mutex check → skip `mutex`
+5. `connections.length === 0` → skip `no_peers`
+6. `targetPeerId = scheduler.pickPeer(connections.map(c => c.remotePeer))`
+7. Time outbound sync; on complete call `scheduler.onOutboundSyncComplete(record)` + `metricsStore.recordOutboundAttempt`
+8. Update `consecutiveZeroHashComplete` in store
 
-**Changes:**
-1. Add `private readonly framedStream: FramedStreamCodec` from `components.serializer`
-2. Replace `readFromStream` / `writeToStream` with `this.framedStream.*`
+**Floor sync logic:**
 
----
-
-### I. `packages/core/src/networking/PeerExchangeService.ts`
-
-**Changes:**
-1. Add `private readonly serializer: WireCodec` and `private readonly framedStream: FramedStreamCodec`
-2. **Pubsub gossip path (line ~195):** `JSON.stringify(msg)` → `this.serializer.serialize(msg)`
-3. **Pubsub listener (line ~239):** `JSON.parse(uint8ArrayToString(data))` → `this.serializer.deserialize(data)`
-4. **Stream paths:** `writeToStream` / `processDataFromStream` → `framedStream` methods
-5. Remove `uint8ArrayFromString` / `uint8ArrayToString` where replaced
-
----
-
-### J. `packages/core/src/networking/utils.ts`
-
-**Changes:**
-1. `processDataFromStream` — either:
-   - Remove and inline into `PeerExchangeService` via `framedStream.readMessagesFromStream`, OR
-   - Change signature to `(stream, serializer, onMessage, onError)` 
-   
-**Decision:** Remove `processDataFromStream` from utils; `PeerExchangeService` uses `framedStream` directly. Keeps utils focused on sampling/dial helpers.
-
----
-
-### K. `packages/core/src/data-convergence/AntiEntropyNetworkExchange.ts`
-
-**Changes:**
-1. Add `private readonly framedStream: FramedStreamCodec` from `components.serializer`
-2. Replace `setupRPCStream(...)` → `this.framedStream.setupRPCStream(...)`
-
----
-
-### L. `packages/core/src/data-replication/KReplicaContentReplication.ts`
-
-**Changes:**
-```diff
-- import { getGenericDataSerailizer } from '../shared/serializers';
-- this.serializer = getGenericDataSerailizer();
-+ this.serializer = components.serializer;
-```
-
-Remove direct factory import.
-
----
-
-### M. `packages/core/src/data-replication/TopicBasedContentReplication.ts`
-
-Same change as KReplicaContentReplication.
-
----
-
-### N. `packages/core/src/data-replication/content-hash/Sha256ContentHashStrategy.ts`
-
-**Changes:**
-```diff
-- import { canonicalSerialize } from '../../shared/serializers';
-+ import { canonicalSerialize } from '../../shared/serialization/canonicalSerializer';
-```
-
-No logic change.
-
----
-
-### O. `packages/core/src/data-replication/replication-protocol/ReplicationProtocolInterface.ts`
-
-**Changes:**
-```diff
-  export interface ReplicationContent {
-    type: 'replication_content';
-    hash: ContentHash;
--   replicationContent: Array<number>;
-+   replicationContent: Uint8Array;
-  }
-```
-
-CBOR natively encodes `Uint8Array` as bytes. Remove `Array.from()` / `new Uint8Array(array)` conversions at call sites.
-
----
-
-### P. `packages/core/src/data-replication/replication-protocol/ReplicationMessageProtocolManager.ts`
-
-**Changes (line ~107, ~132):**
-```diff
-- replicationContent: Array.from(result.data),
-+ replicationContent: result.data,  // already Uint8Array
-
-- const bytes = new Uint8Array(msg.payload.replicationContent);
-+ const bytes = msg.payload.replicationContent;
-```
-
----
-
-### Q. `packages/core/src/data-replication/KReplicaContentReplication.ts` & `TopicBasedContentReplication.ts`
-
-**Changes (response handling ~line 167/212):**
-```diff
-- const rawBytes = new Uint8Array(response.replicationContent);
-+ const rawBytes = response.replicationContent;
-```
-
----
-
-### R. `packages/core/index.ts`
-
-Update exports:
 ```typescript
-export {
-  createCborWireSerializer,
-  createJsonWireSerializer,
-  createFramedStreamCodec,
-  canonicalSerialize,
-  WIRE_FORMAT,
-} from './src/shared/serialization';
-export type { WireCodec, FramedStreamCodec, DataSerializer } from './src/shared/serialization';
+private buildTickContext(): SyncTickContext {
+  const now = Date.now();
+  const timeSinceLastSync = this.metricsStore.getTimeSinceLastSyncMs(now);
+  const forceFloorSync =
+    this.adaptiveConfig.enabled &&
+    timeSinceLastSync >= this.adaptiveConfig.maxIntervalMs;
+  return { now, forceFloorSync, ... };
+}
+```
 
-/** @deprecated Use createCborWireSerializer or createJsonWireSerializer */
-export { createJsonWireSerializer as getGenericDataSerailizer } from './src/shared/serialization';
+**`fetchMissingData`:** wrap each `requestMissingData` with `fetchHashStarted/Completed` hooks.
+
+**Peer source:** keep `libp2p.getConnections()` for now. Add TODO comment: consider `PeerRegistry` authenticated peers only. **Do not switch in Phase 0** — behaviour change needs separate review.
+
+---
+
+### B. `packages/core/src/data-convergence/AntiEntropyNetworkExchange.ts`
+
+**`syncWithPeer`:** accept optional `onAttemptComplete` callback OR manager wraps timing externally.
+
+**Decision:** Manager times `syncWithPeer` externally (simpler, no exchange API change). Exchange unchanged except:
+
+**Inbound handler:** after `onMissingHashesDiscovered`, manager's callback already exists — add metrics hook in manager's bound listener:
+
+```typescript
+this.exchangeEngine.onMissingHashesDiscovered = (hashes, peerId) => {
+  this.metricsStore.recordInboundHashes(peerId.toString(), hashes.length);
+  // existing fetchMissingData...
+};
 ```
 
 ---
 
-## Test File Updates
+### C. `packages/core/src/data-replication/KReplicaContentReplication.ts`
 
-| File | Changes |
-|---|---|
-| `tests/unit/data-replication/canonicalSerializer.unit.test.ts` | Update import to `serialization/canonicalSerializer` |
-| `tests/unit/data-propagation/GossipSubPropagation.unit.test.ts` | Add mock `serializer` to `mockComponents`; encode test event data with mock serializer |
-| `tests/unit/data-propagation/DirectStreamPropagation.unit.test.ts` | Add mock `serializer` to `mockComponents` |
-| `tests/unit/networking/PeerAuthenticator.unit.test.ts` | Mock `createFramedStreamCodec` or pass mock serializer + use real framed codec |
-| `tests/unit/networking/PeerExchangeService.unit.test.ts` | Add mock serializer; update pubsub test payloads to CBOR bytes |
-| `tests/unit/data-replication/KReplicaContentHashReplication.unit.test.ts` | Mock serializer already present — no change needed |
-| `tests/unit/data-replication/ReplicationMessageProtocolManager.unit.test.ts` | Change `replicationContent: [9, 9]` → `new Uint8Array([9, 9])` |
-| `tests/unit/replica-store/InMemoryReplicationStorage.unit.test.ts` | Use `createCborWireSerializer()` instead of `getGenericDataSerailizer()` |
-| `tests/unit/replica-store/LevelDBReplicaStore.unit.test.ts` | Verify mock serializer still works |
-| `tests/unit/data-convergence/AntiEntropyNetworkExchange.unit.test.ts` | Add serializer to mock components; update if stream mocks needed |
-| `tests/interop/childThread/nodeWorker.ts` | Replace hand-rolled `JSON.parse` on pubsub data with `components.serializer.deserialize` |
-| `tests/interop/childThread/nodeWorkerData.ts` | Same; replace ping payload JSON encoding with serializer |
-| `tests/interop/childThread/workerUitls.ts` | No change expected — uses `createNode` which sets serializer |
+After successful local produce path starts:
+
+```typescript
+components.strategies?.antiEntropyManager?.recordReplicationActivity?.()
+```
+
+**Cleaner:** inject `ReplicationActivityTracker` via components — **Decision:** expose `components.metricsStore` or pass tracker from manager factory.
+
+**Simplest path:** `AntiEntropyMetricsStore` singleton on components:
+
+```typescript
+// types.ts
+antiEntropyMetrics?: AntiEntropyMetricsStore;
+```
+
+Set in `antiEntropyManager` factory before returning manager. Replication engines call:
+
+```typescript
+components.antiEntropyMetrics?.getActivityTracker().recordLocalProduce();
+```
 
 ---
 
-## Out of Scope (Phase 2+)
+### D. `packages/core/src/data-replication/TopicBasedContentReplication.ts`
 
-- Protobuf schemas for `PropagatedMessage` / `ReplicationMessage`
-- Worker-thread decode offload for messages > 64KB
-- `packages/examples/chat/utils.ts` — update in follow-up if it hand-rolls JSON on streams
-- Changing `canonicalSerialize` algorithm or content hash version
-- Network-wide migration negotiation protocol (format byte is sufficient for Phase 1)
+Same as C.
+
+---
+
+### E. `packages/core/src/utils.ts` (`getMetricsInstances`)
+
+```typescript
+import { BasicAntiEntropyMetrics, NoopAntiEntropyMetrics } from './metrics';
+
+// Add to both branches:
+antiEntropy: enableMetrics ? new BasicAntiEntropyMetrics(...) : new NoopAntiEntropyMetrics(),
+```
+
+---
+
+### F. `packages/core/src/types.ts`
+
+```typescript
+export interface DeChatMetrics {
+  // ...existing
+  antiEntropy: AntiEntropyMetrics;
+}
+
+export interface DeChatComponents {
+  // ...existing
+  /** Queryable anti-entropy state for scheduler + replication activity hooks */
+  antiEntropyMetrics?: AntiEntropyMetricsStore;
+}
+```
+
+---
+
+### G. `packages/core/src/metrics/index.ts`
+
+Export new anti-entropy metrics types and implementations.
+
+---
+
+### H. `packages/core/index.ts`
+
+Export `SyncScheduler`, `STATE_VECTOR_NAMES`, `createSyncScheduler` if public API needed for tests/examples. **Default:** keep scheduling internal; export only if interop needs config overrides.
+
+---
+
+### I. `packages/core/tests/unit/data-convergence/AntiEntropyManager.unit.test.ts`
+
+Add cases:
+
+- [ ] `adaptive.enabled: false` — fixed interval, random peer (regression)
+- [ ] `adaptive.enabled: true` — idle skip after K zero-hash syncs + low activity
+- [ ] Floor sync forces tick when `timeSinceLastSync >= maxIntervalMs`
+- [ ] Mutex skip recorded
+- [ ] `stop()` clears pending `setTimeout` (no CI hang)
+- [ ] Dynamic `scheduleNext` uses scheduler interval
+
+Use `vi.useFakeTimers()` (already in file).
+
+---
+
+### J. Interop tests
+
+**Files:**
+
+- `tests/interop/InterOpScenarios.ts`
+- `tests/interop/interOpTestRunner.dataSync.int.ts`
+- `tests/interop/childThread/workerUitls.ts`
+- `tests/interop/types.ts`
+
+**Phase 0 goal:** Add worker-reported sync metrics to `WorkerResult` so scenarios assert convergence without blind sleep.
+
+```typescript
+// types.ts WorkerResult extension
+antiEntropy?: {
+  outboundAttempts: number;
+  usefulSyncs: number;      // hashesDiscovered > 0
+  lastSyncHashes: number;
+};
+```
+
+Worker polls `components.antiEntropyMetrics?.snapshot()` before exit.
+
+**Phase 1+:** Replace:
+
+```typescript
+const ANTI_ENTROPY_WAIT_MS = syncIntervalMs * 4 + 15_000;
+```
+
+With:
+
+```typescript
+await waitUntil(() => workerReports.every(w => w.antiEntropy?.usefulSyncs > 0), {
+  timeoutMs: 120_000,
+  pollMs: 2_000,
+});
+```
+
+Keep sleep fallback behind `ADAPTIVE_INTEROP_STRICT=false` env for CI stability during rollout.
+
+**Config passthrough in `workerUitls.ts`:**
+
+```typescript
+adaptive?: Partial<DeChatConfig['strategies']['synchronizer']['adaptive']>;
+```
+
+---
+
+### K. `docs/adr/0003-adaptive-anti-entropy-scheduling.md`
+
+On implementation start: change `status: proposed` → `status: accepted`.
 
 ---
 
 ## Implementation Order
 
-Execute in this sequence to keep tests green at each step:
+Execute in sequence; tests must stay green at each step.
 
-### Step 1 — Foundation (no caller changes yet)
-- [ ] Add `cbor-x` dependency
-- [ ] Create `shared/serialization/` module (types, utils, canonical, json, cbor codecs)
-- [ ] Add unit tests for codecs
-- [ ] Create `framedStreamCodec.ts` + unit tests
-- [ ] Add barrel `index.ts`
+### Step 0 — Planning approval
 
-### Step 2 — Wire propagation & streams
-- [ ] Refactor `GossipSubPropagation` to use `components.serializer`
-- [ ] Refactor `DirectStreamPropagation` to use `FramedStreamCodec`
-- [ ] Refactor `PeerAuthenticator` to use `FramedStreamCodec`
-- [ ] Refactor `PeerExchangeService` (pubsub + streams)
-- [ ] Refactor `AntiEntropyNetworkExchange`
-- [ ] Remove JSON from `streamUtils.ts` / `networking/utils.processDataFromStream`
-- [ ] Update propagation & networking unit tests
+- [ ] Review this document
+- [ ] Approve ADR-0003 status → accepted
+- [ ] Confirm default `adaptive.enabled: false` for safe merge
 
-### Step 3 — Replication DI fix
-- [ ] Fix `KReplicaContentReplication` → `components.serializer`
-- [ ] Fix `TopicBasedContentReplication` → `components.serializer`
-- [ ] Change `ReplicationContent.replicationContent` to `Uint8Array`
-- [ ] Update `ReplicationMessageProtocolManager` and replication unit tests
+### Step 1 — Foundation (metrics store, no scheduler change)
 
-### Step 4 — Node wiring & exports
-- [ ] Default `createNode` to `createCborWireSerializer()`
-- [ ] Update `packages/core/index.ts` exports
-- [ ] Deprecate `shared/serializers.ts` (shim re-exports)
+- [ ] `SlidingWindowRingBuffer`
+- [ ] `PeerConvergenceTracker`, `ReplicationActivityTracker`
+- [ ] `StateVectorBuilder`
+- [ ] `AntiEntropyMetricsStore` + `BasicAntiEntropyMetrics` + `NoopAntiEntropyMetrics`
+- [ ] Wire `getMetricsInstances` + `DeChatMetrics` type
+- [ ] Unit tests for above
+- [ ] **No behaviour change yet** — hooks can be no-op wired
 
-### Step 5 — Interop & verification
-- [ ] Update interop worker files to use serializer from components
-- [ ] Run `yarn workspace @dechat/core test` — all unit tests pass
-- [ ] Run `yarn workspace @dechat/core build`
-- [ ] Run `yarn test:int:startup` — worker teardown clean
-- [ ] Run `yarn test:int:data-sync` — replication still converges
+### Step 2 — Instrumentation (Phase 0 complete)
+
+- [ ] Instrument `AntiEntropyManager` (tick, skip, outbound timing, fetch hashes)
+- [ ] Instrument inbound `onMissingHashesDiscovered`
+- [ ] Hook `onLocalDataProduced` in both replication engines
+- [ ] Expose `components.antiEntropyMetrics`
+- [ ] Unit tests for instrumentation + `AntiEntropyManager` metrics side effects
+- [ ] Interop: worker snapshot fields (read-only); still use sleep-based wait
+
+### Step 3 — Scheduler interface + fixed mode refactor
+
+- [ ] `scheduling/types.ts`, `FixedSyncScheduler`, `createSyncScheduler`
+- [ ] Replace `setInterval` → `scheduleNext` in manager
+- [ ] `adaptive.enabled: false` uses `FixedSyncScheduler` — **must be behaviour-identical** to pre-refactor
+- [ ] Run full unit + interop suite — regression gate
+
+### Step 4 — Heuristic scheduler (ADR Phase 1)
+
+- [ ] `HeuristicSyncScheduler` — weighted peer pick
+- [ ] Idle skip + floor sync
+- [ ] Unit tests with fake timers
+- [ ] Enable `adaptive.enabled: true` in **one** interop scenario only (feature flag)
+
+### Step 5 — Adaptive interval (ADR Phase 2)
+
+- [ ] `nextIntervalMs` urgency formula + jitter
+- [ ] Monitor `syncAttemptDurationMs` in interop before enabling globally
+- [ ] Update interop waits to metric-based polling (with sleep fallback)
+
+### Step 6 — Verification
+
+- [ ] `yarn workspace @dechat/core test`
+- [ ] `yarn workspace @dechat/core build`
+- [ ] `yarn test:int:startup`
+- [ ] `yarn test:int:data-sync`
+- [ ] Optional: `tests/perf/antiEntropyScheduler.bench.ts` — compare bytes/attempts fixed vs heuristic
+
+### Step 7 — Phase 3 bandit (optional, separate PR)
+
+- [ ] `RewardFunction`, `EpsilonGreedyPolicy`, `BanditSyncScheduler`
+- [ ] `scheduler: 'bandit'` config
+- [ ] Interop A/B report in `tests/perf/reports/`
+- [ ] Update ADR or add ADR-0004 if ONNX pursued
 
 ---
 
 ## Verification Checklist
 
-- [ ] No file in `packages/core/src` calls `JSON.stringify` / `JSON.parse` for wire messages (except inside `jsonWireSerializer.ts` and `canonicalSerializer.ts`)
-- [ ] No file calls `getGenericDataSerailizer()` directly except deprecated shim and tests
-- [ ] GossipSub publish and receive use same codec
-- [ ] Direct streams and GossipSub produce different framing but same format byte + CBOR body
-- [ ] `Uint8Array` in `PropagatedMessage.signature` round-trips correctly
-- [ ] `ReplicationContent.replicationContent` is `Uint8Array` end-to-end
-- [ ] Content hashes unchanged — `canonicalSerializer.unit.test.ts` passes without logic changes
-- [ ] Worker interop tests terminate cleanly (no hung threads)
+- [ ] `adaptive.enabled: false` — byte-identical sync behaviour to pre-change (random peer, fixed interval)
+- [ ] Safety invariant 1 — trie diff / auth / replication logic untouched
+- [ ] Safety invariant 2 — outbound sync at least every `maxIntervalMs` when peers connected
+- [ ] Safety invariant 3 — `isSyncing` mutex preserved
+- [ ] Safety invariant 4 — `SimplePeerScorer` not imported by scheduling module
+- [ ] Safety invariant 5 — no peer hard-excluded (min weight 0.1)
+- [ ] Safety invariant 6 — inbound sync never gated by scheduler
+- [ ] `stop()` clears timeout; interop workers terminate (no hang)
+- [ ] State vector indices match ADR table (stable for future ML)
+- [ ] Memory bounded: `O(windowSize + peerCount)` per node
 
 ---
 
 ## Risk & Mitigation
 
 | Risk | Mitigation |
-|---|---|
-| Breaking wire compat with running nodes | Format byte + JSON fallback in deserialize; all nodes must upgrade together pre-production |
-| CBOR extension types differ across versions | Pin `cbor-x` version; test round-trip in unit + interop |
-| Replica store contains old JSON bytes | Phase 1: treat missing format byte as JSON legacy in `decodeWireEnvelope` |
-| Tests mock `streamUtils` directly | Update mocks to mock `createFramedStreamCodec` or inject mock serializer |
-| `getGenericDataSerailizer` typo in public API | Keep deprecated alias; add correctly spelled `createCborWireSerializer` export |
+|------|------------|
+| Adaptive interval causes sync storms | `jitterMs`; monitor duration in Phase 0 before Phase 2 |
+| Idle skip delays partition heal | Floor sync every `maxIntervalMs`; interop split-brain scenario |
+| `setInterval` → `setTimeout` regression | Step 3 regression gate with `adaptive.enabled: false` |
+| Peer churn breaks bandit arms | `DynamicArmSet` decay; min weight for new peers |
+| Zero-hash reward confuses bandit | Separate converged reward (0.1) vs idle skip (dormancy) |
+| Interop flakes during transition | Sleep fallback env var; enable adaptive per-scenario |
+| Metrics disabled breaks scheduler | Always instantiate internal store; metrics.enabled = export only |
+
+---
+
+## Out of Scope
+
+- LLM / ONNX / deep RL schedulers
+- Cross-node metrics aggregation
+- Per-topic / per-room state vectors (future ADR)
+- `localUnsyncedDeltaSize`, `droppedPacketCount`, `peerBandwidthCapacity` (ADR deferred)
+- Changing trie protocol messages or drill-down depth
+- `PeerRegistry` vs `getConnections()` peer source switch
+- Batch `fetchMissingData` (existing TODO in manager)
+- Dial-queue adaptive intelligence (ADR defers to DialQueue/PEX)
 
 ---
 
 ## File Tree (after implementation)
 
 ```
-packages/core/src/shared/
-├── serialization/
-│   ├── index.ts
-│   ├── types.ts
-│   ├── utils.ts
-│   ├── canonicalSerializer.ts      # identity hashing — unchanged logic
-│   ├── jsonWireSerializer.ts       # legacy wire format
-│   ├── cborWireSerializer.ts       # default wire format
-│   └── framedStreamCodec.ts        # length-prefixed stream framing
-├── serializers.ts                  # deprecated re-export shim (delete in Phase 2)
-├── streamUtils.ts                  # removed or re-exports framedStreamCodec factory
-└── types.ts                        # BaseMessage, DataSerializer alias
+packages/core/src/data-convergence/
+├── AntiEntropyManager.ts          # modified — dynamic timer, scheduler DI
+├── AntiEntropyNetworkExchange.ts  # minimal / unchanged
+├── types.ts
+├── PrefixTrie.ts
+├── TrieBackedReplicaStore.ts
+└── scheduling/
+    ├── index.ts
+    ├── types.ts
+    ├── math.ts
+    ├── SlidingWindowRingBuffer.ts
+    ├── PeerConvergenceTracker.ts
+    ├── ReplicationActivityTracker.ts
+    ├── StateVectorBuilder.ts
+    ├── AntiEntropyMetricsStore.ts
+    ├── FixedSyncScheduler.ts
+    ├── HeuristicSyncScheduler.ts
+    └── bandit/                    # Phase 3 optional
+        ├── RewardFunction.ts
+        ├── EpsilonGreedyPolicy.ts
+        ├── DynamicArmSet.ts
+        └── BanditSyncScheduler.ts
 
-packages/core/tests/unit/shared/
-├── cborWireSerializer.unit.test.ts
-├── jsonWireSerializer.unit.test.ts
-└── framedStreamCodec.unit.test.ts
+packages/core/src/metrics/
+├── interfaces/AntiEntropyMetrics.ts
+├── basic/BasicAntiEntropyMetrics.ts
+└── noop/NoopAntiEntropyMetrics.ts
+
+packages/core/tests/unit/data-convergence/scheduling/
+├── SlidingWindowRingBuffer.unit.test.ts
+├── PeerConvergenceTracker.unit.test.ts
+├── StateVectorBuilder.unit.test.ts
+├── FixedSyncScheduler.unit.test.ts
+├── HeuristicSyncScheduler.unit.test.ts
+└── bandit/...
 ```
 
 ---
 
 ## Approval
 
-**Approved 2026-06-28.** Pre-production: no backward-compat shims. Wire format is configured once via `config.serialization.wireFormat` (`'cbor'` default | `'json'`).
+**Pending.** Review gaps below; approve to begin Step 1.
+
+### Gaps identified and resolved in this revision
+
+| Gap | Resolution in plan |
+|-----|-------------------|
+| Old `todo.md` was CBOR task | Replaced with this document; CBOR marked complete in header |
+| `setInterval` incompatible with dynamic interval | Recursive `scheduleNext()` specified |
+| `syncIntervalMs` vs `maxIntervalMs` ambiguity | Documented migration rule |
+| Metrics disabled vs scheduler state | Internal store always on; export gated by `metrics.enabled` |
+| Activity rate hook location | `ReplicationActivityTracker` + replication engine hooks |
+| Peer pick source | Keep `getConnections()`; TODO for PeerRegistry |
+| Bandit reward for 0 hashes | Converged (+0.1) vs idle skip (separate mechanism) |
+| Interop sleep brittleness | Phased: snapshot first, then poll-based wait |
+| Phase 3 scope creep | Explicit optional Step 7 / separate PR |
+| No new dependencies | Pure TS for Phases 0–2 and bandit |
 
 ---
 
 ## Implementation Status
 
-- [x] Step 1 — Foundation (serialization module + tests)
-- [x] Step 2 — Propagation, streams, networking
-- [x] Step 3 — Replication DI + Uint8Array
-- [x] Step 4 — Node wiring + exports
-- [x] Step 5 — Interop verification (`test:int:startup`, `test:int:data-sync`) — CI green on PR #35
+- [x] Step 0 — Planning approval
+- [x] Step 1 — Foundation (metrics store)
+- [x] Step 2 — Instrumentation (Phase 0)
+- [x] Step 3 — Scheduler refactor + fixed mode regression
+- [x] Step 4 — Heuristic peer pick + idle skip (Phase 1)
+- [x] Step 5 — Adaptive interval (Phase 2)
+- [ ] Step 6 — CI / interop verification (skipped locally; CI on PR)
+- [ ] Step 7 — Bandit scheduler (optional)

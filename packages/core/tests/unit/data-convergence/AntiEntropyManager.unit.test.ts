@@ -1,8 +1,10 @@
 /** biome-ignore-all lint/suspicious/noExplicitAny: <its a test file> */
 import { logger } from '@dechat/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DECHAT_DEFAULTS } from '../../../src/config/defaults';
 import { AntiEntropyManager, antiEntropyManager } from '../../../src/data-convergence/AntiEntropyManager';
 import { SyncOutcome } from '../../../src/data-convergence/types';
+import { NoopAntiEntropyMetrics } from '../../../src/metrics/noop/NoopAntiEntropyMetrics';
 import { DeChatComponents } from '../../../src/types';
 
 const HASH_A = 'a'.repeat(64);
@@ -53,13 +55,16 @@ describe('AntiEntropyManager', () => {
       config: {
         strategies: {
           synchronizer: {
-            protocol: '/test/anti-entropy/1.0.0',
+            ...DECHAT_DEFAULTS.strategies.synchronizer,
             // Huge interval so the scheduler never auto-fires during a test.
             syncIntervalMs: 1_000_000,
             retry: { maxRetries: 3, baseBackoffMs: 10, maxBackoffMs: 50 },
           },
         },
-      } as any,
+      } as DeChatComponents['config'],
+      metrics: {
+        antiEntropy: new NoopAntiEntropyMetrics(),
+      } as DeChatComponents['metrics'],
       strategies: {
         dataReplication: mockDataReplication,
         networkExchanger: mockExchange,
@@ -199,5 +204,41 @@ describe('AntiEntropyManager', () => {
     randomSpy.mockReturnValue(0.9999);
     expect(compute(3)).toBeLessThanOrEqual(50); // never exceeds the cap even at max jitter
     randomSpy.mockRestore();
+  });
+
+  it('stop() clears pending setTimeout (no dangling timers)', () => {
+    expect(vi.getTimerCount()).toBeGreaterThanOrEqual(1);
+    manager.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('uses fixed interval when adaptive.enabled is false', () => {
+    const intervalMs = 5_000;
+    const fixedManager = antiEntropyManager()({
+      ...mockComponents,
+      config: {
+        strategies: {
+          synchronizer: {
+            ...DECHAT_DEFAULTS.strategies.synchronizer,
+            syncIntervalMs: intervalMs,
+            adaptive: { ...DECHAT_DEFAULTS.strategies.synchronizer.adaptive, enabled: false },
+          },
+        },
+      },
+      metrics: { antiEntropy: new NoopAntiEntropyMetrics() },
+      strategies: mockComponents.strategies,
+    } as DeChatComponents);
+
+    const delay = (fixedManager as any).scheduler.nextIntervalMs((fixedManager as any).buildTickContext());
+    expect(delay).toBe(intervalMs);
+    fixedManager.stop();
+  });
+
+  it('records mutex skip when sync is already in progress', async () => {
+    (manager as any).isSyncing = true;
+    await (manager as any).performScheduledSync();
+
+    const snap = (manager as any).metricsStore.snapshot();
+    expect(snap.skipCounts.mutex).toBe(1);
   });
 });

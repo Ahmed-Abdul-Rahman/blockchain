@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Adaptive anti-entropy scheduling (phased telemetry → heuristics)
