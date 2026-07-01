@@ -4,7 +4,7 @@
 **ADR ref:** [docs/adr/0003-adaptive-anti-entropy-scheduling.md](../docs/adr/0003-adaptive-anti-entropy-scheduling.md)  
 **Prerequisite:** PR [#36](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/36) merged (adaptive scheduling + baseline adaptive interop test)  
 **Blocks:** Bandit scheduler (Step 7 in `todo.md`) — implement **after** Tier 1 nightly CI is green  
-**Status:** Implemented — pending CI / nightly soak  
+**Status:** PR merge gate complete ([PR #37](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/37) CI green) — nightly soak pending after merge  
 **Goal:** Increase confidence in adaptive anti-entropy at scale using the **existing worker-thread interop harness** — no Docker, no Testground.
 
 ---
@@ -486,15 +486,15 @@ flowchart TB
 
 ### PR merge gate (Tier 1 complete for PR)
 
-- [ ] `yarn workspace @dechat/core test` — all unit tests pass
-- [ ] `yarn build && yarn test:int:data-sync` with `ADAPTIVE_INTEROP_STRICT=true` — green
-- [ ] Adaptive late-joiner report prints anti-entropy section with `usefulSyncs`, `convergenceMs`, `idleSkips`
-- [ ] `scheduledTicks` increments in store (unit tested)
-- [ ] No change to `adaptive.enabled` default in `config/defaults.ts`
+- [x] `yarn workspace @dechat/core test` — all unit tests pass (CI #37)
+- [x] `yarn build && yarn test:int:data-sync` with `ADAPTIVE_INTEROP_STRICT=true` — green (CI #37, ~31m)
+- [x] Adaptive late-joiner report prints anti-entropy section with `usefulSyncs`, `convergenceMs`, `idleSkips`
+- [x] `scheduledTicks` increments in store (unit tested)
+- [x] No change to `adaptive.enabled` default in `config/defaults.ts`
 
 ### Nightly gate (Tier 1 fully complete)
 
-- [ ] `interop-scale-nightly.yml` green for matrix 12 / 24 / 50
+- [ ] `interop-scale-nightly.yml` green for matrix 12 / 24 / 50 (runs after merge to `develop`)
 - [ ] A/B test: both modes converge; heuristic `producerIdleSkipsTotal >= 1`
 - [ ] JSON artifacts uploaded; no worker-thread hang (all workers terminate)
 - [ ] 7 consecutive nightly greens before starting bandit scheduler work
@@ -531,40 +531,40 @@ Use this as the PR sequence — one or more PRs per phase is fine.
 
 ### PR 1 — Metrics + reporting (Phases 1–2)
 
-- [ ] 1.1 `scheduledTickCount` in store + unit test
-- [ ] 1.2 Extended `WorkerResult.antiEntropy` + worker snapshot mapping
-- [ ] 1.3 `convergenceMs` on late joiner (`set_expected_hashes` watch)
-- [ ] 2.1–2.3 `summarizeAntiEntropyMetrics` + report printing
-- [ ] 2.4 JSON artifact + `.gitkeep` + gitignore
-- [ ] Verify: unit tests + manual `test:int:data-sync` (strict off)
+- [x] 1.1 `scheduledTickCount` in store + unit test
+- [x] 1.2 Extended `WorkerResult.antiEntropy` + worker snapshot mapping
+- [x] 1.3 `convergenceMs` on late joiner (`set_expected_hashes` watch)
+- [x] 2.1–2.3 `summarizeAntiEntropyMetrics` + report printing
+- [x] 2.4 JSON artifact + `.gitkeep` + gitignore
+- [x] Verify: unit tests + `test:int:data-sync` (CI #37)
 
 ### PR 2 — Strict CI polling (Phase 3)
 
-- [ ] 3.1 Extract `interopPolling.ts`
-- [ ] 3.2 Change poll success to `hasTargetData === true`
-- [ ] 3.3 `ADAPTIVE_INTEROP_STRICT=true` in `ci.yaml`
-- [ ] Verify: full data-sync CI green
+- [x] 3.1 Extract `interopPolling.ts`
+- [x] 3.2 Change poll success to `hasTargetData === true`
+- [x] 3.3 `ADAPTIVE_INTEROP_STRICT=true` in `ci.yaml`
+- [x] Verify: full data-sync CI green
 
 ### PR 3 — A/B + extended scenarios (Phases 4–5)
 
-- [ ] 4.1 `simulateAntiEntropyConvergenceAbComparison`
-- [ ] 4.2 `interOpTestRunner.adaptiveAb.int.ts` + package script
-- [ ] 4.3 Dormant-phase producer idle skip assertion
-- [ ] 5.1–5.2 Strict poll for split-brain + revival
-- [ ] Verify: local A/B run with `INTEROP_AB_TEST=true`
+- [x] 4.1 `simulateAntiEntropyConvergenceAbComparison`
+- [x] 4.2 `interOpTestRunner.adaptiveAb.int.ts` + package script
+- [x] 4.3 Dormant-phase producer idle skip assertion
+- [x] 5.1–5.2 Strict poll for split-brain + revival
+- [ ] Verify: local/nightly A/B run with `INTEROP_AB_TEST=true` (post-merge nightly)
 
 ### PR 4 — Nightly CI + docs (Phases 6–7)
 
-- [ ] 6.1 `interop-scale-nightly.yml`
-- [ ] 6.2 `interOpTestRunner.adaptiveScale.int.ts`
-- [ ] 7.1 `tests/interop/README.md`
-- [ ] Update `BACKLOG.md` Task 5.1 status → In progress / Done
-- [ ] Soak: monitor 7 nightly runs
+- [x] 6.1 `interop-scale-nightly.yml`
+- [x] 6.2 `interOpTestRunner.adaptiveScale.int.ts`
+- [x] 7.1 `tests/interop/README.md`
+- [x] Update `BACKLOG.md` Task 5.1 status
+- [ ] Soak: monitor 7 nightly runs (after merge)
 
 ---
 
 ## Approval
 
-**Pending your review.** Suggested starting point: **PR 1** (metrics + reporting) — zero CI risk, immediate observability win.
+**PR merge gate approved** — [PR #37](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/37) CI green (unit + startup + data-sync interop).
 
-After approval, begin with Phase 1.1 (`scheduledTickCount`).
+**Remaining:** merge to `develop`, then complete nightly gate (7 consecutive greens) before bandit scheduler (Step 7).

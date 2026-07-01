@@ -114,22 +114,22 @@ The core architecture has successfully transitioned to a robust, Dependency-Inje
 > **Implementation plan:** [tasks/tier1-adaptive-interop.md](tasks/tier1-adaptive-interop.md) — groomed checklist, CI strategy, phased PRs.
 
 * **Severity:** Medium (confidence / regression prevention for adaptive scheduler)
-* **Status:** Implemented — pending nightly soak
+* **Status:** PR merge gate complete ([PR #37](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/37) CI green) — nightly soak pending after merge
 * **Depends on:** Task 2.1 adaptive scheduling (PR #36) — **done**
 * **Goal:** Increase statistical confidence in adaptive anti-entropy behaviour **without** new infrastructure. Build on the existing single-host worker-thread interop that already runs in CI.
 
-#### The gap today
+#### Resolved (PR #37)
 
-| Gap | Current state |
-|-----|---------------|
-| Adaptive test waits | `simulateAntiEntropyConvergence` uses fixed sleeps unless `ADAPTIVE_INTEROP_STRICT=true` |
-| CI env | `.github/workflows/ci.yaml` does **not** set `ADAPTIVE_INTEROP_STRICT` |
-| Metrics in reports | Worker snapshot exports `outboundAttempts`, `usefulSyncs`, `lastSyncHashes`, `idleSkips` — not surfaced in `interopTestReporter` summary |
-| Scale | Default 6 nodes; `sim:peak` script references 50 nodes but is not in CI |
-| A/B comparison | No interop scenario runs fixed vs heuristic side-by-side with comparable assertions |
-| Node parametrization | `--nodes` / `--duration` exist via `interopTestReporter.ts` but adaptive scenarios are not exercised at multiple sizes |
+| Item | Resolution |
+|------|------------|
+| Adaptive test waits | Strict `hasTargetData` polling when `ADAPTIVE_INTEROP_STRICT=true` |
+| CI env | `ADAPTIVE_INTEROP_STRICT=true` on data-sync job in `ci.yaml` |
+| Metrics in reports | `summarizeAntiEntropyMetrics` + anti-entropy section in interop reports |
+| Scale | Nightly matrix 12/24/50 via `interop-scale-nightly.yml` |
+| A/B comparison | `simulateAntiEntropyConvergenceAbComparison` + nightly A/B runner |
+| Node parametrization | `interOpTestRunner.adaptiveScale.int.ts` + `--nodes` CLI |
 
-#### Deliverables
+#### Deliverables (all implemented in PR #37)
 
 1. **Enable strict metric polling for adaptive scenario in CI**
    - Set `ADAPTIVE_INTEROP_STRICT=true` for the adaptive interop test job only (or entire `test:int:data-sync` once stable).
@@ -180,11 +180,11 @@ The core architecture has successfully transitioned to a robust, Dependency-Inje
 
 #### Acceptance criteria
 
-- [ ] PR CI (`test:int:data-sync`) passes with `ADAPTIVE_INTEROP_STRICT=true` on adaptive scenario
-- [ ] Interop report prints `idleSkips`, `usefulSyncs`, `floorSyncForces` for late joiner
-- [ ] A/B scenario: both modes converge; heuristic shows `idleSkips > 0` on dormant producers
-- [ ] Nightly 50-node adaptive run completes without worker-thread leak (all workers terminated)
-- [ ] No change to production `adaptive.enabled` default (`false`)
+- [x] PR CI (`test:int:data-sync`) passes with `ADAPTIVE_INTEROP_STRICT=true` ([PR #37](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/37))
+- [x] Interop report prints `idleSkips`, `usefulSyncs`, `floorSyncForces` for late joiner
+- [ ] A/B scenario: both modes converge; heuristic shows `idleSkips > 0` on dormant producers (nightly, post-merge)
+- [ ] Nightly 50-node adaptive run completes without worker-thread leak (post-merge)
+- [x] No change to production `adaptive.enabled` default (`false`)
 
 #### Out of scope (Tier 1)
 

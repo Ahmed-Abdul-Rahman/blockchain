@@ -919,6 +919,6 @@ Deferred Testground evaluation (see [libp2p/test-plans#103](https://github.com/l
 
 | Task | Plan doc | Summary |
 |------|----------|---------|
-| **5.1 Tier 1** | [tasks/tier1-adaptive-interop.md](tier1-adaptive-interop.md) | Strict CI polling, richer metrics, fixed vs heuristic A/B, nightly 12/24/50-node runs — **implement next** |
+| **5.1 Tier 1** | [tasks/tier1-adaptive-interop.md](tier1-adaptive-interop.md) | PR #37 — PR gate complete (CI green); nightly 12/24/50 + A/B soak pending merge |
 | **5.2 Tier 2** | TBD (`tasks/tier2-compose-interop.md`) | Docker Compose interop — after Tier 1 nightly green |
 | **Step 7 Bandit** | `todo.md` Step 7 | After Tier 1 nightly green (7 consecutive passes) |
