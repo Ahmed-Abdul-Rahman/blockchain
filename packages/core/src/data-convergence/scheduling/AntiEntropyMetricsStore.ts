@@ -25,6 +25,9 @@ export interface AntiEntropyMetricsSnapshot {
 
   /** Latest 7-element state vector */
   readonly stateVector: StateVector;
+
+  /** Scheduled anti-entropy ticks evaluated (including skipped ticks) */
+  readonly scheduledTicks: number;
 }
 
 /**
@@ -62,6 +65,9 @@ export class AntiEntropyMetricsStore {
 
   /** Hashes from the most recent outbound sync */
   private lastSyncHashCount = 0;
+
+  /** Total scheduled tick evaluations */
+  private scheduledTickCount = 0;
 
   /**
    * @param synchronizerConfig Full synchronizer strategy config
@@ -141,9 +147,9 @@ export class AntiEntropyMetricsStore {
     return this.consecutiveZeroHashComplete;
   }
 
-  /** Record that a scheduled tick started (counter only) */
+  /** Record that a scheduled tick started */
   recordScheduledTickStarted(): void {
-    // Reserved for future tick-rate metrics; no state mutation yet.
+    this.scheduledTickCount++;
   }
 
   /** Record a skipped scheduled tick with reason */
@@ -225,6 +231,7 @@ export class AntiEntropyMetricsStore {
       consecutiveZeroHashComplete: this.consecutiveZeroHashComplete,
       skipCounts: skipRecord,
       stateVector: this.getStateVector(now),
+      scheduledTicks: this.scheduledTickCount,
     };
   }
 

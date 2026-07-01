@@ -90,4 +90,5 @@ jobs:
       - name: Run interop data sync tests
         env:
           NODE_OPTIONS: "--max-old-space-size=6144"
+          ADAPTIVE_INTEROP_STRICT: "true"
         run: yarn test:int:data-sync

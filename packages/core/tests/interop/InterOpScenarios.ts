@@ -3,7 +3,9 @@ import { fileURLToPath } from 'node:url';
 import { sampleIndices } from '@dechat/common';
 import { delay } from 'es-toolkit';
 import { isInPercentRange } from './helper';
+import { isAdaptiveInteropStrict, pollAllWorkersTargetData, pollWorkerTargetData } from './interopPolling';
 import {
+  AbComparisonResult,
   AggregatedResult,
   RunWorkersScenario,
   WorkerData,
@@ -17,40 +19,51 @@ const filename = fileURLToPath(import.meta.url);
 const nodeWorkerPath = resolve(dirname(filename), './childThread', './nodeWorker.js');
 const nodeWorkerDataPropPath = resolve(dirname(filename), './childThread', './nodeWorkerData.js');
 
-/** When true, interop scenarios use metric-based polling instead of fixed sleep waits */
-const ADAPTIVE_INTEROP_STRICT = process.env.ADAPTIVE_INTEROP_STRICT === 'true';
+/** Extra settle time after late-joiner convergence so producers accumulate idle skips (adaptive) */
+const DORMANT_SETTLE_MS = 30_000;
 
-/** Poll worker results for anti-entropy useful syncs on the late joiner */
-const pollLateJoinerConvergence = async (
+const waitForLateJoinerConvergence = async (
   workers: WorkerDetails[],
   lateJoinerIndex: number,
-  timeoutMs: number,
+  syncIntervalMs: number,
 ): Promise<void> => {
   const lateJoiner = workers.find((w) => w.workerData.index === lateJoinerIndex);
   if (!lateJoiner) {
     return;
   }
 
-  await new Promise<void>((resolve) => {
-    // biome-ignore lint/suspicious/noExplicitAny: worker message format is dynamic
-    const listener = (msg: any) => {
-      if (msg.type === 'statistics' && msg.stats?.antiEntropy?.usefulSyncs > 0) {
-        lateJoiner.workerRef.off('message', listener);
-        resolve();
-      }
-    };
-    lateJoiner.workerRef.on('message', listener);
+  const antiEntropyWaitMs = syncIntervalMs * 4 + 15_000;
 
-    const poll = setInterval(() => {
-      lateJoiner.workerRef.postMessage({ type: 'statistics' });
-    }, 2_000);
+  if (isAdaptiveInteropStrict()) {
+    const pollResult = await pollWorkerTargetData(lateJoiner.workerRef, 120_000);
+    if (!pollResult.converged) {
+      console.warn(
+        `[Convergence Test] Late joiner poll timed out after ${pollResult.elapsedMs}ms. ` +
+          `Last stats: ${JSON.stringify(pollResult.lastStats?.antiEntropy)}`,
+      );
+    } else {
+      console.log(`[Convergence Test] Late joiner converged in ${pollResult.elapsedMs}ms (strict poll)`);
+    }
+  } else {
+    await delay(antiEntropyWaitMs);
+  }
+};
 
-    setTimeout(() => {
-      clearInterval(poll);
-      lateJoiner.workerRef.off('message', listener);
-      resolve();
-    }, timeoutMs);
-  });
+const waitForAllWorkersTargetData = async (workers: WorkerDetails[], syncIntervalMs: number): Promise<void> => {
+  const antiEntropyWaitMs = syncIntervalMs * 6 + 30_000;
+
+  if (isAdaptiveInteropStrict()) {
+    const { allConverged, results } = await pollAllWorkersTargetData(
+      workers.map((w) => w.workerRef),
+      180_000,
+    );
+    if (!allConverged) {
+      const timedOut = results.filter((r) => !r.converged).length;
+      console.warn(`[Convergence Test] ${timedOut} worker(s) did not converge within strict poll window`);
+    }
+  } else {
+    await delay(antiEntropyWaitMs);
+  }
 };
 
 export const setupScenario = (
@@ -273,7 +286,6 @@ export const simulateAntiEntropyConvergence = (workerDataConfig: WorkerDataConfi
   const REPLICATE_SETTLE_MS = 30_000; // let produced messages fully replicate across producers
   const LATE_JOINER_CONNECT_MS = 20_000; // let the late joiner dial into the mesh
   const syncIntervalMs = workerDataConfig.syncIntervalMs ?? 15_000;
-  const ANTI_ENTROPY_WAIT_MS = syncIntervalMs * 4 + 15_000; // several sync cycles + buffer
 
   const scenario: RunWorkersScenario = async (workers, workerResults, handleComplete, handleWorkerError) => {
     const terminationPromises: Promise<boolean>[] = [];
@@ -324,10 +336,10 @@ export const simulateAntiEntropyConvergence = (workerDataConfig: WorkerDataConfi
     await delay(LATE_JOINER_CONNECT_MS);
     lateJoiner.workerRef.postMessage({ type: 'set_expected_hashes', hashes: expectedHashes });
 
-    if (ADAPTIVE_INTEROP_STRICT) {
-      await pollLateJoinerConvergence(workers, lateJoinerIndex, 120_000);
-    } else {
-      await delay(ANTI_ENTROPY_WAIT_MS);
+    await waitForLateJoinerConvergence(workers, lateJoinerIndex, syncIntervalMs);
+
+    if (workerDataConfig.adaptive?.enabled && isAdaptiveInteropStrict()) {
+      await delay(DORMANT_SETTLE_MS);
     }
 
     terminateWorkers(workers);
@@ -336,6 +348,39 @@ export const simulateAntiEntropyConvergence = (workerDataConfig: WorkerDataConfi
 
   const { scenarioResults } = setupScenario(scenario);
   return scenarioResults;
+};
+
+/** Run fixed then heuristic late-joiner convergence with isolated network IDs */
+export const simulateAntiEntropyConvergenceAbComparison = async (
+  workerDataConfig: WorkerDataConfig,
+): Promise<AbComparisonResult> => {
+  const baseNetworkId = workerDataConfig.networkId;
+
+  const fixedStartedAt = Date.now();
+  const fixedResult = await simulateAntiEntropyConvergence({
+    ...workerDataConfig,
+    networkId: `${baseNetworkId}-fixed-ab`,
+    adaptive: { enabled: false },
+  });
+  const fixedWallMs = Date.now() - fixedStartedAt;
+
+  const heuristicStartedAt = Date.now();
+  const heuristicResult = await simulateAntiEntropyConvergence({
+    ...workerDataConfig,
+    networkId: `${baseNetworkId}-heuristic-ab`,
+    adaptive: {
+      enabled: true,
+      scheduler: 'heuristic',
+      minIntervalMs: workerDataConfig.adaptive?.minIntervalMs ?? 5_000,
+      maxIntervalMs: workerDataConfig.adaptive?.maxIntervalMs ?? 60_000,
+    },
+  });
+  const heuristicWallMs = Date.now() - heuristicStartedAt;
+
+  return {
+    fixed: { result: fixedResult, wallMs: fixedWallMs },
+    heuristic: { result: heuristicResult, wallMs: heuristicWallMs },
+  };
 };
 
 /**
@@ -481,7 +526,6 @@ export const simulateSplitBrainConvergence = (workerDataConfig: WorkerDataConfig
   const REPLICATE_SETTLE_MS = 30_000;
   const HEAL_CONNECT_MS = 45_000;
   const syncIntervalMs = workerDataConfig.syncIntervalMs ?? 15_000;
-  const ANTI_ENTROPY_WAIT_MS = syncIntervalMs * 6 + 30_000;
 
   const scenario: RunWorkersScenario = async (workers, workerResults, handleComplete, handleWorkerError) => {
     const terminationPromises: Promise<boolean>[] = [];
@@ -554,7 +598,7 @@ export const simulateSplitBrainConvergence = (workerDataConfig: WorkerDataConfig
     for (const { workerRef } of workers) {
       workerRef.postMessage({ type: 'set_expected_hashes', hashes: expectedUnion });
     }
-    await delay(ANTI_ENTROPY_WAIT_MS);
+    await waitForAllWorkersTargetData(workers, syncIntervalMs);
 
     terminateWorkers(workers);
     await Promise.all(terminationPromises);
@@ -629,7 +673,18 @@ export const simulateOfflinePeerRevivalConvergence = (
     //    then wait for several sync cycles to converge.
     await delay(RECONNECT_MS);
     revivedWorker.workerRef.postMessage({ type: 'set_expected_hashes', hashes: expectedHashes });
-    await delay(ANTI_ENTROPY_WAIT_MS);
+
+    if (isAdaptiveInteropStrict()) {
+      const pollResult = await pollWorkerTargetData(revivedWorker.workerRef, 180_000);
+      if (!pollResult.converged) {
+        console.warn(
+          `[Revival Convergence Test] Revived peer poll timed out after ${pollResult.elapsedMs}ms. ` +
+            `Last stats: ${JSON.stringify(pollResult.lastStats?.antiEntropy)}`,
+        );
+      }
+    } else {
+      await delay(ANTI_ENTROPY_WAIT_MS);
+    }
 
     terminateWorkers(workers);
     await Promise.all(terminationPromises);

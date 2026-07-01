@@ -130,4 +130,7 @@ dist
 .pnp.*
 .DS_Store
 
+# Interop JSON reports (nightly CI artifacts; keep .gitkeep)
+packages/core/tests/interop/reports/*.json
+
 build/
