@@ -233,4 +233,19 @@ describe('AntiEntropyManager (adaptive scheduling)', () => {
     manager.stop();
     vi.mocked(Math.random).mockRestore();
   });
+
+  it('runs scheduled syncs with bandit scheduler mode', async () => {
+    const { manager, mockExchange } = buildManager(adaptiveSynchronizerConfig({ scheduler: 'bandit' }), [
+      { remotePeer: peer('peer-1') },
+      { remotePeer: peer('peer-2') },
+    ]);
+    manager.start();
+
+    await (manager as any).performScheduledSync();
+
+    expect(mockExchange.syncWithPeer).toHaveBeenCalledTimes(1);
+    expect(debugSpy.mock.calls.some(([m]) => String(m).includes('mode=bandit'))).toBe(true);
+
+    manager.stop();
+  });
 });
