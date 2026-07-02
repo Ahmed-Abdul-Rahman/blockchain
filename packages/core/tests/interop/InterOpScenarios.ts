@@ -3,7 +3,19 @@ import { fileURLToPath } from 'node:url';
 import { sampleIndices } from '@dechat/common';
 import { delay } from 'es-toolkit';
 import { isInPercentRange } from './helper';
-import { isAdaptiveInteropStrict, pollAllWorkersTargetData, pollWorkerTargetData } from './interopPolling';
+import {
+  isAdaptiveInteropStrict,
+  pollAllWorkersTargetData,
+  pollWorkerStats,
+  pollWorkerTargetData,
+} from './interopPolling';
+import {
+  computeLateJoinerPollTimeoutMs,
+  computeMeshStabilizeMs,
+  computeProducerConsensusPollMs,
+  computeProducerConsensusTimeoutMs,
+  computeReplicateSettleMs,
+} from './interopTiming';
 import {
   AbComparisonResult,
   AggregatedResult,
@@ -26,6 +38,7 @@ const waitForLateJoinerConvergence = async (
   workers: WorkerDetails[],
   lateJoinerIndex: number,
   syncIntervalMs: number,
+  totalNodes: number,
 ): Promise<void> => {
   const lateJoiner = workers.find((w) => w.workerData.index === lateJoinerIndex);
   if (!lateJoiner) {
@@ -33,12 +46,13 @@ const waitForLateJoinerConvergence = async (
   }
 
   const antiEntropyWaitMs = syncIntervalMs * 4 + 15_000;
+  const pollTimeoutMs = computeLateJoinerPollTimeoutMs(totalNodes, syncIntervalMs);
 
   if (isAdaptiveInteropStrict()) {
-    const pollResult = await pollWorkerTargetData(lateJoiner.workerRef, 120_000);
+    const pollResult = await pollWorkerTargetData(lateJoiner.workerRef, pollTimeoutMs);
     if (!pollResult.converged) {
       console.warn(
-        `[Convergence Test] Late joiner poll timed out after ${pollResult.elapsedMs}ms. ` +
+        `[Convergence Test] Late joiner poll timed out after ${pollResult.elapsedMs}ms (timeout=${pollTimeoutMs}ms). ` +
           `Last stats: ${JSON.stringify(pollResult.lastStats?.antiEntropy)}`,
       );
     } else {
@@ -47,6 +61,70 @@ const waitForLateJoinerConvergence = async (
   } else {
     await delay(antiEntropyWaitMs);
   }
+};
+
+const waitForProducerReplicaConsensus = async (producers: WorkerDetails[], totalNodes: number): Promise<void> => {
+  const timeoutMs = computeProducerConsensusTimeoutMs(totalNodes);
+  const intervalMs = computeProducerConsensusPollMs();
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const counts = await Promise.all(
+      producers.map(
+        ({ workerRef }) =>
+          new Promise<number>((resolve) => {
+            // biome-ignore lint/suspicious/noExplicitAny: worker message format is dynamic
+            const listener = (msg: any) => {
+              if (msg.type === 'statistics' && msg.stats) {
+                workerRef.off('message', listener);
+                resolve((msg.stats as WorkerResult).replicaCount ?? 0);
+              }
+            };
+            workerRef.on('message', listener);
+            workerRef.postMessage({ type: 'statistics' });
+          }),
+      ),
+    );
+
+    const max = Math.max(...counts);
+    const min = Math.min(...counts);
+    if (max > 0 && max === min) {
+      console.log(`[Convergence Test] Producer replica consensus at ${max} replicas`);
+      return;
+    }
+
+    console.log(`[Convergence Test] Producer replica spread min=${min} max=${max}, waiting...`);
+    await delay(intervalMs);
+  }
+
+  console.warn(`[Convergence Test] Producer replica consensus not reached within ${timeoutMs}ms`);
+};
+
+const waitForWorkerReady = async (worker: WorkerDetails, timeoutMs = 60_000): Promise<void> => {
+  const pollResult = await pollWorkerStats(
+    worker.workerRef,
+    (stats) => typeof stats.me === 'string' && stats.me.length > 0,
+    2_000,
+    timeoutMs,
+  );
+  if (!pollResult.converged) {
+    console.warn(`[Convergence Test] Worker ${worker.workerData.index} did not report ready within ${timeoutMs}ms`);
+  }
+};
+
+const connectLateJoinerToProducers = async (lateJoiner: WorkerDetails, producers: WorkerDetails[]): Promise<void> => {
+  const producerAddrs = await collectListenAddrs(producers);
+  await new Promise<void>((resolve) => {
+    // biome-ignore lint/suspicious/noExplicitAny: worker message format is dynamic
+    const listener = (msg: any) => {
+      if (msg.type === 'connect_peers_done' && msg.index === lateJoiner.workerData.index) {
+        lateJoiner.workerRef.off('message', listener);
+        resolve();
+      }
+    };
+    lateJoiner.workerRef.on('message', listener);
+    lateJoiner.workerRef.postMessage({ type: 'connect_peers', multiaddrs: producerAddrs });
+  });
 };
 
 const waitForAllWorkersTargetData = async (workers: WorkerDetails[], syncIntervalMs: number): Promise<void> => {
@@ -278,18 +356,14 @@ export const simulateBurstPeersAtStartUpWithPropagationAndReplication = (
 };
 
 export const simulateAntiEntropyConvergence = (workerDataConfig: WorkerDataConfig): Promise<AggregatedResult> => {
-  // Fast-profile timing. STABILIZE_MS matches the proven value used by
-  // simulateBurstPeersAtStartUpWithPropagationAndReplication: the gossip mesh for the
-  // replication topic must be fully formed before a node announces, otherwise gossipsub
-  // throws PublishError.NoPeersSubscribedToTopic (allowPublishToZeroTopicPeers is false).
-  const STABILIZE_MS = 120_000; // let the N-1 producer mesh form + exchange peers + subscribe
-  const REPLICATE_SETTLE_MS = 30_000; // let produced messages fully replicate across producers
-  const LATE_JOINER_CONNECT_MS = 20_000; // let the late joiner dial into the mesh
+  const { totalNodes } = workerDataConfig;
+  const STABILIZE_MS = computeMeshStabilizeMs(totalNodes);
+  const REPLICATE_SETTLE_MS = computeReplicateSettleMs(totalNodes);
+  const LATE_JOINER_CONNECT_MS = 20_000;
   const syncIntervalMs = workerDataConfig.syncIntervalMs ?? 15_000;
 
   const scenario: RunWorkersScenario = async (workers, workerResults, handleComplete, handleWorkerError) => {
     const terminationPromises: Promise<boolean>[] = [];
-    const { totalNodes } = workerDataConfig;
     const producerCount = totalNodes - 1;
     const lateJoinerIndex = totalNodes - 1;
 
@@ -313,15 +387,22 @@ export const simulateAntiEntropyConvergence = (workerDataConfig: WorkerDataConfi
     await delay(STABILIZE_MS);
     postMessageToWorkers(workers, { type: 'produce_messages_replication' });
     await delay(REPLICATE_SETTLE_MS);
+    await waitForProducerReplicaConsensus(workers, totalNodes);
 
     // 3. Collect the union of stored content hashes from all producers
     const expectedHashes = await collectExpectedHashes(workers);
     console.log(`[Convergence Test] Producers hold ${expectedHashes.length} unique hashes`);
 
-    // 4. Spawn the late joiner. GossipSub never re-delivers history, so the only path
-    //    to these hashes is the background AntiEntropyManager.
+    // 4. Spawn the late joiner with replication ingest deferred so convergence is
+    //    measured from set_expected_hashes, not gossip during dial-in.
     const lateJoinerSeed = `Test-Convergence-Worker-${lateJoinerIndex}`;
-    const lateJoinerData = { index: lateJoinerIndex, nodeSeed: lateJoinerSeed, ...workerDataConfig } as WorkerData;
+    const lateJoinerData = {
+      ...workerDataConfig,
+      index: lateJoinerIndex,
+      nodeSeed: lateJoinerSeed,
+      suppressReplicationIngest: true,
+      enableMdns: false,
+    } as WorkerData;
     const lateJoiner = createWorker(
       nodeWorkerDataPropPath,
       lateJoinerData,
@@ -332,11 +413,14 @@ export const simulateAntiEntropyConvergence = (workerDataConfig: WorkerDataConfi
     );
     workers.push(lateJoiner);
 
-    // 5. Let it connect, tell it which hashes to expect (no manual fetch), then wait for sync
-    await delay(LATE_JOINER_CONNECT_MS);
-    lateJoiner.workerRef.postMessage({ type: 'set_expected_hashes', hashes: expectedHashes });
+    await waitForWorkerReady(lateJoiner);
 
-    await waitForLateJoinerConvergence(workers, lateJoinerIndex, syncIntervalMs);
+    // 5. Record expected hashes before connecting, then dial producers explicitly
+    lateJoiner.workerRef.postMessage({ type: 'set_expected_hashes', hashes: expectedHashes });
+    await connectLateJoinerToProducers(lateJoiner, workers.slice(0, producerCount));
+    await delay(LATE_JOINER_CONNECT_MS);
+
+    await waitForLateJoinerConvergence(workers, lateJoinerIndex, syncIntervalMs, totalNodes);
 
     if (workerDataConfig.adaptive?.enabled && isAdaptiveInteropStrict()) {
       await delay(DORMANT_SETTLE_MS);

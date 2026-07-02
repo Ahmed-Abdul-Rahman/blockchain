@@ -35,8 +35,12 @@ describe('Interop - Adaptive Anti-Entropy A/B', () => {
       bootstrapMultiaddrs: [],
     });
 
-    const fixedPassed = assertLateJoinerConvergence(comparison.fixed.result.workerResults);
-    const heuristicPassed = assertLateJoinerConvergence(comparison.heuristic.result.workerResults);
+    const fixedPassed = assertLateJoinerConvergence(comparison.fixed.result.workerResults, {
+      requireUsefulSync: false,
+    });
+    const heuristicPassed = assertLateJoinerConvergence(comparison.heuristic.result.workerResults, {
+      requireUsefulSync: false,
+    });
 
     const fixedSummary = summarizeAntiEntropyMetrics(comparison.fixed.result.workerResults);
     const heuristicSummary = summarizeAntiEntropyMetrics(comparison.heuristic.result.workerResults);

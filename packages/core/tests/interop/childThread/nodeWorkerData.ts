@@ -298,6 +298,13 @@ const runNodeDataReplication = async () => {
   wireSerializer = engine.serializer;
   antiEntropyMetrics = engine.antiEntropyMetrics;
 
+  let replicationIngestEnabled = !args.suppressReplicationIngest;
+
+  const ingestRemoteData = async <T>(data: T, fromPeer: string): Promise<void> => {
+    if (!replicationIngestEnabled) return;
+    await dataReplication.onRemoteDataReceived(data, fromPeer);
+  };
+
   await engine.start();
 
   selfPeerId = node.peerId.toString();
@@ -307,18 +314,18 @@ const runNodeDataReplication = async () => {
   registerPubsub(pubsubTopic);
 
   broadcastProp.subscribe<GossipMessageA>(GossipPropTopicA, (message, ctx) => {
-    dataReplication.onRemoteDataReceived(message.payload, ctx.from.toString());
+    void ingestRemoteData(message.payload, ctx.from.toString());
     hashedMessages.set(message.id, message.payload);
   });
 
   broadcastProp.subscribe<GossipMessageB>(GossipPropTopicB, (message, ctx) => {
-    dataReplication.onRemoteDataReceived(message.payload, ctx.from.toString());
+    void ingestRemoteData(message.payload, ctx.from.toString());
     hashedMessages.set(message.id, message.payload);
   });
 
   directStream.onReceive<string>(DirectStreamProtocol, (message, ctx) => {
     directStreamMsgsReceivedCount++;
-    dataReplication.onRemoteDataReceived(message.payload, ctx.from.toString());
+    void ingestRemoteData(message.payload, ctx.from.toString());
     hashedMessages.set(message.id, message.payload);
   });
 
@@ -397,6 +404,7 @@ const runNodeDataReplication = async () => {
       targetHashesToFetch = message.hashes;
       convergenceWatchStartedAt = Date.now();
       convergenceMsRecorded = null;
+      replicationIngestEnabled = true;
     } else if (message.type === 'terminate') {
       terminateThread = true;
       await terminateAndCleanUp(node, broadcastProp, engine.nodeCleanUp, replicaStore);

@@ -160,8 +160,17 @@ export const assertStartupWorkerResults = (workerResults: WorkerResult[], totalN
   return passed;
 };
 
+export type AssertLateJoinerConvergenceOptions = {
+  /** When false, allows convergence via gossip/passive replication (A/B idle-skip runs) */
+  readonly requireUsefulSync?: boolean;
+};
+
 /** Shared assertions for late-joiner anti-entropy convergence scenarios */
-export const assertLateJoinerConvergence = (workerResults: readonly WorkerResult[]): boolean => {
+export const assertLateJoinerConvergence = (
+  workerResults: readonly WorkerResult[],
+  options: AssertLateJoinerConvergenceOptions = {},
+): boolean => {
+  const requireUsefulSync = options.requireUsefulSync ?? true;
   const lateJoiner = workerResults.find((r) => r.hasTargetData !== undefined);
   const producers = workerResults.filter((r) => r.hasTargetData === undefined);
   const maxProducerReplicaCount = Math.max(0, ...producers.map((r) => r.replicaCount ?? 0));
@@ -181,7 +190,7 @@ export const assertLateJoinerConvergence = (workerResults: readonly WorkerResult
     console.log(`⚠️ Late joiner store incomplete: ${lateJoiner.replicaCount} < producer max ${maxProducerReplicaCount}`);
   }
 
-  if ((lateJoiner?.antiEntropy?.usefulSyncs ?? 0) <= 0) {
+  if (requireUsefulSync && (lateJoiner?.antiEntropy?.usefulSyncs ?? 0) <= 0) {
     passed = false;
     console.log('⚠️ Late joiner reported no useful anti-entropy syncs');
   }
@@ -191,7 +200,9 @@ export const assertLateJoinerConvergence = (workerResults: readonly WorkerResult
     (lateJoiner?.replicaCount ?? 0) >= maxProducerReplicaCount,
     `Late joiner store (${lateJoiner?.replicaCount}) did not reach producer size (${maxProducerReplicaCount})`,
   );
-  assert.ok((lateJoiner?.antiEntropy?.usefulSyncs ?? 0) > 0, 'Late joiner should report at least one useful sync');
+  if (requireUsefulSync) {
+    assert.ok((lateJoiner?.antiEntropy?.usefulSyncs ?? 0) > 0, 'Late joiner should report at least one useful sync');
+  }
 
   return passed;
 };

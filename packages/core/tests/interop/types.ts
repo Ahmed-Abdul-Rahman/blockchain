@@ -115,6 +115,8 @@ export type WorkerData = {
     maxIntervalMs?: number;
   };
   enableMdns?: boolean; // default true; set false to isolate network partitions
+  /** When true, gossip/direct replication ingest is deferred until set_expected_hashes */
+  suppressReplicationIngest?: boolean;
 };
 
 export type WorkerDataConfig = {
@@ -136,6 +138,7 @@ export type WorkerDataConfig = {
     maxIntervalMs?: number;
   };
   enableMdns?: boolean; // default true; set false to isolate network partitions
+  suppressReplicationIngest?: boolean;
 };
 
 export type WorkerDetails = { workerData: WorkerData; workerRef: Worker };

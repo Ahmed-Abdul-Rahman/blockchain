@@ -43,6 +43,8 @@ When data sync is enabled, reports include:
 
 ## Troubleshooting
 
-- **Mesh not formed:** increase stabilize window in `InterOpScenarios.ts` for large node counts
-- **Strict poll timeout:** check `LOG_LEVEL=debug` on workers; verify `set_expected_hashes` was sent
+- **Mesh not formed:** `computeMeshStabilizeMs` in `interopTiming.ts` scales stabilize/replicate windows with node count
+- **Strict poll timeout:** scales via `computeLateJoinerPollTimeoutMs`; check worker logs and `set_expected_hashes` ordering
 - **Worker hang:** ensure `terminateWorkers` runs; integration tests must clean up all worker threads
+
+Late-joiner scenarios defer gossip replication ingest until `set_expected_hashes`, then dial producers explicitly (no mDNS) so convergence is attributed to anti-entropy rather than live gossip during connect.
