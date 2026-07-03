@@ -44,7 +44,9 @@ When data sync is enabled, reports include:
 ## Troubleshooting
 
 - **Mesh not formed:** `computeMeshStabilizeMs` in `interopTiming.ts` scales stabilize/replicate windows with node count
-- **Strict poll timeout:** scales via `computeLateJoinerPollTimeoutMs`; check worker logs and `set_expected_hashes` ordering
+- **Strict poll timeout:** scales via `computeLateJoinerPollTimeoutMs` (50-node poll is 560s); check worker logs and `set_expected_hashes` ordering
 - **Worker hang:** ensure `terminateWorkers` runs; integration tests must clean up all worker threads
+
+Timing helpers only extend wait/poll windows. Scale assertions still require `hasTargetData`, producer-sized `replicaCount`, and `usefulSyncs > 0`.
 
 Late-joiner scenarios defer gossip replication ingest until `set_expected_hashes`, then dial producers explicitly (no mDNS) so convergence is attributed to anti-entropy rather than live gossip during connect.
