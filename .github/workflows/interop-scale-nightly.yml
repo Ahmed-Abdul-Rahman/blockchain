@@ -8,7 +8,8 @@ on:
 jobs:
   adaptive-scale-matrix:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # 50-node scenario can exceed 25m wall with scaled stabilize/poll headroom
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
