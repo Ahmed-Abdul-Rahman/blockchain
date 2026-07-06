@@ -12,6 +12,7 @@ import { PeerExchangeService } from '../../../src/networking/PeerExchangeService
 import { ReplicaStoreInterface } from '../../../src/replica-store/ReplicaStoreInterface';
 import { WireCodec } from '../../../src/shared/serialization/types';
 import { WorkerData, WorkerResult } from '../types';
+import { installReplicationProtocolIngestGate } from './replicationIngestGate';
 import { configureNode, percentile } from './workerUitls';
 
 type GossipMessageA = { message: string };
@@ -298,12 +299,17 @@ const runNodeDataReplication = async () => {
   wireSerializer = engine.serializer;
   antiEntropyMetrics = engine.antiEntropyMetrics;
 
-  let replicationIngestEnabled = !args.suppressReplicationIngest;
+  const passiveReplicationSuppressed = args.suppressReplicationIngest === true;
+  let replicationIngestEnabled = !passiveReplicationSuppressed;
 
   const ingestRemoteData = async <T>(data: T, fromPeer: string): Promise<void> => {
     if (!replicationIngestEnabled) return;
     await dataReplication.onRemoteDataReceived(data, fromPeer);
   };
+
+  if (passiveReplicationSuppressed) {
+    installReplicationProtocolIngestGate(dataReplication, () => replicationIngestEnabled);
+  }
 
   await engine.start();
 
@@ -404,7 +410,10 @@ const runNodeDataReplication = async () => {
       targetHashesToFetch = message.hashes;
       convergenceWatchStartedAt = Date.now();
       convergenceMsRecorded = null;
-      replicationIngestEnabled = true;
+      // Late-joiner harness keeps passive ingest disabled so only anti-entropy fills the store.
+      if (!passiveReplicationSuppressed) {
+        replicationIngestEnabled = true;
+      }
     } else if (message.type === 'terminate') {
       terminateThread = true;
       await terminateAndCleanUp(node, broadcastProp, engine.nodeCleanUp, replicaStore);
