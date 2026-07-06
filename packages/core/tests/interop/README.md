@@ -49,4 +49,4 @@ When data sync is enabled, reports include:
 
 Timing helpers only extend wait/poll windows. Scale assertions still require `hasTargetData`, producer-sized `replicaCount`, and `usefulSyncs > 0`.
 
-Late-joiner scenarios defer gossip replication ingest until `set_expected_hashes`, then dial producers explicitly (no mDNS) so convergence is attributed to anti-entropy rather than live gossip during connect.
+Late-joiner scenarios defer all passive replication ingest (gossip, direct, and replication-protocol announce/content) for the worker's lifetime when `suppressReplicationIngest` is set. `set_expected_hashes` only starts the convergence clock; anti-entropy's explicit `requestMissingData` path is the sole ingest route so `usefulSyncs > 0` reflects real sync work.
