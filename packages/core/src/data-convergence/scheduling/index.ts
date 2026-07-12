@@ -1,5 +1,6 @@
 import { DeChatConfig } from '../../config/types';
 import { AntiEntropyMetricsStore } from './AntiEntropyMetricsStore';
+import { BanditSyncScheduler } from './bandit/BanditSyncScheduler';
 import { FixedSyncScheduler } from './FixedSyncScheduler';
 import { HeuristicSyncScheduler } from './HeuristicSyncScheduler';
 import { SyncScheduler } from './types';
@@ -30,14 +31,14 @@ export const createSyncScheduler = (
     );
   }
 
-  // Bandit scheduler (Phase 3) not yet implemented — fall back to heuristic
-  return new HeuristicSyncScheduler(
-    { ...adaptive, maxIntervalMs: resolveMaxIntervalMs(config) },
-    metricsStore.getPeerConvergenceTracker(),
-  );
+  return new BanditSyncScheduler({ ...adaptive, maxIntervalMs: resolveMaxIntervalMs(config) }, metricsStore);
 };
 
 export { AntiEntropyMetricsStore, createAntiEntropyMetricsStore } from './AntiEntropyMetricsStore';
+export { BanditSyncScheduler } from './bandit/BanditSyncScheduler';
+export { DynamicArmSet } from './bandit/DynamicArmSet';
+export { EpsilonGreedyPolicy } from './bandit/EpsilonGreedyPolicy';
+export { computeSyncReward } from './bandit/RewardFunction';
 export { FixedSyncScheduler } from './FixedSyncScheduler';
 export { HeuristicSyncScheduler } from './HeuristicSyncScheduler';
 export { PeerConvergenceTracker } from './PeerConvergenceTracker';

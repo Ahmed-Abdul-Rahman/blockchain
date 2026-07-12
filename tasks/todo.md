@@ -790,9 +790,9 @@ Execute in sequence; tests must stay green at each step.
 
 ### Step 7 — Phase 3 bandit (optional, separate PR)
 
-- [ ] `RewardFunction`, `EpsilonGreedyPolicy`, `BanditSyncScheduler`
-- [ ] `scheduler: 'bandit'` config
-- [ ] Interop A/B report in `tests/perf/reports/`
+- [x] `RewardFunction`, `EpsilonGreedyPolicy`, `BanditSyncScheduler`, `DynamicArmSet`
+- [x] `scheduler: 'bandit'` wired in `createSyncScheduler`
+- [ ] Interop A/B report in `tests/perf/reports/` (defer until nightly soak complete)
 - [ ] Update ADR or add ADR-0004 if ONNX pursued
 
 ---
@@ -911,7 +911,7 @@ packages/core/tests/unit/data-convergence/scheduling/
 - [x] Step 4 — Heuristic peer pick + idle skip (Phase 1)
 - [x] Step 5 — Adaptive interval (Phase 2)
 - [x] Step 6 — CI / interop verification (PR #36 green)
-- [ ] Step 7 — Bandit scheduler (optional)
+- [x] Step 7 — Bandit scheduler (PR pending nightly soak before merge)
 
 ### Follow-up backlog (scale testing)
 
@@ -921,4 +921,4 @@ Deferred Testground evaluation (see [libp2p/test-plans#103](https://github.com/l
 |------|----------|---------|
 | **5.1 Tier 1** | [tasks/tier1-adaptive-interop.md](tier1-adaptive-interop.md) | PR #37 — PR gate complete (CI green); nightly 12/24/50 + A/B soak pending merge |
 | **5.2 Tier 2** | TBD (`tasks/tier2-compose-interop.md`) | Docker Compose interop — after Tier 1 nightly green |
-| **Step 7 Bandit** | `todo.md` Step 7 | After Tier 1 nightly green (7 consecutive passes) |
+| **Step 7 Bandit** | `todo.md` Step 7 | Implementation in PR — merge after Tier 1 nightly soak (7 consecutive passes) |
