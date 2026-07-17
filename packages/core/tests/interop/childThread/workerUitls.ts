@@ -1,6 +1,5 @@
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { Libp2p } from 'libp2p';
-import { threadId, workerData } from 'worker_threads';
 import { DECHAT_DEFAULTS } from '../../../src/config/defaults';
 import { antiEntropyManager } from '../../../src/data-convergence/AntiEntropyManager';
 import { antiEntropyNetworkExchangeEngine } from '../../../src/data-convergence/AntiEntropyNetworkExchange';
@@ -33,6 +32,7 @@ export const percentile = (xs: number[], p: number): number => {
 };
 
 export const configureNode = async (
+  config: WorkerData,
   onBoardingPeerTime: number,
 ): Promise<{
   start: () => Promise<void>;
@@ -49,7 +49,6 @@ export const configureNode = async (
   antiEntropyMetrics: DeChatComponents['antiEntropyMetrics'];
   nodeCleanUp: () => Promise<void>;
 }> => {
-  const args = workerData as WorkerData;
   const {
     index,
     nodeSeed,
@@ -61,7 +60,7 @@ export const configureNode = async (
     adaptive,
     bootstrapMultiaddrs = [],
     enableMdns = true,
-  } = args;
+  } = config;
 
   let strategies: DeChatStrategies = {
     broadcast: gossipSubPropagation(),
@@ -111,7 +110,7 @@ export const configureNode = async (
   const { components, stop, start } = engine;
   const node = components.libp2p;
 
-  console.log('Worker thread: ', threadId, 'and index: ', index, ' started with peerId: ', node.peerId);
+  console.log('Interop node index: ', index, ' started with peerId: ', node.peerId);
 
   return {
     start,

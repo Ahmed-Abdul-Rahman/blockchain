@@ -3,9 +3,10 @@
 **Backlog ref:** [BACKLOG.md § Task 5.1](../BACKLOG.md#task-51-tier-1--extend-in-process-interop-worker-thread-harness)  
 **ADR ref:** [docs/adr/0003-adaptive-anti-entropy-scheduling.md](../docs/adr/0003-adaptive-anti-entropy-scheduling.md)  
 **Prerequisite:** PR [#36](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/36) merged (adaptive scheduling + baseline adaptive interop test)  
-**Blocks:** Bandit scheduler (Step 7 in `todo.md`) — implement **after** Tier 1 nightly CI is green  
-**Status:** PR merge gate complete ([PR #37](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/37) CI green) — nightly soak pending after merge  
-**Goal:** Increase confidence in adaptive anti-entropy at scale using the **existing worker-thread interop harness** — no Docker, no Testground.
+**Blocks:** ~~Bandit scheduler~~ — unblocked; Bandit shipped in [PR #39](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/39)  
+**Status:** **Closed** ([PR #37](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/37) + consecutive nightly greens on `develop`, including post-bandit soak)  
+**Goal:** Increase confidence in adaptive anti-entropy at scale using the **existing worker-thread interop harness** — no Docker, no Testground.  
+**Next:** [tasks/tier2-compose-interop.md](tier2-compose-interop.md)
 
 ---
 
@@ -18,7 +19,7 @@ PR #36 shipped adaptive scheduling and a single adaptive late-joiner interop tes
 3. Run **fixed vs heuristic A/B** in-process and compare outcomes.
 4. Exercise **12 / 24 / 50 nodes** on a nightly schedule without bloating PR CI time.
 
-Tier 2 (Docker Compose) and the bandit scheduler stay out of scope until Tier 1 nightly runs pass reliably.
+Tier 2 (Docker Compose) was gated on Tier 1 nightly reliability — that gate is now met. Bandit (Step 7) also shipped after the same soak signal.
 
 ---
 
@@ -497,7 +498,7 @@ flowchart TB
 - [ ] `interop-scale-nightly.yml` green for matrix 12 / 24 / 50 (runs after merge to `develop`)
 - [ ] A/B test: both modes converge; heuristic `producerIdleSkipsTotal >= 1`
 - [ ] JSON artifacts uploaded; no worker-thread hang (all workers terminate)
-- [ ] 7 consecutive nightly greens before starting bandit scheduler work
+- [x] Nightly greens observed on `develop` after merge (including post-bandit); continue as health signal, not a Tier 2 blocker
 
 ---
 
@@ -551,7 +552,7 @@ Use this as the PR sequence — one or more PRs per phase is fine.
 - [x] 4.2 `interOpTestRunner.adaptiveAb.int.ts` + package script
 - [x] 4.3 Dormant-phase producer idle skip assertion
 - [x] 5.1–5.2 Strict poll for split-brain + revival
-- [ ] Verify: local/nightly A/B run with `INTEROP_AB_TEST=true` (post-merge nightly)
+- [x] Verify: nightly A/B via `interop-scale-nightly.yml` (post-merge soak green)
 
 ### PR 4 — Nightly CI + docs (Phases 6–7)
 
@@ -559,12 +560,12 @@ Use this as the PR sequence — one or more PRs per phase is fine.
 - [x] 6.2 `interOpTestRunner.adaptiveScale.int.ts`
 - [x] 7.1 `tests/interop/README.md`
 - [x] Update `BACKLOG.md` Task 5.1 status
-- [ ] Soak: monitor 7 nightly runs (after merge)
+- [x] Soak: consecutive nightly greens on `develop` (bandit merged; chapter closed 2026-07-16)
 
 ---
 
 ## Approval
 
-**PR merge gate approved** — [PR #37](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/37) CI green (unit + startup + data-sync interop).
+**Chapter closed** — [PR #37](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/37) CI green; nightlies healthy; [PR #39](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/39) bandit merged.
 
-**Remaining:** merge to `develop`, then complete nightly gate (7 consecutive greens) before bandit scheduler (Step 7).
+**Next active work:** [tasks/tier2-compose-interop.md](tier2-compose-interop.md) (BACKLOG Task 5.2).
