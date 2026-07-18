@@ -450,7 +450,7 @@ Create `packages/core/tests/interop/README.md`:
 | `tests/interop/reports/.gitkeep` | 2 | **New** |
 | `.gitignore` | 2 | `packages/core/tests/interop/reports/*.json` |
 | `BACKLOG.md` | — | Link to this doc |
-| `tasks/todo.md` | — | Link to this doc |
+| `tasks/adaptive-anti-entropy-scheduling.md` | — | Closed adaptive chapter archive (was `todo.md`) |
 
 ---
 

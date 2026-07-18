@@ -1,9 +1,13 @@
 # Task: Adaptive Anti-Entropy Scheduling
 
+> **Archive.** Moved out of `tasks/todo.md` so active plans (nightly scale, Compose Tier 2, etc.) do not conflict on that file.  
+> Active Tier 2 work: [tier2-compose-interop.md](tier2-compose-interop.md). Active scratch plan: [todo.md](todo.md).
+
 **Backlog ref:** Follow-up to BACKLOG Task 2.1 (anti-entropy correctness — done)  
 **ADR ref:** [docs/adr/0003-adaptive-anti-entropy-scheduling.md](../docs/adr/0003-adaptive-anti-entropy-scheduling.md)  
-**Status:** Implemented (Steps 0–5); CI verification pending on PR  
-**Goal:** Make `AntiEntropyManager` observable and adaptive on the **control plane only** (when / with whom to sync). Data plane (Merkle trie diff, auth, replication accept/reject) stays deterministic.
+**Status:** Closed (Steps 0–7 shipped). Heuristics PR #36, Tier 1 interop PR #37, Bandit PR #39 merged; nightly scale soak green on `develop`.  
+**Goal:** Make `AntiEntropyManager` observable and adaptive on the **control plane only** (when / with whom to sync). Data plane (Merkle trie diff, auth, replication accept/reject) stays deterministic.  
+**Next active work:** [tasks/tier2-compose-interop.md](tier2-compose-interop.md) (BACKLOG Task 5.2).
 
 ### Prior completed work (do not re-implement)
 
@@ -792,8 +796,9 @@ Execute in sequence; tests must stay green at each step.
 
 - [x] `RewardFunction`, `EpsilonGreedyPolicy`, `BanditSyncScheduler`, `DynamicArmSet`
 - [x] `scheduler: 'bandit'` wired in `createSyncScheduler`
-- [ ] Interop A/B report in `tests/perf/reports/` (defer until nightly soak complete)
-- [ ] Update ADR or add ADR-0004 if ONNX pursued
+- [x] Merged [PR #39](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/39) after CI + consecutive nightly greens
+- [ ] Interop A/B report artifacts in `tests/perf/reports/` (optional polish; nightly A/B already runs)
+- [ ] Update ADR or add ADR-0004 if ONNX pursued (still out of scope)
 
 ---
 
@@ -911,14 +916,16 @@ packages/core/tests/unit/data-convergence/scheduling/
 - [x] Step 4 — Heuristic peer pick + idle skip (Phase 1)
 - [x] Step 5 — Adaptive interval (Phase 2)
 - [x] Step 6 — CI / interop verification (PR #36 green)
-- [x] Step 7 — Bandit scheduler (PR pending nightly soak before merge)
+- [x] Step 7 — Bandit scheduler (PR #39 merged; nightly soak green)
 
-### Follow-up backlog (scale testing)
+### Adaptive chapter closed (2026-07-16)
 
-Deferred Testground evaluation (see [libp2p/test-plans#103](https://github.com/libp2p/test-plans/issues/103)).
+Production adaptive control plane is complete. Defaults stay `adaptive.enabled: false` until Compose (Tier 2) and further soak justify an opt-in default change.
 
-| Task | Plan doc | Summary |
-|------|----------|---------|
-| **5.1 Tier 1** | [tasks/tier1-adaptive-interop.md](tier1-adaptive-interop.md) | PR #37 — PR gate complete (CI green); nightly 12/24/50 + A/B soak pending merge |
-| **5.2 Tier 2** | TBD (`tasks/tier2-compose-interop.md`) | Docker Compose interop — after Tier 1 nightly green |
-| **Step 7 Bandit** | `todo.md` Step 7 | Implementation in PR — merge after Tier 1 nightly soak (7 consecutive passes) |
+| Task | Plan doc | Status |
+|------|----------|--------|
+| **5.1 Tier 1** | [tasks/tier1-adaptive-interop.md](tier1-adaptive-interop.md) | **Closed** — PR #37 + nightly scale/A/B healthy on `develop` |
+| **Step 7 Bandit** | this archive | **Closed** — PR #39 merged |
+| **5.2 Tier 2** | [tasks/tier2-compose-interop.md](tier2-compose-interop.md) | **Active next** — Docker Compose interop |
+
+Deferred: Testground (see [libp2p/test-plans#103](https://github.com/libp2p/test-plans/issues/103)). Optional polish: perf-report A/B markdown under `tests/perf/reports/`.

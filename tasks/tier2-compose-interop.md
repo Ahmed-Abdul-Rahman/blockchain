@@ -3,6 +3,7 @@
 **Backlog ref:** [BACKLOG.md § Task 5.2](../BACKLOG.md#task-52-tier-2--docker-compose-interop-real-network-isolation-at-scale)  
 **ADR ref:** [docs/adr/0003-adaptive-anti-entropy-scheduling.md](../docs/adr/0003-adaptive-anti-entropy-scheduling.md)  
 **Prerequisite:** Tier 1 closed ([PR #37](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/37)) + Bandit merged ([PR #39](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/39)); nightlies healthy on `develop`  
+**Closed chapter archive:** [adaptive-anti-entropy-scheduling.md](adaptive-anti-entropy-scheduling.md) (kept out of `tasks/todo.md` to avoid merge conflicts)  
 **Status:** Approved — PR A in progress (`feat/tier2-node-runner-extract`)  
 **Goal:** Prove anti-entropy convergence under **real TCP between containers** with optional latency / loss / partition profiles — without Testground.
 
