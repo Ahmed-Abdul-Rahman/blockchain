@@ -102,6 +102,18 @@ const main = async (): Promise<void> => {
     const hashSets = await Promise.all(producers.map((i) => orch.requestHashes(i, 15_000)));
     const expectedHashes = Array.from(new Set(hashSets.flat()));
     logger.info(`[compose-orch] expectedHashes=${expectedHashes.length}`);
+    logger.info(`[compose-orch] producer addrs sample=${allProducerAddrs.slice(0, 3).join(',')}`);
+
+    // Equal replica counts alone can mean "each node only has local data" (no mesh).
+    for (let i = 0; i < producers.length; i++) {
+      const local = new Set(hashSets[i]);
+      const missing = expectedHashes.filter((h) => !local.has(h)).length;
+      if (missing > 0) {
+        throw new Error(
+          `Producer ${producers[i]} missing ${missing}/${expectedHashes.length} hashes after mesh — dial/advertise broken`,
+        );
+      }
+    }
 
     await orch.send(lateJoinerIndex, { type: 'set_expected_hashes', hashes: expectedHashes });
     await orch.send(lateJoinerIndex, { type: 'connect_peers', multiaddrs: allProducerAddrs });

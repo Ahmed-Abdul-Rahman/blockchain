@@ -1,3 +1,4 @@
+import { networkInterfaces } from 'node:os';
 import { logger } from '@dechat/common';
 import { createClient } from 'redis';
 import { type NodeRunnerOutboundMessage, type NodeRunnerTransport, startNodeRunner } from '../interop/nodeRunner';
@@ -20,6 +21,22 @@ const parseBool = (value: string | undefined, fallback: boolean): boolean => {
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** Prefer a non-loopback IPv4 so peers dial `/ip4/...` (libp2p dns4 is unreliable in Compose). */
+const detectAdvertiseHost = (fallback: string): string => {
+  const forced = process.env.ADVERTISE_IP;
+  if (forced) return forced;
+
+  for (const addrs of Object.values(networkInterfaces())) {
+    for (const addr of addrs ?? []) {
+      const family = typeof addr.family === 'string' ? addr.family : String(addr.family);
+      if ((family === 'IPv4' || family === '4') && !addr.internal) {
+        return addr.address;
+      }
+    }
+  }
+  return fallback;
+};
+
 process.on('unhandledRejection', (reason) => {
   logger.warn(`[composeNode] Suppressed unhandledRejection: ${String(reason)}`);
 });
@@ -30,7 +47,7 @@ const main = async (): Promise<void> => {
   const role = requireEnv('ROLE');
   const redisUrl = requireEnv('REDIS_URL');
   const listenPort = Number(optionalEnv('LISTEN_PORT', '4001'));
-  const advertiseHost = optionalEnv('ADVERTISE_HOST', `dechat-node-${index}`);
+  const advertiseHost = detectAdvertiseHost(optionalEnv('ADVERTISE_HOST', `dechat-node-${index}`));
   const networkId = optionalEnv('NETWORK_ID', 'compose-interop');
   const pubsubTopic = optionalEnv('PUBSUB_TOPIC', '/dechat/compose/v1');
   const nodeSeed = optionalEnv('NODE_SEED', `Compose-Node-${index}`);
