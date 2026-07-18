@@ -16,7 +16,10 @@ COPY packages/blockchain/package.json ./packages/blockchain/
 COPY packages/examples/package.json ./packages/examples/
 COPY apps/backend/package.json ./apps/backend/
 
-RUN yarn install --immutable
+# Skip workspace lifecycle scripts (root postinstall malware scan needs scripts/ not in image).
+# Rebuild native addons core needs after skip-build.
+RUN yarn install --immutable --mode=skip-build \
+  && yarn rebuild classic-level cbor-extract esbuild
 
 COPY packages/common ./packages/common
 COPY packages/crypto ./packages/crypto
