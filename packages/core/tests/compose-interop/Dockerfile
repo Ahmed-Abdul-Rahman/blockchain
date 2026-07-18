@@ -7,6 +7,8 @@ RUN corepack enable
 
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY .yarn/ ./.yarn/
+# Root postinstall runs scanMalware → scripts/shai-hulud-scan.js
+COPY scripts ./scripts
 COPY packages/common/package.json ./packages/common/
 COPY packages/crypto/package.json ./packages/crypto/
 COPY packages/core/package.json ./packages/core/
@@ -16,10 +18,7 @@ COPY packages/blockchain/package.json ./packages/blockchain/
 COPY packages/examples/package.json ./packages/examples/
 COPY apps/backend/package.json ./apps/backend/
 
-# Skip workspace lifecycle scripts (root postinstall malware scan needs scripts/ not in image).
-# Rebuild native addons core needs after skip-build.
-RUN yarn install --immutable --mode=skip-build \
-  && yarn rebuild classic-level cbor-extract esbuild
+RUN yarn install --immutable
 
 COPY packages/common ./packages/common
 COPY packages/crypto ./packages/crypto
