@@ -1,0 +1,15 @@
+# Used by packages/core/tests/compose-interop Docker builds (context = repo root).
+**/node_modules
+**/dist
+**/.git
+**/coverage
+**/.cursor
+**/agent-transcripts
+tasks
+apps/backend/src
+packages/blockchain/src
+# Keep workspace package.json files for yarn install; drop unused sources only.
+packages/examples/**
+!packages/examples/package.json
+*.md
+!packages/core/tests/compose-interop/README.md

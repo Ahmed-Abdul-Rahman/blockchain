@@ -60,6 +60,7 @@ export const configureNode = async (
     adaptive,
     bootstrapMultiaddrs = [],
     enableMdns = true,
+    listenAddrs = ['/ip4/0.0.0.0/tcp/0'],
   } = config;
 
   let strategies: DeChatStrategies = {
@@ -86,7 +87,7 @@ export const configureNode = async (
     nodeSeed,
     {
       network: {
-        listenAddrs: ['/ip4/0.0.0.0/tcp/0'],
+        listenAddrs,
         bootstrapPeers: bootstrapMultiaddrs,
         maxConnections: 150,
         minConnections: 8,

@@ -5,6 +5,7 @@ import {
   mapAntiEntropySnapshot,
   type NodeRunnerInboundMessage,
   type NodeRunnerOutboundMessage,
+  normalizeAdvertiseMultiaddrs,
 } from '../../interop/nodeRunner';
 
 const emptySnapshot = (): AntiEntropyMetricsSnapshot => ({
@@ -66,5 +67,19 @@ describe('nodeRunner transport seam', () => {
 
     transport.exit(0);
     expect(exit).toHaveBeenCalledWith(0);
+  });
+
+  it('rewrites wildcard listen addrs to dns4 advertise hosts for Compose', () => {
+    const addrs = normalizeAdvertiseMultiaddrs(
+      ['/ip4/0.0.0.0/tcp/4001', '/ip4/127.0.0.1/tcp/4001'],
+      'QmPeer',
+      'dechat-node-0',
+    );
+    expect(addrs).toEqual(['/dns4/dechat-node-0/tcp/4001/p2p/QmPeer']);
+  });
+
+  it('rewrites wildcard listen addrs to ip4 for numeric advertise hosts', () => {
+    const addrs = normalizeAdvertiseMultiaddrs(['/ip4/0.0.0.0/tcp/4001'], 'QmPeer', '10.0.0.5');
+    expect(addrs).toEqual(['/ip4/10.0.0.5/tcp/4001/p2p/QmPeer']);
   });
 });

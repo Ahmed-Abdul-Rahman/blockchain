@@ -1,0 +1,85 @@
+# Tier 2 Compose interop — runs Dockerized late-joiner on GitHub-hosted runners.
+# Path-filtered on PRs so unrelated changes stay on the fast worker-thread CI gate.
+name: Compose Interop
+
+on:
+  pull_request:
+    branches:
+      - develop
+    paths:
+      - 'packages/core/tests/compose-interop/**'
+      - 'packages/core/tests/interop/nodeRunner.ts'
+      - 'packages/core/tests/interop/childThread/workerUitls.ts'
+      - 'packages/core/tests/interop/types.ts'
+      - 'packages/core/package.json'
+      - '.github/workflows/compose-interop.yml'
+      - '.dockerignore'
+  workflow_dispatch:
+    inputs:
+      compose_nodes:
+        description: 'Total nodes (producers + 1 late joiner)'
+        required: false
+        default: '7'
+      adaptive_enabled:
+        description: 'ADAPTIVE_ENABLED'
+        required: false
+        default: 'true'
+
+concurrency:
+  group: compose-interop-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  late-joiner-lan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Enable Corepack (Yarn 4)
+        run: |
+          corepack enable
+          corepack prepare yarn@4.12.0 --activate
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build packages
+        run: yarn build
+
+      - name: Docker availability
+        run: |
+          docker version
+          docker compose version
+
+      - name: Compose late-joiner (lan)
+        env:
+          COMPOSE_NODES: ${{ github.event.inputs.compose_nodes || '7' }}
+          ADAPTIVE_ENABLED: ${{ github.event.inputs.adaptive_enabled || 'true' }}
+          SCHEDULER: heuristic
+          SYNC_INTERVAL_MS: '15000'
+          NODE_OPTIONS: '--max-old-space-size=6144'
+        run: yarn workspace @dechat/core test:compose:late-joiner
+
+      - name: Upload Compose reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compose-late-joiner-lan
+          path: packages/core/tests/compose-interop/reports/
+          if-no-files-found: ignore
+
+      - name: Teardown Compose leftovers
+        if: always()
+        run: |
+          for i in $(seq 0 31); do docker rm -f "dechat-node-${i}" >/dev/null 2>&1 || true; done
+          docker compose -p dechat-compose-interop \
+            -f packages/core/tests/compose-interop/docker-compose.yml \
+            down -v --remove-orphans || true
