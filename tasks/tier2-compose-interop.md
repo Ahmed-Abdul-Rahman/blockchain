@@ -191,11 +191,12 @@ packages/core/tests/
 
 ### PR D — Nightly CI + split-brain
 
-- [ ] `.github/workflows/compose-interop-nightly.yml`
+- [x] Path-filtered / dispatch Compose CI (landed early with PR B): `.github/workflows/compose-interop.yml` — late-joiner lan on GHA
+- [ ] `.github/workflows/compose-interop-nightly.yml` (or extend compose-interop.yml)
   - Jobs: `late-joiner-adaptive` (12 nodes, lan), `late-joiner-wan` (12 nodes, wan)
   - Always `docker compose down -v` in `if: always()`
 - [ ] Port split-brain scenario (P1)
-- [ ] Document flake policy: promote to PR gate only after 7 nights < 5% flake
+- [ ] Document flake policy: promote to required PR gate only after 7 nights < 5% flake
 
 **Acceptance:** Scheduled workflow green on `develop`; split-brain heal converges.
 

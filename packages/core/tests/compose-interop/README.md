@@ -6,9 +6,20 @@ Reuses `nodeRunner` from worker-thread interop via a Redis transport. Tier 1 wor
 
 ## Prerequisites
 
-- Docker 24+ with Compose v2
+- Docker 24+ with Compose v2 (local) **or** GitHub Actions (`Compose Interop` workflow)
 - Repo built: `yarn workspace @dechat/core build` (orchestrator runs on the host from `dist/`)
-- Free host port `6379` (Redis)
+- Free host port `6379` (Redis) when running locally
+
+## CI (no local Docker required)
+
+Workflow: [`.github/workflows/compose-interop.yml`](../../../../.github/workflows/compose-interop.yml)
+
+| Trigger | When |
+|---------|------|
+| `pull_request` | Changes under `compose-interop/` / `nodeRunner` / this workflow (path-filtered) |
+| `workflow_dispatch` | Manual run from Actions tab (optional `compose_nodes`) |
+
+On PR #43 (and future Compose PRs), open the **Compose Interop** check — it builds the image on `ubuntu-latest`, runs `test:compose:late-joiner`, uploads `reports/` artifacts, and tears down containers.
 
 ## Quick start — late joiner (lan)
 
