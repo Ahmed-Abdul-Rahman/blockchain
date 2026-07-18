@@ -25,6 +25,9 @@ COPY packages/crypto ./packages/crypto
 COPY packages/core ./packages/core
 COPY tsconfig.json ./
 
+# Root-hoisted bins (tsc-alias, etc.) are not on PATH under workspace hoistingLimits.
+ENV PATH="/app/node_modules/.bin:${PATH}"
+
 RUN yarn workspace @dechat/common build \
   && yarn workspace @dechat/crypto build \
   && yarn workspace @dechat/core build
