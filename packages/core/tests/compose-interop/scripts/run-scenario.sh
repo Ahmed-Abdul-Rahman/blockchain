@@ -8,6 +8,7 @@ CORE_DIR="$(cd "${COMPOSE_DIR}/../.." && pwd)"
 REPO_ROOT="$(cd "${CORE_DIR}/../.." && pwd)"
 COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.yml"
 PROJECT="dechat-compose-interop"
+NETWORK_NAME="dechat-compose-interop"
 
 COMPOSE_NODES="${COMPOSE_NODES:-7}"
 ADAPTIVE_ENABLED="${ADAPTIVE_ENABLED:-true}"
@@ -23,7 +24,6 @@ fi
 
 cleanup() {
   echo "[compose] teardown"
-  # Stop named node containers if still running
   for i in $(seq 0 $((COMPOSE_NODES - 1))); do
     docker rm -f "dechat-node-${i}" >/dev/null 2>&1 || true
   done
@@ -45,7 +45,8 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 
-NETWORK_NAME="dechat-compose-interop"
+# Image name from compose project (see `docker compose images`).
+NODE_IMAGE="${PROJECT}-node"
 PRODUCER_COUNT=$((COMPOSE_NODES - 1))
 
 echo "[compose] starting ${PRODUCER_COUNT} producers + 1 late joiner (total=${COMPOSE_NODES})"
@@ -56,8 +57,11 @@ for i in $(seq 0 $((COMPOSE_NODES - 1))); do
     ROLE="producer"
   fi
 
-  docker compose -p "${PROJECT}" -f "${COMPOSE_FILE}" run -d \
+  # Use docker run (not compose run): need --network-alias for dns4 advertise hosts.
+  docker run -d \
     --name "dechat-node-${i}" \
+    --hostname "dechat-node-${i}" \
+    --network "${NETWORK_NAME}" \
     --network-alias "dechat-node-${i}" \
     -e NODE_INDEX="${i}" \
     -e TOTAL_NODES="${COMPOSE_NODES}" \
@@ -70,7 +74,9 @@ for i in $(seq 0 $((COMPOSE_NODES - 1))); do
     -e SYNC_INTERVAL_MS="${SYNC_INTERVAL_MS}" \
     -e ENABLE_MDNS=false \
     -e REDIS_URL=redis://redis:6379 \
-    node >/dev/null
+    -e LOG_LEVEL="${LOG_LEVEL:-INFO}" \
+    -e NODE_ENV=perf \
+    "${NODE_IMAGE}" >/dev/null
 
   echo "[compose] started dechat-node-${i} role=${ROLE}"
 done
