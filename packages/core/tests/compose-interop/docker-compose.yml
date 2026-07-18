@@ -24,9 +24,9 @@ services:
       LOG_LEVEL: INFO
       NODE_ENV: perf
     networks:
-      - dechat-interop
+      - interop
     # Individual containers are started by scripts/run-scenario.sh with per-node env.
 
 networks:
-  dechat-interop:
-    name: dechat-compose-interop
+  interop:
+    name: dechat-interop-net

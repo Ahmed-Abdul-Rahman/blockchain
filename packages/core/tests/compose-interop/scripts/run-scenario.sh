@@ -8,7 +8,7 @@ CORE_DIR="$(cd "${COMPOSE_DIR}/../.." && pwd)"
 REPO_ROOT="$(cd "${CORE_DIR}/../.." && pwd)"
 COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.yml"
 PROJECT="dechat-compose-interop"
-NETWORK_NAME="dechat-compose-interop"
+NETWORK_NAME="dechat-interop-net"
 
 COMPOSE_NODES="${COMPOSE_NODES:-7}"
 ADAPTIVE_ENABLED="${ADAPTIVE_ENABLED:-true}"
@@ -44,6 +44,16 @@ for _ in $(seq 1 60); do
   fi
   sleep 1
 done
+
+# Prefer the explicit compose network name; fall back to whatever redis joined.
+REDIS_CID="$(docker compose -p "${PROJECT}" -f "${COMPOSE_FILE}" ps -q redis)"
+if [[ -n "${REDIS_CID}" ]]; then
+  DETECTED_NET="$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{println $k}}{{end}}' "${REDIS_CID}" | head -1 | tr -d '\r')"
+  if [[ -n "${DETECTED_NET}" ]]; then
+    NETWORK_NAME="${DETECTED_NET}"
+  fi
+fi
+echo "[compose] using network ${NETWORK_NAME}"
 
 # Image name from compose project (see `docker compose images`).
 NODE_IMAGE="${PROJECT}-node"
