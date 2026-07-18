@@ -1,3 +1,4 @@
+import { isIPv4 } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import { logger } from '@dechat/common';
 import { createClient } from 'redis';
@@ -28,8 +29,7 @@ const detectAdvertiseHost = (fallback: string): string => {
 
   for (const addrs of Object.values(networkInterfaces())) {
     for (const addr of addrs ?? []) {
-      const family = typeof addr.family === 'string' ? addr.family : String(addr.family);
-      if ((family === 'IPv4' || family === '4') && !addr.internal) {
+      if (!addr.internal && isIPv4(addr.address)) {
         return addr.address;
       }
     }
