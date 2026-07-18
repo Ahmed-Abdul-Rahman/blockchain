@@ -8,6 +8,8 @@
 tasks
 apps/backend/src
 packages/blockchain/src
-packages/examples
+# Keep workspace package.json files for yarn install; drop unused sources only.
+packages/examples/**
+!packages/examples/package.json
 *.md
 !packages/core/tests/compose-interop/README.md
