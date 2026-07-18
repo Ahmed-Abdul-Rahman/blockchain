@@ -16,6 +16,19 @@ SCHEDULER="${SCHEDULER:-heuristic}"
 SYNC_INTERVAL_MS="${SYNC_INTERVAL_MS:-15000}"
 NETWORK_ID="${NETWORK_ID:-compose-interop-$(date +%s)}"
 LISTEN_PORT="${LISTEN_PORT:-4001}"
+NETEM_PROFILE="${NETEM_PROFILE:-lan}"
+COMPOSE_ORCHESTRATOR="${COMPOSE_ORCHESTRATOR:-scenarios/late-joiner-adaptive.js}"
+
+# Load static netem profile (NETEM_OPTS) when present.
+NETEM_ENV_FILE="${COMPOSE_DIR}/netem/${NETEM_PROFILE}.env"
+if [[ -f "${NETEM_ENV_FILE}" ]]; then
+  # shellcheck disable=SC1090
+  set -a
+  # shellcheck disable=SC1091
+  source "${NETEM_ENV_FILE}"
+  set +a
+fi
+NETEM_OPTS="${NETEM_OPTS:-}"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "docker is required" >&2
@@ -33,7 +46,7 @@ trap cleanup EXIT
 
 cd "${REPO_ROOT}"
 
-echo "[compose] build image + start redis"
+echo "[compose] build image + start redis (netem=${NETEM_PROFILE})"
 docker compose -p "${PROJECT}" -f "${COMPOSE_FILE}" build node
 docker compose -p "${PROJECT}" -f "${COMPOSE_FILE}" up -d redis
 
@@ -68,11 +81,13 @@ for i in $(seq 0 $((COMPOSE_NODES - 1))); do
   fi
 
   # Use docker run (not compose run): need --network-alias for dns4 advertise hosts.
+  # NET_ADMIN required for tc netem inside the container (lan is a no-op).
   docker run -d \
     --name "dechat-node-${i}" \
     --hostname "dechat-node-${i}" \
     --network "${NETWORK_NAME}" \
     --network-alias "dechat-node-${i}" \
+    --cap-add=NET_ADMIN \
     -e NODE_INDEX="${i}" \
     -e TOTAL_NODES="${COMPOSE_NODES}" \
     -e ROLE="${ROLE}" \
@@ -86,16 +101,23 @@ for i in $(seq 0 $((COMPOSE_NODES - 1))); do
     -e REDIS_URL=redis://redis:6379 \
     -e LOG_LEVEL="${LOG_LEVEL:-INFO}" \
     -e NODE_ENV=perf \
+    -e NETEM_PROFILE="${NETEM_PROFILE}" \
+    -e NETEM_OPTS="${NETEM_OPTS}" \
     "${NODE_IMAGE}" >/dev/null
 
   echo "[compose] started dechat-node-${i} role=${ROLE}"
 done
 
-export COMPOSE_NODES ADAPTIVE_ENABLED SCHEDULER SYNC_INTERVAL_MS
+export COMPOSE_NODES ADAPTIVE_ENABLED SCHEDULER SYNC_INTERVAL_MS NETEM_PROFILE
+export COMPOSE_DORMANT_SETTLE_MS="${COMPOSE_DORMANT_SETTLE_MS:-$((SYNC_INTERVAL_MS * 2))}"
 export REDIS_URL="${REDIS_URL:-redis://127.0.0.1:6379}"
+# Preserve caller-provided report path when set (A/B / wan-vs-lan wrappers).
+if [[ -n "${COMPOSE_REPORT_PATH:-}" ]]; then
+  export COMPOSE_REPORT_PATH
+fi
 
-echo "[compose] running orchestrator against ${REDIS_URL}"
+echo "[compose] running orchestrator ${COMPOSE_ORCHESTRATOR} against ${REDIS_URL}"
 cd "${CORE_DIR}"
-NODE_ENV=perf LOG_LEVEL=INFO node dist/tests/compose-interop/scenarios/late-joiner-adaptive.js
+NODE_ENV=perf LOG_LEVEL=INFO node "dist/tests/compose-interop/${COMPOSE_ORCHESTRATOR}"
 
 echo "[compose] scenario passed"

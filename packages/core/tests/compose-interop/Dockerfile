@@ -37,11 +37,19 @@ FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=perf
 ENV LOG_LEVEL=INFO
+ENV NETEM_PROFILE=lan
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends iproute2 \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app /app
 
 WORKDIR /app/packages/core
 
+RUN chmod +x tests/compose-interop/scripts/apply-netem.sh \
+  tests/compose-interop/scripts/docker-entrypoint.sh
+
 EXPOSE 4001
 
-CMD ["node", "dist/tests/compose-interop/composeNodeMain.js"]
+ENTRYPOINT ["bash", "tests/compose-interop/scripts/docker-entrypoint.sh"]
