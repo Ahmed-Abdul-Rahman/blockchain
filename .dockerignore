@@ -1,0 +1,13 @@
+# Used by packages/core/tests/compose-interop Docker builds (context = repo root).
+**/node_modules
+**/dist
+**/.git
+**/coverage
+**/.cursor
+**/agent-transcripts
+tasks
+apps/backend/src
+packages/blockchain/src
+packages/examples
+*.md
+!packages/core/tests/compose-interop/README.md

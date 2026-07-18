@@ -1,0 +1,32 @@
+name: dechat-compose-interop
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  node:
+    build:
+      context: ../../../..
+      dockerfile: packages/core/tests/compose-interop/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379
+      LISTEN_PORT: '4001'
+      LOG_LEVEL: INFO
+      NODE_ENV: perf
+    networks:
+      - dechat-interop
+    # Individual containers are started by scripts/run-scenario.sh with per-node env.
+
+networks:
+  dechat-interop:
+    name: dechat-compose-interop

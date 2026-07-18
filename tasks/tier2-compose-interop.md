@@ -3,7 +3,7 @@
 **Backlog ref:** [BACKLOG.md § Task 5.2](../BACKLOG.md#task-52-tier-2--docker-compose-interop-real-network-isolation-at-scale)  
 **ADR ref:** [docs/adr/0003-adaptive-anti-entropy-scheduling.md](../docs/adr/0003-adaptive-anti-entropy-scheduling.md)  
 **Prerequisite:** Tier 1 closed ([PR #37](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/37)) + Bandit merged ([PR #39](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/39)); nightlies healthy on `develop`  
-**Status:** Approved — PR A in progress (`feat/tier2-node-runner-extract`)  
+**Status:** PR A merged (#42). PR B in progress (`feat/tier2-compose-late-joiner`)  
 **Goal:** Prove anti-entropy convergence under **real TCP between containers** with optional latency / loss / partition profiles — without Testground.
 
 ---
@@ -308,8 +308,8 @@ Reply **approve** (or note changes) on these decisions before implementation sta
 ## Implementation status
 
 - [x] Approval (2026-07-17)
-- [x] PR A — `nodeRunner` extract ← **in progress** (`feat/tier2-node-runner-extract`; unit + `test:int:data-sync` green locally)
-- [ ] PR B — Compose + late joiner (lan)
+- [x] PR A — `nodeRunner` extract ([PR #42](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/42) merged)
+- [ ] PR B — Compose + late joiner (lan) ← **in progress** (`feat/tier2-compose-late-joiner`)
 - [ ] PR C — A/B + netem
 - [ ] PR D — Nightly CI + split-brain
 - [ ] Optional: promote Compose job to PR gate after soak

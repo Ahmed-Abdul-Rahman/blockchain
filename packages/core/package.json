@@ -24,6 +24,7 @@
     "test:int:adaptive-ab": "NODE_ENV=perf LOG_LEVEL=INFO node --trace-warnings dist/tests/interop/interOpTestRunner.adaptiveAb.int.js",
     "test:int:adaptive-scale": "NODE_ENV=perf LOG_LEVEL=INFO node --trace-warnings dist/tests/interop/interOpTestRunner.adaptiveScale.int.js",
     "test:int:narrow": "NODE_ENV=perf LOG_LEVEL=INFO node --trace-warnings dist/tests/interop/interOpTestRunner.startup.int.js --nodes 3 --duration 30",
+    "test:compose:late-joiner": "bash tests/compose-interop/scripts/run-scenario.sh",
     "sim": "NODE_ENV=perf node dist/tests/interop/initiateTest.js --nodes 3 --duration 30",
     "sim:peak": "NODE_OPTIONS='--max-old-space-size=4096' NODE_ENV=perf node dist/tests/interop/SimulateMultiNode.int.js --nodes 50 --duration 1500"
   },
@@ -53,6 +54,7 @@
     "level": "^8.0.0",
     "libp2p": "^2.5.0",
     "lru-cache": "^11.2.4",
+    "redis": "^6.1.0",
     "type-fest": "^5.6.0"
   },
   "devDependencies": {

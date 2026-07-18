@@ -117,6 +117,13 @@ export type WorkerData = {
   enableMdns?: boolean; // default true; set false to isolate network partitions
   /** When true, gossip/direct replication ingest is deferred until set_expected_hashes */
   suppressReplicationIngest?: boolean;
+  /** Override libp2p listen multiaddrs (Compose uses fixed TCP ports). */
+  listenAddrs?: string[];
+  /**
+   * Host used when rewriting `/ip4/0.0.0.0/` listen addrs for dialing.
+   * IPv4 → `/ip4/<host>/…`; otherwise `/dns4/<host>/…`. Defaults to `127.0.0.1` (worker interop).
+   */
+  advertiseHost?: string;
 };
 
 export type WorkerDataConfig = {
@@ -139,6 +146,8 @@ export type WorkerDataConfig = {
   };
   enableMdns?: boolean; // default true; set false to isolate network partitions
   suppressReplicationIngest?: boolean;
+  listenAddrs?: string[];
+  advertiseHost?: string;
 };
 
 export type WorkerDetails = { workerData: WorkerData; workerRef: Worker };

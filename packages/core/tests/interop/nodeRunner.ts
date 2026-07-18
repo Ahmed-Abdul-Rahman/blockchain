@@ -53,6 +53,30 @@ export type NodeRunnerTransport = {
 export type NodeRunnerOptions = {
   /** Label for dial/debug logs (e.g. `Worker 3` or `compose:2`). */
   readonly logLabel?: string;
+  /** Fired after the node is started and command handlers are registered (before ping loop). */
+  readonly onReady?: () => void | Promise<void>;
+};
+
+const IPV4_HOST = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+
+/** Rewrite wildcard listen multiaddrs into dialable advertise multiaddrs. */
+export const normalizeAdvertiseMultiaddrs = (
+  listenMultiaddrs: readonly string[],
+  peerId: string,
+  advertiseHost = '127.0.0.1',
+): string[] => {
+  const proto = IPV4_HOST.test(advertiseHost) ? 'ip4' : 'dns4';
+  const hostPrefix = `/${proto}/${advertiseHost}/`;
+  return listenMultiaddrs
+    .map((addr) => addr.replace('/ip4/0.0.0.0/', hostPrefix))
+    .filter((addr) => addr.includes(hostPrefix))
+    .map((addr) => (addr.includes('/p2p/') ? addr : `${addr}/p2p/${peerId}`));
+};
+
+const normalizeDialMultiaddr = (addrStr: string, advertiseHost = '127.0.0.1'): string => {
+  if (!addrStr.includes('/ip4/0.0.0.0/')) return addrStr;
+  const proto = IPV4_HOST.test(advertiseHost) ? 'ip4' : 'dns4';
+  return addrStr.replace('/ip4/0.0.0.0/', `/${proto}/${advertiseHost}/`);
 };
 
 export const mapAntiEntropySnapshot = (
@@ -106,12 +130,12 @@ export const startNodeRunner = async (
   const { testType } = config;
 
   if (testType === 'PROPAGATION') {
-    await runNodeDataPropagation(config, transport, logLabel);
+    await runNodeDataPropagation(config, transport, logLabel, options.onReady);
     return;
   }
 
   if (testType === 'REPLICATION') {
-    await runNodeDataReplication(config, transport, logLabel);
+    await runNodeDataReplication(config, transport, logLabel, options.onReady);
     return;
   }
 
@@ -122,6 +146,7 @@ const runNodeDataPropagation = async (
   config: WorkerData,
   transport: NodeRunnerTransport,
   _logLabel: string,
+  onReady?: () => void | Promise<void>,
 ): Promise<void> => {
   const latencies: number[] = [];
   let terminateThread = false;
@@ -293,6 +318,7 @@ const runNodeDataPropagation = async (
     }
   });
 
+  if (onReady) await onReady();
   await sendLoop();
 };
 
@@ -300,6 +326,7 @@ const runNodeDataReplication = async (
   config: WorkerData,
   transport: NodeRunnerTransport,
   logLabel: string,
+  onReady?: () => void | Promise<void>,
 ): Promise<void> => {
   const latencies: number[] = [];
   let terminateThread = false;
@@ -580,11 +607,11 @@ const runNodeDataReplication = async (
 
     if (message.type === 'report_listen_addrs') {
       const peerId = node.peerId.toString();
-      const addrs = node
-        .getMultiaddrs()
-        .map((addr) => addr.toString().replace('/ip4/0.0.0.0/', '/ip4/127.0.0.1/'))
-        .filter((addr) => addr.includes('/ip4/127.0.0.1/'))
-        .map((addr) => (addr.includes('/p2p/') ? addr : `${addr}/p2p/${peerId}`));
+      const addrs = normalizeAdvertiseMultiaddrs(
+        node.getMultiaddrs().map((addr) => addr.toString()),
+        peerId,
+        config.advertiseHost,
+      );
       transport.postMessage({ type: 'listen_addrs_report', index, peerId, addrs });
       return;
     }
@@ -595,7 +622,7 @@ const runNodeDataReplication = async (
 
       for (const addrStr of multiaddrs) {
         try {
-          const normalized = addrStr.replace('/ip4/0.0.0.0/', '/ip4/127.0.0.1/');
+          const normalized = normalizeDialMultiaddr(addrStr, config.advertiseHost);
           const ma = multiaddr(normalized);
           const addrPeerId = ma.getPeerId()?.toString();
           if (addrPeerId === from) continue;
@@ -625,5 +652,6 @@ const runNodeDataReplication = async (
     }
   });
 
+  if (onReady) await onReady();
   await sendLoop();
 };
