@@ -311,6 +311,6 @@ Reply **approve** (or note changes) on these decisions before implementation sta
 - [x] Approval (2026-07-17)
 - [x] PR A — `nodeRunner` extract ([PR #42](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/42) merged)
 - [x] PR B — Compose + late joiner (lan) ([PR #43](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/43) merged)
-- [ ] PR C — A/B + netem ← **in progress** (`feat/tier2-compose-ab-netem`)
+- [ ] PR C — A/B + netem ← **in review** ([PR #44](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/44))
 - [ ] PR D — Nightly CI + split-brain
 - [ ] Optional: promote Compose job to PR gate after soak
