@@ -67,7 +67,8 @@ Yarn:
 2. [x] `split-brain.ts` orchestrator + `run-split-brain.sh` + yarn script  
 3. [x] `compose-interop-nightly.yml` (12 lan / 12 wan / split-brain)  
 4. [x] README flake policy + PR workflow split-brain smoke  
-5. [ ] Push PR; GHA green  
+5. [x] Push PR [#45](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/45); await GHA green  
+
 
 
 ## Out of scope
