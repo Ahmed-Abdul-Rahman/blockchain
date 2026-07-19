@@ -3,7 +3,7 @@
 **Backlog ref:** [BACKLOG.md § Task 5.2](../BACKLOG.md#task-52-tier-2--docker-compose-interop-real-network-isolation-at-scale)  
 **ADR ref:** [docs/adr/0003-adaptive-anti-entropy-scheduling.md](../docs/adr/0003-adaptive-anti-entropy-scheduling.md)  
 **Prerequisite:** Tier 1 closed ([PR #37](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/37)) + Bandit merged ([PR #39](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/39)); nightlies healthy on `develop`  
-**Status:** PR A merged (#42). PR B merged (#43). PR C next (`feat/tier2-compose-ab-netem`) — plan in `tasks/todo.md`  
+**Status:** PR A–C merged (#42, #43, #44). PR D next — plan in `tasks/todo.md`  
 **Goal:** Prove anti-entropy convergence under **real TCP between containers** with optional latency / loss / partition profiles — without Testground.
 
 ---
@@ -192,11 +192,11 @@ packages/core/tests/
 ### PR D — Nightly CI + split-brain
 
 - [x] Path-filtered / dispatch Compose CI (landed early with PR B): `.github/workflows/compose-interop.yml` — late-joiner lan on GHA
-- [ ] `.github/workflows/compose-interop-nightly.yml` (or extend compose-interop.yml)
+- [x] `.github/workflows/compose-interop-nightly.yml` (or extend compose-interop.yml)
   - Jobs: `late-joiner-adaptive` (12 nodes, lan), `late-joiner-wan` (12 nodes, wan)
   - Always `docker compose down -v` in `if: always()`
-- [ ] Port split-brain scenario (P1)
-- [ ] Document flake policy: promote to required PR gate only after 7 nights < 5% flake
+- [x] Port split-brain scenario (P1)
+- [x] Document flake policy: promote to required PR gate only after 7 nights < 5% flake
 
 **Acceptance:** Scheduled workflow green on `develop`; split-brain heal converges.
 
@@ -311,6 +311,6 @@ Reply **approve** (or note changes) on these decisions before implementation sta
 - [x] Approval (2026-07-17)
 - [x] PR A — `nodeRunner` extract ([PR #42](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/42) merged)
 - [x] PR B — Compose + late joiner (lan) ([PR #43](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/43) merged)
-- [ ] PR C — A/B + netem ← **in review** ([PR #44](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/44))
-- [ ] PR D — Nightly CI + split-brain
+- [x] PR C — A/B + netem ([PR #44](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/44) merged)
+- [ ] PR D — Nightly CI + split-brain ← **in review** ([PR #45](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/45))
 - [ ] Optional: promote Compose job to PR gate after soak

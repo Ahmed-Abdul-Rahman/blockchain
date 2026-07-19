@@ -40,7 +40,7 @@ ENV LOG_LEVEL=INFO
 ENV NETEM_PROFILE=lan
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends iproute2 \
+  && apt-get install -y --no-install-recommends iproute2 iptables \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app /app
@@ -48,7 +48,8 @@ COPY --from=build /app /app
 WORKDIR /app/packages/core
 
 RUN chmod +x tests/compose-interop/scripts/apply-netem.sh \
-  tests/compose-interop/scripts/docker-entrypoint.sh
+  tests/compose-interop/scripts/docker-entrypoint.sh \
+  tests/compose-interop/scripts/apply-partition.sh
 
 EXPOSE 4001
 
