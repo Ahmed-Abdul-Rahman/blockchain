@@ -136,7 +136,16 @@ const main = async (): Promise<void> => {
       throw new Error(`Late joiner failed to converge within ${pollTimeout}ms`);
     }
 
+    // Let dormant producers tick so heuristic idle-skips are observable (A/B).
+    const dormantSettleMs = Number(process.env.COMPOSE_DORMANT_SETTLE_MS ?? String(syncIntervalMs * 2));
+    if (dormantSettleMs > 0) {
+      logger.info(`[compose-orch] dormant settle ${dormantSettleMs}ms (idle-skip telemetry)`);
+      await sleep(dormantSettleMs);
+    }
+
     const producerStats = await Promise.all(producers.map((i) => orch.requestStatistics(i, 15_000)));
+    // Refresh late-joiner stats after settle so the report matches producer snapshot time.
+    lateStats = await orch.requestStatistics(lateJoinerIndex, 15_000);
     const allStats = [...producerStats, lateStats];
 
     for (const index of [...producers, lateJoinerIndex]) {
@@ -161,9 +170,14 @@ const main = async (): Promise<void> => {
 
     const reportsDir = resolve(process.cwd(), 'tests/compose-interop/reports');
     mkdirSync(reportsDir, { recursive: true });
-    const out = resolve(reportsDir, `compose-late-joiner-adaptive-${report.timestamp.replace(/[:.]/g, '-')}.json`);
+    const out =
+      process.env.COMPOSE_REPORT_PATH && process.env.COMPOSE_REPORT_PATH.length > 0
+        ? process.env.COMPOSE_REPORT_PATH
+        : resolve(reportsDir, `compose-late-joiner-adaptive-${report.timestamp.replace(/[:.]/g, '-')}.json`);
     writeFileSync(out, JSON.stringify(report, null, 2));
-    logger.info(`[compose-orch] wrote ${out}`);
+    logger.info(
+      `[compose-orch] wrote ${out} (scheduler=${process.env.SCHEDULER ?? 'n/a'} adaptive=${process.env.ADAPTIVE_ENABLED ?? 'n/a'} netem=${process.env.NETEM_PROFILE ?? 'lan'} wallMs=${report.scenarioWallMs ?? -1})`,
+    );
   } finally {
     await orch.close();
   }

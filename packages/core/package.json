@@ -25,6 +25,10 @@
     "test:int:adaptive-scale": "NODE_ENV=perf LOG_LEVEL=INFO node --trace-warnings dist/tests/interop/interOpTestRunner.adaptiveScale.int.js",
     "test:int:narrow": "NODE_ENV=perf LOG_LEVEL=INFO node --trace-warnings dist/tests/interop/interOpTestRunner.startup.int.js --nodes 3 --duration 30",
     "test:compose:late-joiner": "bash tests/compose-interop/scripts/run-scenario.sh",
+    "test:compose:late-joiner:wan": "NETEM_PROFILE=wan bash tests/compose-interop/scripts/run-scenario.sh",
+    "test:compose:late-joiner:lossy": "NETEM_PROFILE=lossy bash tests/compose-interop/scripts/run-scenario.sh",
+    "test:compose:ab": "bash tests/compose-interop/scripts/run-ab.sh",
+    "test:compose:wan-vs-lan": "bash tests/compose-interop/scripts/run-wan-vs-lan.sh",
     "sim": "NODE_ENV=perf node dist/tests/interop/initiateTest.js --nodes 3 --duration 30",
     "sim:peak": "NODE_OPTIONS='--max-old-space-size=4096' NODE_ENV=perf node dist/tests/interop/SimulateMultiNode.int.js --nodes 50 --duration 1500"
   },

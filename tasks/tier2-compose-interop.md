@@ -3,7 +3,7 @@
 **Backlog ref:** [BACKLOG.md § Task 5.2](../BACKLOG.md#task-52-tier-2--docker-compose-interop-real-network-isolation-at-scale)  
 **ADR ref:** [docs/adr/0003-adaptive-anti-entropy-scheduling.md](../docs/adr/0003-adaptive-anti-entropy-scheduling.md)  
 **Prerequisite:** Tier 1 closed ([PR #37](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/37)) + Bandit merged ([PR #39](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/39)); nightlies healthy on `develop`  
-**Status:** PR A merged (#42). PR B in progress (`feat/tier2-compose-late-joiner`)  
+**Status:** PR A merged (#42). PR B merged (#43). PR C next (`feat/tier2-compose-ab-netem`) — plan in `tasks/todo.md`  
 **Goal:** Prove anti-entropy convergence under **real TCP between containers** with optional latency / loss / partition profiles — without Testground.
 
 ---
@@ -182,10 +182,10 @@ packages/core/tests/
 
 ### PR C — A/B + netem profiles
 
-- [ ] `dormant-room-ab.ts` (or scripted dual run): fixed vs heuristic
-- [ ] `apply-netem.sh` + `wan` / `lossy` profiles
-- [ ] Assert heuristic idle skips in dormant phase; document wall-time trade-off
-- [ ] WAN late-joiner converges within 2× lan (env-overridable)
+- [x] `dormant-room-ab.ts` (or scripted dual run): fixed vs heuristic
+- [x] `apply-netem.sh` + `wan` / `lossy` profiles
+- [x] Assert heuristic idle skips in dormant phase; document wall-time trade-off
+- [x] WAN late-joiner converges within 2× lan (env-overridable)
 
 **Acceptance:** A/B report artifact; wan profile green locally.
 
@@ -310,7 +310,7 @@ Reply **approve** (or note changes) on these decisions before implementation sta
 
 - [x] Approval (2026-07-17)
 - [x] PR A — `nodeRunner` extract ([PR #42](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/42) merged)
-- [ ] PR B — Compose + late joiner (lan) ← **in progress** (`feat/tier2-compose-late-joiner`)
-- [ ] PR C — A/B + netem
+- [x] PR B — Compose + late joiner (lan) ([PR #43](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/43) merged)
+- [ ] PR C — A/B + netem ← **in review** ([PR #44](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/44))
 - [ ] PR D — Nightly CI + split-brain
 - [ ] Optional: promote Compose job to PR gate after soak

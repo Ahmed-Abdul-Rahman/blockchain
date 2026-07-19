@@ -1,10 +1,82 @@
-# Task: Adaptive Anti-Entropy Scheduling
+# Active: Tier 2 PR C — A/B + netem profiles
+
+**Spec:** [tasks/tier2-compose-interop.md](tier2-compose-interop.md) § PR C  
+**Base:** `develop` (PR A #42 + PR B #43 merged)  
+**Branch (proposed):** `feat/tier2-compose-ab-netem`  
+**Status:** Implementation complete on `feat/tier2-compose-ab-netem` — unit tests green; Compose Docker verify pending (no Docker in agent env)
+
+## Goal
+
+Prove Compose late-joiner under (1) fixed vs heuristic A/B with idle-skip assertion, and (2) static netem `wan` / `lossy` profiles — without changing production defaults or promoting Compose to a PR gate.
+
+## Decisions (approve / amend)
+
+| ID | Decision | Rationale |
+|----|----------|-----------|
+| **C1** | A/B = **scripted dual run** of existing late-joiner (fixed → heuristic), not a second P2P choreography | Same mesh/produce/settle path as Tier 1 A/B; reuse `abComparison` reporter fields |
+| **C2** | Netem applied **once at container start** via `apply-netem.sh` + `--cap-add=NET_ADMIN`; profiles in `netem/*.env` | Matches D4; partition stays PR D |
+| **C3** | Runtime image installs `iproute2` (`tc`); `lan` is a no-op | `tc` unavailable in slim image today |
+| **C4** | WAN assert: run lan then wan in one script; fail if `wanWallMs > WAN_MAX_LAN_MULTIPLIER × lanWallMs` (default `2`, env-overridable) | Spec acceptance; soft skip when `SKIP_WAN_MULTIPLIER=true` for debugging |
+| **C5** | CI this PR: extend path-filtered Compose workflow with **optional** `workflow_dispatch` inputs (`netem_profile`, `run_ab`); keep default PR job = lan late-joiner only | Nightly wan/12-node is PR D |
+| **C6** | macOS: document that netem runs **inside** Linux containers (works on Docker Desktop); host `tc` not required | Spec risk mitigation |
+
+## Deliverables
+
+```
+packages/core/tests/compose-interop/
+├── netem/
+│   ├── lan.env          # NETEM_OPTS= (empty)
+│   ├── wan.env          # delay 50ms 10ms rate 10mbit
+│   └── lossy.env        # loss 1% delay 100ms
+├── scripts/
+│   ├── apply-netem.sh   # tc qdisc from NETEM_PROFILE / NETEM_OPTS
+│   ├── run-scenario.sh  # + NETEM_PROFILE, NET_ADMIN, apply-netem
+│   ├── run-ab.sh        # fixed then heuristic; merge A/B report
+│   └── run-wan-vs-lan.sh# lan then wan; assert ≤2× wall time
+├── scenarios/
+│   ├── late-joiner-adaptive.ts  # minor: export wallMs / scheduler in report meta
+│   └── dormant-room-ab.ts       # host-side merge + assert idleSkips (no Docker)
+└── README.md            # A/B + netem usage, wall-time trade-off notes
+```
+
+Yarn scripts:
+
+- `test:compose:late-joiner` — unchanged default (`NETEM_PROFILE=lan`)
+- `test:compose:ab` → `run-ab.sh`
+- `test:compose:late-joiner:wan` → `NETEM_PROFILE=wan` single run
+- `test:compose:wan-vs-lan` → `run-wan-vs-lan.sh`
+
+## Acceptance checks
+
+1. **A/B:** both legs converge (`hasTargetData`); `heuristic.producerIdleSkipsTotal > fixed.producerIdleSkipsTotal`; JSON report with `abComparison` under `reports/`
+2. **WAN:** late joiner converges with `NETEM_PROFILE=wan` locally (Linux/`ubuntu-latest`)
+3. **Multiplier:** `wan-vs-lan` green with default `WAN_MAX_LAN_MULTIPLIER=2`
+4. Teardown: `docker compose down -v` / trap still leaves no zombies
+5. Existing lan late-joiner still green; no change to `adaptive.enabled` default
+
+## Implementation slices
+
+1. [x] Netem plumbing (`iproute2`, profiles, `apply-netem.sh`, wire into `run-scenario.sh`)
+2. [x] A/B wrapper + `dormant-room-ab.ts` merge/assert + yarn script
+3. [x] WAN single-run + `wan-vs-lan` multiplier script
+4. [x] README + CI `workflow_dispatch` knobs (`netem_profile`, `run_ab`)
+5. [x] GHA: PR runs lan + wan + A/B in parallel (`compose-interop.yml`); `wan-vs-lan` via workflow_dispatch
+
+## Out of scope (PR D)
+
+- Nightly schedule / 12-node wan job
+- Split-brain / mid-run `iptables` partition
+- Promoting Compose to required PR gate
+
+---
+
+# Prior: Adaptive Anti-Entropy Scheduling (closed)
 
 **Backlog ref:** Follow-up to BACKLOG Task 2.1 (anti-entropy correctness — done)  
 **ADR ref:** [docs/adr/0003-adaptive-anti-entropy-scheduling.md](../docs/adr/0003-adaptive-anti-entropy-scheduling.md)  
 **Status:** Closed (Steps 0–7 shipped). Heuristics PR #36, Tier 1 interop PR #37, Bandit PR #39 merged; nightly scale soak green on `develop`.  
 **Goal:** Make `AntiEntropyManager` observable and adaptive on the **control plane only** (when / with whom to sync). Data plane (Merkle trie diff, auth, replication accept/reject) stays deterministic.  
-**Next active work:** [tasks/tier2-compose-interop.md](tier2-compose-interop.md) (BACKLOG Task 5.2).
+**Next active work:** [tasks/tier2-compose-interop.md](tier2-compose-interop.md) (BACKLOG Task 5.2) — PR C plan above.
 
 ### Prior completed work (do not re-implement)
 
