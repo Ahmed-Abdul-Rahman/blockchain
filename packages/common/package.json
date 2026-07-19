@@ -3,15 +3,22 @@
   "version": "1.0.0",
   "type": "module",
   "exports": {
-    "development": "./index.ts",
-    "default": "./dist/index.js",
-    "types": "./dist/index.d.ts"
+    ".": {
+      "browser": {
+        "types": "./dist/browser.d.ts",
+        "development": "./browser.ts",
+        "default": "./dist/browser.js"
+      },
+      "types": "./dist/index.d.ts",
+      "development": "./index.ts",
+      "default": "./dist/index.js"
+    }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && tsc-alias --resolve-full-paths",
     "clean": "rm -rf dist",
-    "test": "",
-    "test:coverage": "vitest run --coverage"
+    "test": "../../node_modules/.bin/vitest run **/*.unit.test.ts",
+    "test:coverage": "../../node_modules/.bin/vitest run --coverage"
   },
   "dependencies": {
     "rotating-file-stream": "^3.2.7",

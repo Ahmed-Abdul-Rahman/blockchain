@@ -1,6 +1,13 @@
 export interface DeChatConfig {
+  /**
+   * Runtime profile — drives defaults and validation (TCP listen / mDNS on Node;
+   * bootstrap-required dial-only on browser).
+   */
+  platform: {
+    kind: 'node' | 'browser';
+  };
   network: {
-    /** A list of string multiaddrs to listen on */
+    /** A list of string multiaddrs to listen on (may be empty for dial-only browser peers) */
     listenAddrs: string[];
 
     /** Override bootstrap multiaddrs*/
@@ -219,10 +226,12 @@ export interface DeChatConfig {
       protocol: string;
     };
     store: {
-      /** Replica Storage type */
-      type: 'IN_MEMORY' | 'LEVEL_DB';
+      /** Replica Storage type — `LEVEL_DB` is Node-only; browser uses `IN_MEMORY` or IndexedDB */
+      type: 'IN_MEMORY' | 'LEVEL_DB' | 'INDEXED_DB';
       /** DB Path to store data in file - for levelDB */
       dbPath: string;
+      /** IndexedDB database name (browser durable store) */
+      indexedDbName?: string;
     };
   };
   metrics: {

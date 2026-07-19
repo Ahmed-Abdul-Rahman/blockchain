@@ -1,4 +1,4 @@
-import crypto from 'node:crypto';
+import { sha1Hex } from '@dechat/crypto';
 import { ShouldDialOptions } from './types';
 
 /**
@@ -46,9 +46,10 @@ const isDesignatedDialer = (selfPeerId: string, discoveredPeerId: string, modulo
 
 /**
  * Hash a string into a BigInt (stable, deterministic).
+ * Uses SHA-1 to preserve historical election behaviour.
  */
 const hashToBigInt = (input: string): bigint => {
-  const h = crypto.createHash('sha1').update(input).digest('hex');
+  const h = sha1Hex(input);
   return BigInt('0x' + h);
 };
 

@@ -1,3 +1,4 @@
+export { createBrowserNode } from './src/browser';
 export { DECHAT_DEFAULTS, isConfigValid, resolveConfig } from './src/config/defaults';
 export type { DeChatConfig } from './src/config/types';
 export { AntiEntropyManager, antiEntropyManager } from './src/data-convergence/AntiEntropyManager';
@@ -34,10 +35,14 @@ export { PeerDiscoveryManager, peerDiscoveryManager } from './src/networking/Pee
 export { PeerExchangeService, peerExchangeService } from './src/networking/PeerExchangeService';
 export { PeerRegistry, peerRegistry } from './src/networking/PeerRegistry';
 export { SimplePeerScorer, simplePeerScorer } from './src/networking/SimplePeerScorer';
-export { createNode } from './src/node';
-export { InMemoryReplicaStore } from './src/replica-store/InMemoryReplicaStore';
-export { LevelDbReplicaStore } from './src/replica-store/LevelDbReplicaStore';
-export { ReplicaStoreInterface } from './src/replica-store/ReplicaStoreInterface';
+export { createNode, createNodeNode } from './src/node';
+export { createBrowserPlatformStack } from './src/platform/createBrowserPlatformStack';
+export { createNodePlatformStack } from './src/platform/createNodePlatformStack';
+export type { Libp2pPlatformStack, PlatformProfile } from './src/platform/types';
+export { IndexedDbReplicaStore, indexedDbReplicaStore } from './src/replica-store/IndexedDbReplicaStore';
+export { InMemoryReplicaStore, inMemoryReplicaStore } from './src/replica-store/InMemoryReplicaStore';
+export { ReplicaStoreInterface, replicaStore } from './src/replica-store/ReplicaStoreInterface';
+
 export type { DataSerializer, FramedStreamCodec, WireCodec, WireFormatName } from './src/shared/serialization';
 export {
   canonicalSerialize,

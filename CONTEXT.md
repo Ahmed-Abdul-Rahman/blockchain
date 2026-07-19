@@ -21,6 +21,9 @@ Ubiquitous language for DeChat — a decentralized P2P networking platform (libp
 | **Dial queue** | Throttled outbound connection manager; prevents connection storms. |
 | **Peer scorer** | Rates peers for dialability, backoff, and connection gating. |
 | **Onboarding** | The debounced window after discovery during which a peer is authenticated before entering the registry. |
+| **Bootstrap peer** | A well-known peer multiaddr used for initial discovery when mDNS/LAN discovery is unavailable (required for browser clients). |
+| **Relay peer** | A Node peer that assists connectivity for peers behind NAT (circuit-relay); distinct from a pure bootstrap address book. |
+| **Browser client peer** | A DeChat node running in a browser — typically dial-only over WebSockets/WebRTC, with mDNS disabled. |
 
 ## Messaging & Propagation
 
@@ -60,6 +63,7 @@ Ubiquitous language for DeChat — a decentralized P2P networking platform (libp
 |------|------------|
 | **Strategy** | A swappable factory (`DeChatStrategies`) for propagation, replication, store, hashing, or convergence. |
 | **Composition root** | `createNode` — the single place where libp2p, networking services, and strategies are wired together. |
+| **Platform stack** | Runtime-specific libp2p transports, muxers, encryption, discovery plugins, and listen addrs injected at the composition root (`Libp2pPlatformStack`). |
 | **Boot lock** | Requirement that `replicaStore.init()` completes (trie rebuild) before the libp2p network starts. |
 | **Handler registry** | Multiplexing pattern allowing multiple independent subscribers on the same broadcast topic or direct protocol. |
 

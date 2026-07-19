@@ -11,31 +11,38 @@ How to implement and extend `@dechat/core` correctly. Read `.cursor/PROJECT.md` 
 
 ```
 packages/core/src/
-├── node.ts                    # Composition root — createNode()
-├── config/                    # DeChatConfig, DECHAT_DEFAULTS
+├── createDeChatNode.ts        # Platform-agnostic composition root
+├── node.ts                    # Node facade — createNode() + Node platform stack
+├── browser.ts                 # Browser facade — createBrowserNode()
+├── platform/                  # Libp2pPlatformStack adapters (Node / Browser)
+├── config/                    # DeChatConfig, DECHAT_DEFAULTS, platform profiles
 ├── networking/                # Auth, PEX, dial queue, registry, discovery
 ├── data-propagation/
 │   ├── broadcast/             # GossipSubPropagation
 │   └── direct/                # DirectStreamPropagation
 ├── data-replication/          # K-replica, topic-based, protocol manager
 ├── data-convergence/          # PrefixTrie, anti-entropy, TrieBackedReplicaStore
-├── replica-store/             # InMemory, LevelDB
+├── replica-store/             # InMemory, LevelDB (Node), IndexedDB (browser)
 ├── shared/                    # serializers, streamUtils, types
 └── types.ts                   # DeChatComponents, DeChatStrategies, DeChatFactory
 ```
 
-Supporting packages: `@dechat/crypto` (Ed25519, sha256, XOR distance), `@dechat/common` (logger).
+Supporting packages: `@dechat/crypto` (portable digests / Ed25519; Node PEM helpers via `@dechat/crypto/node`), `@dechat/common` (logger — Node file / browser console).
 
-## Composition root: createNode()
+## Composition root: createNode() / createBrowserNode()
 
-All features wire through `createNode(infoHash, nodeSeed, config?, strategies?)`.
+Features wire through `createDeChatNode` with an injected `Libp2pPlatformStack`:
+
+- `createNode(...)` — Node stack (TCP + optional mDNS/bootstrap; WS transport for hybrid dial)
+- `createBrowserNode(...)` — Browser stack (WebSockets + required bootstrap; no TCP/mDNS)
 
 **Startup order (boot lock):**
 
 ```
-createNode()
+createNode() / createBrowserNode()
   → resolveConfig() + derive Ed25519 keypair from nodeSeed
-  → createLibp2p({ tcp, noise, yamux, mdns?, bootstrap?, gossipsub, identify })
+  → resolve Libp2pPlatformStack (transports / muxers / noise / discovery / listen)
+  → createLibp2p({ …stack, gossipsub, identify })
   → wire networking services (scorer, registry, dialQueue, pex, auth, discovery)
   → instantiate DeChatStrategies factories → components.strategies
   → optionally wrap replicaStore in TrieBackedReplicaStore
@@ -48,7 +55,7 @@ start():
 stop(): reverse order
 ```
 
-**Rule:** New behaviour plugs in via `DeChatStrategies` factories — avoid editing `node.ts` internals unless wiring a new strategy slot.
+**Rule:** Protocol modules never import `@libp2p/tcp` / `@libp2p/mdns`. New behaviour plugs in via `DeChatStrategies` or a platform-stack adapter — avoid editing composition internals unless wiring a new strategy slot.
 
 ## Strategy injection pattern
 

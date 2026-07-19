@@ -1,6 +1,7 @@
 import { logger } from '@dechat/common';
 import { Startable } from '@libp2p/interface';
 import { PeerRegistryMetrics } from '../metrics/interfaces/PeerRegistryMetrics';
+import { isProductionRuntime } from '../shared/runtimeEnv';
 import { DeChatComponents, DeChatFactory } from '../types';
 import { PeerInfoLite } from './types';
 import { sampleList } from './utils';
@@ -31,7 +32,7 @@ export class PeerRegistry implements Startable {
 
   start(): void | Promise<void> {
     this.startCleanupTimer();
-    if (process.env.NODE_ENV !== 'production') {
+    if (!isProductionRuntime()) {
       this.logIntervalId = this.logRegistryData();
     }
   }
