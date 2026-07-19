@@ -2,7 +2,7 @@
 import { bytecoin } from '@dechat/blockchain';
 import { logger } from '@dechat/common';
 import { createNode } from '@dechat/core';
-import { loadOrGenerateKeypair } from '@dechat/crypto';
+import { loadOrGenerateKeypair } from '@dechat/crypto/node';
 import bodyParser from 'body-parser';
 import { EventId } from 'eventid';
 import express from 'express';

@@ -1,4 +1,4 @@
-import { EventEmitter } from 'events';
+import EventEmitter from 'eventemitter3';
 import { ContentHash } from '../types';
 
 export interface InflightOptions {
@@ -6,19 +6,29 @@ export interface InflightOptions {
   maxAttempts?: number;
 }
 
-export class InflightRequestTracker extends EventEmitter {
+/**
+ * Tracks in-flight content-hash fetches and emits lifecycle events.
+ * Uses composition with `eventemitter3` (portable across Node and browser).
+ */
+export class InflightRequestTracker {
+  /** Event bus — listen for `acquired` / `released`. */
+  readonly events = new EventEmitter<{
+    acquired: [ContentHash];
+    released: [ContentHash];
+  }>();
+
   private readonly inflight = new Map<ContentHash, number>();
 
   public readonly isInflight = (hash: ContentHash): boolean => this.inflight.has(hash);
 
   public readonly acquire = (hash: ContentHash): void => {
     this.inflight.set(hash, Date.now());
-    this.emit('acquired', hash);
+    this.events.emit('acquired', hash);
   };
 
   public readonly release = (hash: ContentHash): void => {
     this.inflight.delete(hash);
-    this.emit('released', hash);
+    this.events.emit('released', hash);
   };
 
   public readonly clearExpired = (ttlMs: number): void => {

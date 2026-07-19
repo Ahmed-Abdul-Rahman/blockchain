@@ -20,7 +20,8 @@ import { topicBasedContentHashReplication } from '../../../src/data-replication/
 import { PeerExchangeService } from '../../../src/networking/PeerExchangeService';
 import { SimplePeerScorer } from '../../../src/networking/SimplePeerScorer';
 import { createNode } from '../../../src/node';
-import { ReplicaStoreInterface, replicaStore } from '../../../src/replica-store/ReplicaStoreInterface';
+import { ReplicaStoreInterface } from '../../../src/replica-store/ReplicaStoreInterface';
+import { replicaStoreNode as replicaStore } from '../../../src/replica-store/replicaStore.node';
 import { WireCodec } from '../../../src/shared/serialization/types';
 import { DeChatComponents, DeChatStrategies } from '../../../src/types';
 import { WorkerData } from '../types';

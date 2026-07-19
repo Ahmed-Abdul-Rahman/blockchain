@@ -3,9 +3,26 @@
   "version": "1.0.0",
   "type": "module",
   "exports": {
-    "development": "./index.ts",
-    "types": "./dist/index.d.ts",
-    "default": "./dist/index.js"
+    ".": {
+      "browser": {
+        "types": "./dist/browser.d.ts",
+        "development": "./browser.ts",
+        "default": "./dist/browser.js"
+      },
+      "types": "./dist/index.d.ts",
+      "development": "./index.ts",
+      "default": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "development": "./node.ts",
+      "default": "./dist/node.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "development": "./browser.ts",
+      "default": "./dist/browser.js"
+    }
   },
   "scripts": {
     "dev": "tsx --conditions=development src/testNode.ts",
@@ -24,6 +41,7 @@
     "test:int:adaptive-ab": "NODE_ENV=perf LOG_LEVEL=INFO node --trace-warnings dist/tests/interop/interOpTestRunner.adaptiveAb.int.js",
     "test:int:adaptive-scale": "NODE_ENV=perf LOG_LEVEL=INFO node --trace-warnings dist/tests/interop/interOpTestRunner.adaptiveScale.int.js",
     "test:int:narrow": "NODE_ENV=perf LOG_LEVEL=INFO node --trace-warnings dist/tests/interop/interOpTestRunner.startup.int.js --nodes 3 --duration 30",
+    "test:int:hybrid-browser-stack": "NODE_ENV=perf LOG_LEVEL=INFO ../../node_modules/.bin/tsx --conditions=development tests/interop/hybridBrowserStack.int.ts",
     "test:compose:late-joiner": "bash tests/compose-interop/scripts/run-scenario.sh",
     "test:compose:late-joiner:wan": "NETEM_PROFILE=wan bash tests/compose-interop/scripts/run-scenario.sh",
     "test:compose:late-joiner:lossy": "NETEM_PROFILE=lossy bash tests/compose-interop/scripts/run-scenario.sh",
@@ -48,10 +66,12 @@
     "@libp2p/peer-id": "^5.0.10",
     "@libp2p/peer-id-factory": "^4.2.4",
     "@libp2p/tcp": "^10.0.15",
+    "@libp2p/websockets": "^9.0.0",
     "@noble/ed25519": "^3.0.0",
     "bloom-filters": "^3.0.4",
     "cbor-x": "^1.6.0",
     "es-toolkit": "^1.42.0",
+    "eventemitter3": "^5.0.0",
     "it-length-prefixed": "^9.1.1",
     "it-map": "^3.1.1",
     "it-pipe": "^3.0.1",

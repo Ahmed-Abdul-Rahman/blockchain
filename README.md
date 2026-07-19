@@ -36,12 +36,29 @@ ahmed-abdul-rahman-blockchain/
 
 ### Notable core modules (packages/core/src)
 
-- `node.ts` — node initialization & networking configuration
-- `auth.ts` — peer authentication layer
-- `DialQueue.ts` — fair / throttled peer dialing
-- `PeerExchangeService.ts` — gossip-based peer discovery
-- `PeerRegistry.ts` — memory of known peers
-- `SimplePeerScorer.ts` — scoring / backoff strategy
+- `createDeChatNode.ts` — platform-agnostic composition root
+- `platform/` — `Libp2pPlatformStack` adapters (Node TCP/mDNS, Browser WebSockets)
+- `networking/` — auth, dial queue, PEX, peer registry, scorer
+- `replica-store/` — in-memory, LevelDB (Node), IndexedDB (browser)
+
+### Platform matrix (`@dechat/core`)
+
+| Runtime | Entry | Transports | Discovery | Durable store |
+|---------|-------|------------|-----------|---------------|
+| Node | `@dechat/core` / `@dechat/core/node` | TCP (+ WS for hybrid) | mDNS + bootstrap | InMemory / LevelDB |
+| Browser | `@dechat/core/browser` | WebSockets | bootstrap (required) | InMemory / IndexedDB |
+
+Browser peers must dial at least one **bootstrap** multiaddr (usually a Node peer advertising `/ws`). Do not enable mDNS or TCP listen in the browser profile. See [ADR-0004](docs/adr/0004-platform-agnostic-libp2p-stack.md).
+
+```ts
+import { createBrowserNode } from '@dechat/core/browser';
+
+const node = await createBrowserNode(infoHash, seed, {
+  config: {
+    network: { bootstrapPeers: ['/ip4/…/tcp/…/ws/p2p/…'] },
+  },
+});
+```
 
 ---
 

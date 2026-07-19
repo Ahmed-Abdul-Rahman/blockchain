@@ -1,5 +1,5 @@
 import { logger } from '@dechat/common';
-import { sha256 } from '@dechat/crypto';
+import { base64UrlToBytes, bytesToBase64Url, sha256 } from '@dechat/crypto';
 import { IncomingStreamData, PeerId, Startable } from '@libp2p/interface';
 import * as ed from '@noble/ed25519';
 import { LRUCache } from 'lru-cache';
@@ -78,8 +78,8 @@ export class PeerAuthenticator implements Startable {
       const contextStr = this.generateNonce(myPeerId, remotePeerId, authResponse.timestamp, authResponse.nonce);
       const hashed = sha256(contextStr);
       const message = uint8ArrayFromString(hashed);
-      const pub = Buffer.from(authResponse.pub, 'base64url');
-      const sig = Buffer.from(authResponse.sig, 'base64url');
+      const pub = base64UrlToBytes(authResponse.pub);
+      const sig = base64UrlToBytes(authResponse.sig);
 
       const isVerified = await ed.verifyAsync(sig, message, pub);
 
@@ -125,8 +125,8 @@ export class PeerAuthenticator implements Startable {
     const pub = await ed.getPublicKeyAsync(this.config.nodeKey.secret);
 
     const authMessage: AuthSignMessage = {
-      pub: Buffer.from(pub).toString('base64url'),
-      sig: Buffer.from(sig).toString('base64url'),
+      pub: bytesToBase64Url(pub),
+      sig: bytesToBase64Url(sig),
       timestamp,
       nonce,
     };

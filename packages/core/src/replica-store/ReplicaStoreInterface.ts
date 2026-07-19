@@ -2,7 +2,6 @@ import { ContentHash } from '../data-replication/types';
 import { DataSerializer } from '../shared/types';
 import { DeChatFactory } from '../types';
 import { inMemoryReplicaStore } from './InMemoryReplicaStore';
-import { levelDbReplicaStore } from './LevelDbReplicaStore';
 
 export interface ReplicaStoreInterface {
   serializer: DataSerializer;
@@ -85,7 +84,22 @@ export interface ReplicaStoreInterface {
   close: () => Promise<void>;
 }
 
-export const replicaStore = (storeType: 'IN_MEMORY' | 'LEVEL_DB'): DeChatFactory<ReplicaStoreInterface> => {
-  if (storeType === 'LEVEL_DB') return levelDbReplicaStore();
+/**
+ * Portable replica-store factory (in-memory only).
+ * For LevelDB use {@link replicaStoreNode} from `@dechat/core/node`.
+ * For IndexedDB use {@link indexedDbReplicaStore}.
+ */
+export const replicaStore = (
+  storeType: 'IN_MEMORY' | 'LEVEL_DB' | 'INDEXED_DB' = 'IN_MEMORY',
+): DeChatFactory<ReplicaStoreInterface> => {
+  if (storeType === 'LEVEL_DB') {
+    throw new Error(
+      "LEVEL_DB is Node-only. Import { replicaStoreNode } from '@dechat/core/node' (or pass 'IN_MEMORY' / IndexedDB).",
+    );
+  }
+  if (storeType === 'INDEXED_DB') {
+    // Lazy import kept in the same package but not LevelDB — callers should prefer indexedDbReplicaStore().
+    throw new Error("Use indexedDbReplicaStore() from '@dechat/core/browser' for INDEXED_DB.");
+  }
   return inMemoryReplicaStore();
 };

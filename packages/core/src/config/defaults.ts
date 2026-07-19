@@ -3,6 +3,9 @@ import { PartialDeep } from 'type-fest';
 import { DeChatConfig, ValidationRule } from './types';
 
 export const DECHAT_DEFAULTS: DeChatConfig = {
+  platform: {
+    kind: 'node',
+  },
   network: {
     listenAddrs: ['/ip4/0.0.0.0/tcp/0'],
     bootstrapPeers: [],
@@ -116,6 +119,9 @@ export const DECHAT_DEFAULTS: DeChatConfig = {
  * Add any new configuration constraints to this array.
  * The system automatically enforces them.
  */
+const hasTcpListenAddr = (addrs: readonly string[]): boolean =>
+  addrs.some((addr) => addr.includes('/tcp/') && !addr.includes('/ws'));
+
 const configRules: ValidationRule[] = [
   {
     name: 'SyncPexCooldowns',
@@ -126,13 +132,38 @@ const configRules: ValidationRule[] = [
   },
   {
     name: 'ValidListenAddrs',
-    validate: (config) => Array.isArray(config.network.listenAddrs) && config.network.listenAddrs.length > 0,
-    message: 'network.listenAddrs cannot be empty. You must provide at least one listening address.',
+    validate: (config) => {
+      if (config.platform.kind === 'browser') return Array.isArray(config.network.listenAddrs);
+      return Array.isArray(config.network.listenAddrs) && config.network.listenAddrs.length > 0;
+    },
+    message: 'network.listenAddrs cannot be empty on Node. You must provide at least one listening address.',
   },
   {
     name: 'ValidConnectionLimits',
     validate: (config) => config.network.maxConnections > config.network.minConnections,
     message: 'maxConnections must be strictly greater than minConnections.',
+  },
+  {
+    name: 'BrowserRequiresBootstrap',
+    validate: (config) =>
+      config.platform.kind !== 'browser' ||
+      (Array.isArray(config.network.bootstrapPeers) && config.network.bootstrapPeers.length > 0),
+    message: 'Browser platform requires at least one network.bootstrapPeers multiaddr.',
+  },
+  {
+    name: 'BrowserDisallowsMdns',
+    validate: (config) => config.platform.kind !== 'browser' || config.discovery.enableMdns === false,
+    message: 'Browser platform forbids discovery.enableMdns (mDNS is Node LAN only).',
+  },
+  {
+    name: 'BrowserDisallowsTcpListen',
+    validate: (config) => config.platform.kind !== 'browser' || !hasTcpListenAddr(config.network.listenAddrs),
+    message: 'Browser platform rejects TCP listen multiaddrs — use dial-only or WebSocket-capable addrs.',
+  },
+  {
+    name: 'BrowserDisallowsLevelDb',
+    validate: (config) => config.platform.kind !== 'browser' || config.strategies.store.type !== 'LEVEL_DB',
+    message: 'LEVEL_DB store is Node-only. Use IN_MEMORY or INDEXED_DB on browser.',
   },
 ];
 
@@ -157,10 +188,17 @@ export const isConfigValid = (config: DeChatConfig): boolean => {
 };
 
 /**
- * Deep merge user overrides with defaults, and validate the final result.
+ * Deep merge user overrides with defaults, apply platform profile defaults, and validate.
  */
 export const resolveConfig = (userOpts?: PartialDeep<DeChatConfig>): DeChatConfig => {
-  const resolved = userOpts ? merge(DECHAT_DEFAULTS, userOpts) : DECHAT_DEFAULTS;
+  const resolved = userOpts ? merge(structuredClone(DECHAT_DEFAULTS), userOpts) : structuredClone(DECHAT_DEFAULTS);
+
+  if (resolved.platform.kind === 'browser') {
+    resolved.discovery.enableMdns = false;
+    // es-toolkit/lodash-style merge does not replace arrays with `[]` — force dial-only default.
+    resolved.network.listenAddrs =
+      userOpts?.network?.listenAddrs !== undefined ? [...userOpts.network.listenAddrs] : [];
+  }
 
   if (!isConfigValid(resolved)) {
     throw new Error('Invalid DeChat node configuration provided. Please fix the validation errors above.');
