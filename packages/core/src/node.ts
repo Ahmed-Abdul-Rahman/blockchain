@@ -46,11 +46,20 @@ export const createNodeNode = (
     strategies,
   });
 
+/**
+ * Distinguish the options bag (`{ config?, strategies?, platformStack? }`) from
+ * `PartialDeep<DeChatConfig>` (which also has a `strategies` field for synchronizer/store).
+ * Mis-detecting config as the options bag drops listenAddrs and strategy factories — Compose CI symptom.
+ */
 const isCreateNodeOptions = (
   value: unknown,
 ): value is Omit<CreateDeChatNodeOptions, 'platformStack'> & { platformStack?: PlatformStackInput } => {
   if (typeof value !== 'object' || value === null) return false;
-  return 'config' in value || 'strategies' in value || 'platformStack' in value;
+  // Top-level DeChatConfig keys → always treat as config overrides (4th-arg strategies still apply).
+  if ('network' in value || 'discovery' in value || 'platform' in value || 'peerAuthenticator' in value) {
+    return false;
+  }
+  return 'config' in value || 'platformStack' in value || 'strategies' in value;
 };
 
 const normalizeCreateNodeArgs = (
