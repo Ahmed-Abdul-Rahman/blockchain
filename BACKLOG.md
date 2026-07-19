@@ -199,7 +199,7 @@ The core architecture has successfully transitioned to a robust, Dependency-Inje
 > **Implementation plan:** [tasks/tier2-compose-interop.md](tasks/tier2-compose-interop.md) — groomed checklist, phased PRs, approval gate.
 
 * **Severity:** Medium–High (realistic P2P conditions; catches bugs invisible on localhost worker threads)
-* **Status:** **Active** — PR A (#42) + PR B (#43) merged; PR C in progress (`feat/tier2-compose-ab-netem`)
+* **Status:** **Active** — PR A–C merged (#42–#44); PR D in progress (`feat/tier2-compose-nightly-split-brain`)
 * **Depends on:** Task 5.1 — **done**
 * **Goal:** Run the same DeChat convergence scenarios in **isolated containers** with configurable network conditions (latency, jitter, bandwidth, partitions), following the pattern libp2p adopted after leaving Testground.
 

@@ -1,0 +1,148 @@
+# Tier 2 Compose soak — scheduled on develop after worker-thread scale nightly (03:00 UTC).
+# Not a required PR gate; promote only after 7 nights < 5% flake (see compose-interop README).
+name: Compose Interop Nightly
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      compose_nodes_late_joiner:
+        description: 'Nodes for late-joiner lan/wan jobs'
+        required: false
+        default: '12'
+      compose_nodes_split_brain:
+        description: 'Even node count for split-brain'
+        required: false
+        default: '6'
+
+concurrency:
+  group: compose-interop-nightly-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  late-joiner-lan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Enable Corepack (Yarn 4)
+        run: |
+          corepack enable
+          corepack prepare yarn@4.12.0 --activate
+      - run: yarn install --immutable
+      - run: yarn build
+      - name: Docker availability
+        run: |
+          docker version
+          docker compose version
+      - name: Compose late-joiner (lan, 12-node soak)
+        env:
+          COMPOSE_NODES: ${{ github.event.inputs.compose_nodes_late_joiner || '12' }}
+          ADAPTIVE_ENABLED: 'true'
+          SCHEDULER: heuristic
+          SYNC_INTERVAL_MS: '15000'
+          NETEM_PROFILE: lan
+          NODE_OPTIONS: '--max-old-space-size=6144'
+        run: yarn workspace @dechat/core test:compose:late-joiner
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compose-nightly-late-joiner-lan
+          path: packages/core/tests/compose-interop/reports/
+          if-no-files-found: ignore
+      - name: Teardown
+        if: always()
+        run: |
+          for i in $(seq 0 63); do docker rm -f "dechat-node-${i}" >/dev/null 2>&1 || true; done
+          docker compose -p dechat-compose-interop \
+            -f packages/core/tests/compose-interop/docker-compose.yml \
+            down -v --remove-orphans || true
+
+  late-joiner-wan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Enable Corepack (Yarn 4)
+        run: |
+          corepack enable
+          corepack prepare yarn@4.12.0 --activate
+      - run: yarn install --immutable
+      - run: yarn build
+      - name: Docker availability
+        run: |
+          docker version
+          docker compose version
+      - name: Compose late-joiner (wan, 12-node soak)
+        env:
+          COMPOSE_NODES: ${{ github.event.inputs.compose_nodes_late_joiner || '12' }}
+          ADAPTIVE_ENABLED: 'true'
+          SCHEDULER: heuristic
+          SYNC_INTERVAL_MS: '15000'
+          NETEM_PROFILE: wan
+          NODE_OPTIONS: '--max-old-space-size=6144'
+        run: yarn workspace @dechat/core test:compose:late-joiner
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compose-nightly-late-joiner-wan
+          path: packages/core/tests/compose-interop/reports/
+          if-no-files-found: ignore
+      - name: Teardown
+        if: always()
+        run: |
+          for i in $(seq 0 63); do docker rm -f "dechat-node-${i}" >/dev/null 2>&1 || true; done
+          docker compose -p dechat-compose-interop \
+            -f packages/core/tests/compose-interop/docker-compose.yml \
+            down -v --remove-orphans || true
+
+  split-brain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Enable Corepack (Yarn 4)
+        run: |
+          corepack enable
+          corepack prepare yarn@4.12.0 --activate
+      - run: yarn install --immutable
+      - run: yarn build
+      - name: Docker availability
+        run: |
+          docker version
+          docker compose version
+      - name: Compose split-brain heal
+        env:
+          COMPOSE_NODES: ${{ github.event.inputs.compose_nodes_split_brain || '6' }}
+          ADAPTIVE_ENABLED: 'true'
+          SCHEDULER: heuristic
+          SYNC_INTERVAL_MS: '15000'
+          NETEM_PROFILE: lan
+          NODE_OPTIONS: '--max-old-space-size=6144'
+        run: yarn workspace @dechat/core test:compose:split-brain
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compose-nightly-split-brain
+          path: packages/core/tests/compose-interop/reports/
+          if-no-files-found: ignore
+      - name: Teardown
+        if: always()
+        run: |
+          for i in $(seq 0 63); do docker rm -f "dechat-node-${i}" >/dev/null 2>&1 || true; done
+          docker compose -p dechat-compose-interop \
+            -f packages/core/tests/compose-interop/docker-compose.yml \
+            down -v --remove-orphans || true

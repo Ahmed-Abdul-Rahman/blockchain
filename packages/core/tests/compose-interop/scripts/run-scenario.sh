@@ -18,6 +18,8 @@ NETWORK_ID="${NETWORK_ID:-compose-interop-$(date +%s)}"
 LISTEN_PORT="${LISTEN_PORT:-4001}"
 NETEM_PROFILE="${NETEM_PROFILE:-lan}"
 COMPOSE_ORCHESTRATOR="${COMPOSE_ORCHESTRATOR:-scenarios/late-joiner-adaptive.js}"
+# late-joiner: last node is ROLE=late-joiner; all-producers: every node is ROLE=producer (split-brain).
+COMPOSE_ROLE_MODE="${COMPOSE_ROLE_MODE:-late-joiner}"
 
 # Load static netem profile (NETEM_OPTS) when present.
 NETEM_ENV_FILE="${COMPOSE_DIR}/netem/${NETEM_PROFILE}.env"
@@ -72,9 +74,15 @@ echo "[compose] using network ${NETWORK_NAME}"
 NODE_IMAGE="${PROJECT}-node"
 PRODUCER_COUNT=$((COMPOSE_NODES - 1))
 
-echo "[compose] starting ${PRODUCER_COUNT} producers + 1 late joiner (total=${COMPOSE_NODES})"
+if [[ "${COMPOSE_ROLE_MODE}" == "all-producers" ]]; then
+  echo "[compose] starting ${COMPOSE_NODES} producers (role-mode=all-producers)"
+else
+  echo "[compose] starting ${PRODUCER_COUNT} producers + 1 late joiner (total=${COMPOSE_NODES})"
+fi
 for i in $(seq 0 $((COMPOSE_NODES - 1))); do
-  if [[ "${i}" -eq "${PRODUCER_COUNT}" ]]; then
+  if [[ "${COMPOSE_ROLE_MODE}" == "all-producers" ]]; then
+    ROLE="producer"
+  elif [[ "${i}" -eq "${PRODUCER_COUNT}" ]]; then
     ROLE="late-joiner"
   else
     ROLE="producer"
