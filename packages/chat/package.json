@@ -1,0 +1,43 @@
+{
+  "name": "@dechat/chat",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "browser": {
+        "types": "./dist/browser.d.ts",
+        "development": "./browser.ts",
+        "default": "./dist/browser.js"
+      },
+      "types": "./dist/index.d.ts",
+      "development": "./index.ts",
+      "default": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "development": "./node.ts",
+      "default": "./dist/node.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "development": "./browser.ts",
+      "default": "./dist/browser.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc-alias --resolve-full-paths",
+    "clean": "rm -rf dist",
+    "test": "../../node_modules/.bin/vitest run **/*.unit.test.ts",
+    "test:coverage": "../../node_modules/.bin/vitest run --coverage",
+    "test:int": "NODE_ENV=perf LOG_LEVEL=INFO ../../node_modules/.bin/vitest run tests/interop/twoNodeChatClient.int.test.ts --testTimeout=60000"
+  },
+  "dependencies": {
+    "@dechat/common": "*",
+    "@dechat/core": "*",
+    "@dechat/crypto": "*",
+    "type-fest": "^5.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}

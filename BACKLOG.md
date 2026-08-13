@@ -199,7 +199,7 @@ The core architecture has successfully transitioned to a robust, Dependency-Inje
 > **Implementation plan:** [tasks/tier2-compose-interop.md](tasks/tier2-compose-interop.md) — groomed checklist, phased PRs, approval gate.
 
 * **Severity:** Medium–High (realistic P2P conditions; catches bugs invisible on localhost worker threads)
-* **Status:** **Active** — PR A–C merged (#42–#44); PR D in progress (`feat/tier2-compose-nightly-split-brain`)
+* **Status:** **Done (v1)** — PR A–D merged (#42–#45). Soak nightly on `develop`; promote Compose to PR gate only after 7 nights &lt; 5% flake.
 * **Depends on:** Task 5.1 — **done**
 * **Goal:** Run the same DeChat convergence scenarios in **isolated containers** with configurable network conditions (latency, jitter, bandwidth, partitions), following the pattern libp2p adopted after leaving Testground.
 
@@ -346,7 +346,7 @@ Apply via `apply-netem.sh` on container start (libp2p test-plans pattern). Do **
 
 #### Out of scope (Tier 2 v1)
 
-- Browser / WebRTC nodes in compose
+- Browser / WebRTC nodes in compose → see **Task 6.2**
 - 500+ nodes / Kubernetes (revisit only if Compose hits limits — kompose or k3s)
 - Testground migration
 - Cross-version libp2p interop (DeChat-only)
@@ -361,3 +361,74 @@ Apply via `apply-netem.sh` on container start (libp2p test-plans pattern). Do **
 | 5.2d — Nightly CI + split-brain | 2 days | Scheduled workflow |
 
 **Total:** ~8–10 dev-days after Tier 1 complete.
+
+---
+
+## 🌐 Category 6: Browser / Platform Portability
+
+### Task 6.1: Platform-Agnostic `@dechat/core` (Node + Browser) — Completed (v1)
+
+> **Implementation plan:** [tasks/platform-agnostic-core.md](tasks/platform-agnostic-core.md)
+
+* **Severity:** High (unblocks `apps/web` and real client peers)
+* **Status:** **Done (v1)** — [PR #46](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/46) merged to `develop` (2026-07-19)
+* **Goal:** Run the DeChat P2P engine in browser JS as well as Node without rewriting protocol layers.
+
+**Delivered:**
+
+* `Libp2pPlatformStack` seam + Node / Browser adapters (`createNode`, `createBrowserNode`)
+* Portable `@dechat/crypto` (noble) + dual `@dechat/common` logger + conditional package exports
+* `IndexedDbReplicaStore`, ADR-0004, CONTEXT glossary, hybrid WS smoke (`test:int:hybrid-browser-stack`)
+* Compose/interop regression fix for `createNode` options vs `DeChatConfig.strategies` ambiguity
+
+---
+
+### Task 6.2: Browser Platform Hardening (Post–Platform-Agnostic v1)
+
+* **Severity:** Medium (productizes the browser path beyond Node-hosted stack smoke)
+* **Status:** **Backlog** — depends on Task 6.1 (done)
+* **Related:** ADR-0004; Tier 2 Compose out-of-scope for WebRTC (Task 5.2)
+
+#### Work items
+
+1. **Real-browser CI smoke (Playwright or Vitest browser)**  
+   Drive a genuine browser bundle that calls `createBrowserNode`, dials a Node bootstrap `/ws` multiaddr, completes auth, and lands in `PeerRegistry`. Replaces reliance on Node-hosted browser-stack smoke alone.
+
+2. **Wire `apps/web` to `createBrowserNode`**  
+   Product entry: bootstrap multiaddr config, start/stop lifecycle, and a minimal UI path that proves mesh join from a real browser tab.
+
+3. **IndexedDB reload persistence smoke**  
+   `IndexedDbReplicaStore` exists; add a test that puts a content hash, reloads (or re-opens the DB), and asserts the hash survives — closes Phase 4’s “done when” fully.
+
+4. **CI browser-bundle guard**  
+   Fail the browser build (esbuild/Vite metafile) if `level`, `@libp2p/tcp`, or Node `fs`/`crypto` polyfills appear in the happy-path graph.
+
+5. **Circuit-relay + WebRTC (browser↔browser / NAT)**  
+   Stretch from the v1 plan: relay client wiring and optional `@libp2p/webrtc` once on a libp2p major that matches core; Compose WebRTC nodes remain a separate Tier-2 follow-up.
+
+#### Acceptance criteria (when groomed into a plan)
+
+- [ ] Playwright/Vitest browser job green in CI (auth + registry)
+- [ ] `apps/web` can join a local Node bootstrap without Node polyfills
+- [ ] IndexedDB reload smoke green
+- [ ] Bundle metafile guard blocks LevelDB/TCP leakage
+- [ ] (Optional) Documented relay path for two browser peers behind NAT
+
+#### Estimated effort
+
+| Slice | Effort |
+|-------|--------|
+| Real-browser smoke + CI | 2–4 days |
+| `apps/web` wiring | 2–3 days |
+| IndexedDB reload smoke | 1 day |
+| Bundle metafile guard | 0.5–1 day |
+| Circuit-relay / WebRTC spike | 3–7 days (separate ADR if productionized) |
+
+---
+
+## Category 7: Chat application readiness (pre-UI)
+
+* **Status:** In progress — [tasks/chat-application-readiness.md](tasks/chat-application-readiness.md)
+* **Related:** ADR-0005 (room-scope layer); ADR-0001; ADR-0004; Task 6.2
+
+Wire `@dechat/core` (browser exports, auth PeerId binding, room-scope layer) then `@dechat/chat` (`ChatClient`) before any React UI. Open rooms + hybrid plaintext first; capability rooms and E2EE later.

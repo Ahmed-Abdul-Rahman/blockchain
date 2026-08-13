@@ -9,6 +9,7 @@ import { DirectPropagationInterface } from './data-propagation/direct/DirectProp
 import { ContentHashStrategyInterface } from './data-replication/content-hash/types';
 import { DataReplicationInterface } from './data-replication/DataReplicationInterface';
 import { ReplicationProtocolInterface } from './data-replication/replication-protocol/ReplicationProtocolInterface';
+import type { RoomScopeInterface } from './data-replication/room-scope/RoomScopeInterface';
 import { AuthMetrics, DialQueueMetrics, PeerExchangeServiceMetrics, PeerRegistryMetrics } from './metrics';
 import { AntiEntropyMetrics } from './metrics/interfaces/AntiEntropyMetrics';
 import { GossipSubPropagationMetrics } from './metrics/interfaces/GossipSubPropagationMetrics';
@@ -28,6 +29,7 @@ export interface DeChatStrategies {
   contentHasher?: DeChatFactory<ContentHashStrategyInterface>;
   replicationProtocol?: DeChatFactory<ReplicationProtocolInterface>;
   dataReplication?: DeChatFactory<DataReplicationInterface>;
+  roomScope?: DeChatFactory<RoomScopeInterface>;
   networkExchanger?: DeChatFactory<AntiEntropyNetworkExchange>;
   antiEntropyManager?: DeChatFactory<AntiEntropyManager>;
 }
@@ -60,6 +62,7 @@ export interface DeChatComponents {
     replicaStore?: ReplicaStoreInterface;
     contentHasher?: ContentHashStrategyInterface;
     dataReplication?: DataReplicationInterface;
+    roomScope?: RoomScopeInterface;
     replicationProtocol?: ReplicationProtocolInterface;
     prefixTrie?: PrefixTrie;
     networkExchanger?: AntiEntropyNetworkExchange;

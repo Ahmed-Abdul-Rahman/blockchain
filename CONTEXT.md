@@ -67,9 +67,17 @@ Ubiquitous language for DeChat — a decentralized P2P networking platform (libp
 | **Boot lock** | Requirement that `replicaStore.init()` completes (trie rebuild) before the libp2p network starts. |
 | **Handler registry** | Multiplexing pattern allowing multiple independent subscribers on the same broadcast topic or direct protocol. |
 
-## Application (planned, not yet built)
+## Application
 
 | Term | Definition |
 |------|------------|
-| **Chat room** | A topic-scoped conversation whose messages are fully replicated among members. |
-| **Encrypted chat** | Planned application layer with E2EE on top of P2P propagation — not implemented yet. |
+| **Chat client** | Application-facing participant that joins rooms, sends messages, and projects history. _Avoid_: chat-utility, chat-client package name (the package is `@dechat/chat`) |
+| **Chat room** | A conversation whose messages are fully replicated among members that have joined it. |
+| **Room ID** | Opaque identifier of a chat room. _Avoid_: topic (the gossip channel derived from a room ID), channel |
+| **Chat message** | An application envelope stored as content-addressed payload in a room. |
+| **Message projection** | Visible room history obtained by replaying stored events and omitting tombstoned hashes. |
+| **Open room** | A chat room anyone on the same network ID may join. _Avoid_: public room |
+| **Room membership** | The set of rooms a node has joined and therefore replicates. |
+| **Room scope** | Replication layer that confines announce, store, and pull to joined rooms, sitting on top of existing replication strategies. |
+| **Capability room** | Invite- or certificate-gated room membership (planned). _Avoid_: private room (ambiguous with E2EE) |
+| **Encrypted chat** | Application-layer E2EE on top of P2P propagation — not implemented yet. |

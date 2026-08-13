@@ -56,8 +56,7 @@ Rejected enhancement requests are recorded in `.out-of-scope/*.md` (create the d
 | Resource | Path |
 |----------|------|
 | Domain glossary | `CONTEXT.md` (repo root) |
-| ADRs | `docs/adr/` — `0001-topic-based-replication-for-chat-rooms.md`, `0002-tombstone-event-sourcing-for-deletions.md` |
-| ADRs | `docs/adr/` — `0001-topic-based-replication-for-chat-rooms.md`, `0002-tombstone-event-sourcing-for-deletions.md`, `0003-adaptive-anti-entropy-scheduling.md` |
+| ADRs | `docs/adr/` — `0001`–`0005` (topic replication, TOMBSTONE, adaptive anti-entropy, platform stack, room-scope layer) |
 | Replication protocol spec | `docs/core/data-replication-protocol.md` |
 | Design principles | `docs/core/design-principles.md` |
 | Agent coding rules | `.cursorrules` |

@@ -1,35 +1,41 @@
 # Active plans
 
-## Platform-agnostic `@dechat/core` (Node + Browser) — READY FOR REVIEW
+## Chat application readiness (pre-UI)
 
-**Spec:** [tasks/platform-agnostic-core.md](platform-agnostic-core.md)  
-**Branch:** `feature/platform-agnostic-core`  
-**Status:** Phases 0–5 implemented on feature branch (WebRTC/circuit-relay + IndexedDB reload smoke deferred).
+**Spec:** [tasks/chat-application-readiness.md](chat-application-readiness.md)  
+**Status:** Implementing (decisions accepted 2026-08-13)  
+**Intent:** Land core prerequisites + `@dechat/chat` deep module **before** any React UI.
 
-### Done
+### Locked decisions
 
-- [x] Phase 0: ADR-0004 + CONTEXT glossary
-- [x] Phase 1: portable crypto + dual logger + core Node-leak cleanup
-- [x] Phase 2: `Libp2pPlatformStack` + conditional exports
-- [x] Phase 3: browser stack + hybrid smoke (Node-hosted WS client)
-- [x] Phase 4: `IndexedDbReplicaStore` + README platform matrix
-- [x] Phase 5: skill map + docs
+1. `@dechat/chat` + `ChatClient`
+2. Room scope = **layer on existing strategies** (ADR-0005), not a rewrite
+3. Hybrid + plaintext first
+4. Auth PeerId binding early
+5. Open rooms for v1
+6. No temporary single-room client — room layer first
 
-### Verify
+### Phase order
 
-- [x] Unit tests green (crypto/common/core)
-- [x] `test:int:narrow` green (after WS-on-Node made opt-in via `/ws` listen addrs)
-- [x] `test:int:hybrid-browser-stack` green
-
-### Follow-ups (not blocking)
-
-- Real browser (Playwright/Vitest browser) smoke
-- Circuit-relay for browser↔browser
-- IndexedDB reload persistence smoke in apps/web
+| Phase | Focus | Status |
+|-------|--------|--------|
+| 0 | Glossary + ADR-0005 + backlog | Done |
+| 1 | `@dechat/core/browser` strategy exports | Done |
+| 2 | Auth: bind presented key ↔ libp2p PeerId | Done |
+| 3 | Room-scoped replication layer | Done |
+| 4 | `@dechat/chat` + two-node ChatClient interop | Done |
+| 5–7 | Identity/membership/E2EE, bootstrap, CI | Later |
 
 ---
 
 ## Closed
+
+### Platform-agnostic `@dechat/core` (Node + Browser) — closed (v1)
+
+**Spec:** [tasks/platform-agnostic-core.md](platform-agnostic-core.md)  
+**Status:** Closed — [PR #46](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/46) merged to `develop` on 2026-07-19.
+
+Follow-ups tracked as [BACKLOG Task 6.2](../BACKLOG.md) (real-browser smoke, IndexedDB reload, circuit-relay / WebRTC, CI bundle guard).
 
 ### Tier 2 Compose Interop — closed (v1)
 
