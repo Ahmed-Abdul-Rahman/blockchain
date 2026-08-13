@@ -12,6 +12,74 @@ The core architecture has successfully transitioned to a robust, Dependency-Inje
 
 ---
 
+## P0 — Address first: Mesh identity vs room membership
+
+> **Do this before further chat/UI work.** It is a correctness bug in how DeChat partitions meshes, not a room-ACL feature.
+
+### Task 0.1: Unify `infoHash` / network ID as mesh partition (not a room join ticket)
+
+* **Severity:** **Critical** (mesh isolation)
+* **Status:** **Open — next**
+* **Related:** [CONTEXT.md](CONTEXT.md) (Network ID, Open room, Verified peer); ADR-0005; `createDeChatNode`; `PeerAuthenticator`
+
+#### Intended design (three different questions)
+
+| Question | Mechanism | Not this |
+|----------|-----------|----------|
+| Is this a **DeChat** peer, or some other libp2p/IPFS node? | DeChat protocol strings (`/deChat/core/auth/1.0.0`, PEX, replication) + Ed25519 auth. Fail handshake → never enter `PeerRegistry`. | `infoHash` is unnecessary for this. |
+| Which **DeChat mesh** is this (prod vs staging, two products, two testnets)? | **Network ID / `infoHash`.** Peers on different IDs must not authenticate, PEX, or replicate with each other. | Not a room password. |
+| May this peer enter chat room `lobby`? | `joinRoom(roomId)` (open rooms: any **verified peer already on this mesh**, no invite). Later: capability rooms. | Not `infoHash`. Knowing the mesh ID is not a ticket into every room. |
+
+`infoHash` exists so that in a vast shared P2P underlay we can tell “this node is on *our* DeChat network” versus another DeChat (or other) network that happens to speak similar stacks. Discovery + onboard + auth already reject non-DeChat peers. Room join is a separate application concern.
+
+#### What the code does today (the bug)
+
+`createNode(infoHash, nodeSeed, …)` / `createDeChatNode` uses `infoHash` **only** to set libp2p Identify `protocolPrefix` via `generateIdProtocolPrefix(infoHash)` (CRC-32 → 7-char base36). It does **not** flow into the rest of the mesh.
+
+Meanwhile these stay **global defaults**, independent of `infoHash`:
+
+| Knob | Default | Effect |
+|------|---------|--------|
+| `config.peerAuthenticator.networkId` | `'deChat-core-net-v1'` | Bound into the auth nonce. Two nodes with *different* `infoHash` still auth if both leave this default. |
+| `pexService.pexTopic` / `pexProtocol` | `/deChat/core/peer-exchange-…` | PEX gossip is not mesh-scoped. |
+| `strategies.replication.topic` / `protocol` | `/deChat/v1/topic/replication-protocol` etc. | Hash ANNOUNCE/REQUEST is not mesh-scoped. |
+| Room GossipSub topics | `/deChat/v1/room/<roomId>` | Same `roomId` on two meshes would share a topic. |
+| Anti-entropy protocol | `/deChat/v1/anti-entropy/1.0.0` | Same. |
+
+Interop workers pass `networkId` as `createNode`’s first argument (so Identify prefixes differ) but typically **do not** set `peerAuthenticator.networkId`. Distinct `--net` flags therefore do **not** fully isolate leftover workers on the same host.
+
+#### Why this is serious
+
+1. **Two DeChat deployments on the same LAN / shared bootstrap** (different `infoHash` by intent) can still complete auth, PEX, and replicate — including **the same room topic** if room IDs collide. Mesh isolation is the whole point of `infoHash`; today it is incomplete.
+2. **Docs / chat readiness** had started to say “anyone on the same `infoHash` may `joinRoom`.” That is the wrong layer. Open room = no invite among **verified peers**. Do not treat mesh ID as a room ACL (that mistake is corrected in CONTEXT; this task is the **code** fix).
+3. **Two names, one idea, not wired:** glossary “Network ID (`infoHash`)” vs config `peerAuthenticator.networkId` vs `createNode`’s first argument. Callers (and interop) reasonably assume one knob; the implementation has two that diverge.
+
+Non-DeChat libp2p peers are already excluded by protocol + auth. That part is fine. The hole is **DeChat-vs-DeChat mesh partition**.
+
+#### Proposed direction (groom when implementing)
+
+1. Treat **one canonical mesh id** (keep calling it Network ID / `infoHash` in the glossary). `createNode(infoHash, …)` must apply it to Identify **and** auth `networkId`, and namespace PEX / replication / room / anti-entropy protocol strings (or equivalent isolation that cannot cross-talk).
+2. Do **not** use that id as `joinRoom` authorization. Open rooms stay: verified peer + explicit `joinRoom(roomId)`.
+3. Tests: two in-process nodes with **different** `infoHash` on the same listen/bootstrap must **fail** auth (or never share PEX/replication/room topics). Two nodes with the **same** `infoHash` still form a mesh. Chat interop must keep using one mesh id and `joinRoom` for rooms.
+4. Align `@dechat/chat` `CreateChatClientOptions.infoHash` with that single knob; README already states mesh vs room.
+
+#### Acceptance criteria
+
+- [ ] A single mesh id from `createNode` / `createChatClient` partitions Identify, auth, PEX, and replication (no cross-mesh gossip of hashes or room announces).
+- [ ] Unit or interop test: different `infoHash` → no verified registry membership and no shared room/replication topic traffic.
+- [ ] `joinRoom` still does not consult `infoHash`; open-room wording stays “verified peer,” not “knows the infoHash.”
+- [ ] Interop `--net` / worker `networkId` actually isolates leftover workers.
+
+#### Affected modules
+
+`packages/core/src/createDeChatNode.ts`, `packages/core/src/config/defaults.ts` (`peerAuthenticator.networkId`, PEX, replication, anti-entropy protocol strings), `packages/core/src/networking/PeerAuthenticator.ts`, `packages/core/src/data-replication/room-scope/roomId.ts` (`roomTopic`), `packages/chat/src/createChatClient.ts`, interop `workerUitls.ts` / compose `NETWORK_ID`.
+
+#### Estimated effort
+
+~2–4 days including tests (namespacing protocol strings + one isolation interop).
+
+---
+
 ## 🏎️ Category 1: Performance & CPU Optimizations
 
 ### Task 1.1: Replace JSON Serialization with Binary Formats — Completed (Phase 1)
@@ -431,4 +499,4 @@ Apply via `apply-netem.sh` on container start (libp2p test-plans pattern). Do **
 * **Status:** In progress — [tasks/chat-application-readiness.md](tasks/chat-application-readiness.md)
 * **Related:** ADR-0005 (room-scope layer); ADR-0001; ADR-0004; Task 6.2
 
-Wire `@dechat/core` (browser exports, auth PeerId binding, room-scope layer) then `@dechat/chat` (`ChatClient`) before any React UI. Open rooms + hybrid plaintext first; capability rooms and E2EE later.
+Wire `@dechat/core` (browser exports, auth PeerId binding, room-scope layer) then `@dechat/chat` (`ChatClient`) before any React UI. Open rooms = verified peers may `joinRoom` (no invite); `infoHash` is mesh partition only — see **Task 0.1**. Body E2EE: ADR-0006.

@@ -27,9 +27,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && tsc-alias --resolve-full-paths",
     "clean": "rm -rf dist",
-    "test": "../../node_modules/.bin/vitest run **/*.unit.test.ts",
-    "test:coverage": "../../node_modules/.bin/vitest run --coverage",
-    "test:int": "NODE_ENV=perf LOG_LEVEL=INFO ../../node_modules/.bin/vitest run tests/interop/twoNodeChatClient.int.test.ts --testTimeout=60000"
+    "test": "../../node_modules/.bin/vitest run tests/unit",
+    "test:coverage": "../../node_modules/.bin/vitest run --coverage tests/unit",
+    "test:int": "NODE_ENV=perf LOG_LEVEL=INFO ../../node_modules/.bin/vitest run tests/interop --testTimeout=90000 --fileParallelism=false",
+    "bootstrap": "../../node_modules/.bin/tsx --conditions=development src/bootstrap/runBootstrap.ts"
   },
   "dependencies": {
     "@dechat/common": "*",

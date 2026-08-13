@@ -53,6 +53,8 @@ export { PeerAuthenticator, peerAuthenticator } from './src/networking/PeerAuthe
 export { PeerDiscoveryManager, peerDiscoveryManager } from './src/networking/PeerDiscoveryManager';
 export { PeerExchangeService, peerExchangeService } from './src/networking/PeerExchangeService';
 export { PeerRegistry, peerRegistry } from './src/networking/PeerRegistry';
+export { peerIdFromEd25519PublicKeyBytes } from './src/networking/peerIdFromEd25519PublicKeyBytes';
+export { peerIdFromNodeSeed } from './src/networking/peerIdFromNodeSeed';
 export { SimplePeerScorer, simplePeerScorer } from './src/networking/SimplePeerScorer';
 export { createNode, createNodeNode } from './src/node';
 export { createBrowserPlatformStack } from './src/platform/createBrowserPlatformStack';

@@ -9,6 +9,7 @@ import type { ChatClient } from '../../src/ChatClient';
 import { createChatClient } from '../../src/node';
 
 const INFO_HASH = 'chat-client-two-node-v1';
+const NETWORK_ID = 'chat-client-two-node-net';
 const LOBBY = 'lobby';
 const SECRET = 'secret-room';
 const SETTLE_MS = 20_000;
@@ -38,7 +39,8 @@ const waitUntil = async (
 };
 
 const nodeConfig = (bootstrapPeers: readonly string[]) => ({
-  discovery: { enableMdns: false },
+  peerAuthenticator: { networkId: NETWORK_ID },
+  discovery: { enableMdns: false, onBoardingPeerTime: 300 },
   network: {
     listenAddrs: ['/ip4/127.0.0.1/tcp/0'],
     bootstrapPeers: [...bootstrapPeers],

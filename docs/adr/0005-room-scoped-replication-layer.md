@@ -16,7 +16,7 @@ The layer (`RoomScopedReplication`) wraps an inner `DataReplicationInterface` (t
 - **Gating** — `requestMissingData` / delegate `onPeerAnnounced` ignore hashes not mapped to a joined room, so global anti-entropy cannot suck in another room’s payloads.
 - **Gap fill** — after join, the layer asks peers for that room’s hash list over a direct protocol (room-index), then pulls via the **existing** replication protocol.
 
-Open rooms (anyone on the same network ID may `joinRoom`) are v1. Capability/invite rooms come later and can reuse this membership set.
+Open rooms (any verified peer on this mesh may `joinRoom`; network ID is not a room ACL) are v1. Capability/invite rooms come later and can reuse this membership set.
 
 ## Considered options
 

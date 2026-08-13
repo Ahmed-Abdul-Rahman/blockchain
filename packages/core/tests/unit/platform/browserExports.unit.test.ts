@@ -15,6 +15,8 @@ describe('@dechat/core/browser public surface', () => {
     expect(typeof browser.topicBasedContentHashReplication).toBe('function');
     expect(typeof browser.antiEntropyManager).toBe('function');
     expect(typeof browser.indexedDbReplicaStore).toBe('function');
+    expect(typeof browser.peerIdFromNodeSeed).toBe('function');
+    expect(typeof browser.portableRoomReplicationStrategies).toBe('function');
   });
 
   it('does not export Node-only composition (TCP, mDNS, LevelDB, createNode)', () => {

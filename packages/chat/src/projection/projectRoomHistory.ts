@@ -1,33 +1,37 @@
-import { ChatEnvelope, ChatMessageView, isChatMessageEnvelope, isTombstoneEnvelope } from '../domain/types';
+import { ChatMessageView, DecryptedChatRecord, isTombstoneEnvelope, ProjectableEnvelope } from '../domain/types';
 
 export interface StoredEnvelope {
   readonly hash: string;
-  readonly envelope: ChatEnvelope;
+  readonly envelope: ProjectableEnvelope;
 }
 
 /**
  * Replays stored room envelopes: tombstones hide target hashes; remaining
  * chat messages are ordered by timestamp then messageId (ADR-0002).
+ * Callers decrypt CAS payloads before passing them here.
  */
 export const projectRoomHistory = (records: readonly StoredEnvelope[]): readonly ChatMessageView[] => {
   const tombstoned = new Set<string>();
   for (const record of records) {
-    if (isTombstoneEnvelope(record.envelope)) {
-      tombstoned.add(record.envelope.targetHash);
+    const envelope = record.envelope;
+    if (isTombstoneEnvelope(envelope)) {
+      tombstoned.add(envelope.targetHash);
     }
   }
 
   const visible: ChatMessageView[] = [];
   for (const record of records) {
-    if (!isChatMessageEnvelope(record.envelope)) continue;
+    if (record.envelope.type !== 'chat_message') continue;
     if (tombstoned.has(record.hash)) continue;
+    const envelope: DecryptedChatRecord = record.envelope;
     visible.push({
       hash: record.hash,
-      roomId: String(record.envelope.roomId),
-      messageId: record.envelope.messageId,
-      senderPeerId: record.envelope.senderPeerId,
-      timestamp: record.envelope.timestamp,
-      body: record.envelope.body,
+      roomId: String(envelope.roomId),
+      messageId: envelope.messageId,
+      senderPeerId: envelope.senderPeerId,
+      timestamp: envelope.timestamp,
+      body: envelope.body,
+      untrustedDisplayName: envelope.displayName,
     });
   }
 

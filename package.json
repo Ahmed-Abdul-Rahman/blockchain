@@ -17,6 +17,7 @@
     "crypto": "yarn workspace @dechat/crypto",
     "common": "yarn workspace @dechat/common",
     "chat": "yarn workspace @dechat/chat",
+    "chat:bootstrap": "yarn workspace @dechat/chat bootstrap",
     "examples": "yarn workspace @dechat/examples",
     "clean": "yarn cache clear && yarn foreach-workspace -p run clean",
     "clean:deps": "yarn clean && node ./scripts/removeFolderRecursive ./node_modules",

@@ -274,8 +274,8 @@ export class PeerExchangeService implements Startable {
 
       this.scorer.reward(from, Math.min(3, peers.length / 8)); // tiny reward proportional to usefulness
 
-      // trickle dials
-      this.enqueueDial(sampleList(peers, Math.min(8, peers.length)));
+      const origin = originPeerInfo && originPeerInfo.peerId !== this.node.peerId.toString() ? [originPeerInfo] : [];
+      this.enqueueDial(sampleList([...origin, ...updatedPeers], Math.min(8, origin.length + updatedPeers.length)));
       logger.trace('PeerExchangeService - onGossip - exit');
     } catch (error: unknown) {
       logger.warn('Error occured while receiving gossip message');

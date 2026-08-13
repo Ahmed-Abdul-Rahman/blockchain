@@ -49,6 +49,8 @@ export {
 export type { ContentHash } from './src/data-replication/types';
 export { PeerAuthenticator, peerAuthenticator } from './src/networking/PeerAuthenticator';
 export { PeerRegistry, peerRegistry } from './src/networking/PeerRegistry';
+export { peerIdFromEd25519PublicKeyBytes } from './src/networking/peerIdFromEd25519PublicKeyBytes';
+export { peerIdFromNodeSeed } from './src/networking/peerIdFromNodeSeed';
 export { createBrowserPlatformStack } from './src/platform/createBrowserPlatformStack';
 export type { Libp2pPlatformStack, PlatformProfile } from './src/platform/types';
 export { IndexedDbReplicaStore, indexedDbReplicaStore } from './src/replica-store/IndexedDbReplicaStore';

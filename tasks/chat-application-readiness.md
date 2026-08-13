@@ -238,8 +238,10 @@ Projection: replay room hashes chronologically; hide tombstoned targets (ADR-000
 
 - Unit: projection with messages + tombstones.
 - Unit: join/leave membership bookkeeping (mocked core).
-- Integration (Node): two `ChatClient`s, one room, message converges — `packages/chat/tests/interop/twoNodeChatClient.int.test.ts` (`yarn test:int:chat`).
+- Integration (Node): two `ChatClient`s, one room, message converges — `packages/chat/tests/interop/twoNodeChatClient.int.test.ts`.
 - After Phase 3: two rooms isolation test — same file (Bob never joined `secret-room`).
+- Phase 6: bootstrap + two clients — `packages/chat/tests/interop/bootstrapTwoClient.int.test.ts`.
+- CI: `yarn test:int:chat` in a dedicated `chat-interop` job.
 
 **Done when:** Node-only integration proves send → remote history without any React; public README for `@dechat/chat` documents hybrid bootstrap requirement.
 
@@ -253,24 +255,28 @@ Split deliberately: **network auth** (Phase 2) ≠ **room membership** ≠ **E2E
 
 ### 5a — Identity UX foundation (no E2EE yet)
 
-- [ ] Portable seed generate / import / export helpers in `@dechat/chat` or `@dechat/crypto`.
-- [ ] Stable display of `peerId`; optional display-name as unsigned gossip metadata (mark untrusted).
-- [ ] Document: seed = root of identity; browser storage guidance (IndexedDB vs memory) — no “secure vault” claim yet.
+- [x] Portable seed generate / import / export helpers in `@dechat/chat` or `@dechat/crypto`.
+- [x] Stable display of `peerId`; optional display-name as unsigned gossip metadata (mark untrusted).
+- [x] Document: seed = root of identity; browser storage guidance (IndexedDB vs memory) — no “secure vault” claim yet.
 
 ### 5b — Room membership (authorization)
 
-- [ ] Define membership model for v1:
+- [x] Define membership model for v1:
   - **Open rooms** (anyone on networkId can join) — OK for first demo; or
   - **Capability rooms** (invite token / signed membership cert) — preferred before any “private room” marketing.
-- [ ] Gate: only members may `joinRoom` / send / pull room content (enforced in replication `shouldReplicate` + chat layer).
-- [ ] ADR if capability model chosen (hard to reverse).
+- [x] Gate: only members may `joinRoom` / send / pull room content (enforced in replication `shouldReplicate` + chat layer).
+- [x] ADR if capability model chosen (hard to reverse).
+
+**v1 choice:** open rooms (locked 2026-08-13). Capability rooms deferred — no capability ADR. Isolation: two-node ChatClient interop; ChatClient `isMember` + send-requires-join.
 
 ### 5c — E2EE (after membership)
 
-- [ ] Room key lifecycle: create, distribute to members, rotate on leave.
-- [ ] Encrypt `body` only; keep envelope metadata needed for routing/replication as needed for mesh (trade-off ADR).
-- [ ] Sender signature over ciphertext + roomId + messageId.
-- [ ] Never claim “encrypted chat” in UI until this phase ships + tests.
+- [x] Room key lifecycle: create, distribute to members, rotate on leave.
+- [x] Encrypt `body` only; keep envelope metadata needed for routing/replication as needed for mesh (trade-off ADR).
+- [x] Sender signature over ciphertext + roomId + messageId.
+- [x] Never claim “encrypted chat” in UI until this phase ships + tests.
+
+**v1 notes:** ADR-0006. Keys in memory; Noise distribution to verified peers; `rotateRoomKey` is explicit (no presence roster). Open rooms: joiners can obtain the current key. Done when: ciphertext-only in replica store.
 
 **Done when (5a):** seed/identity story documented + tested.  
 **Done when (5b):** non-member cannot obtain room payloads in interop.  
@@ -286,10 +292,10 @@ Aligned with ADR-0004 hybrid topology + BACKLOG 6.2 stretch.
 
 ### 6a — Required for any browser chat (pre-UI still OK as tooling)
 
-- [ ] **Bootstrap peer recipe:** small Node entry (`packages/chat` or `packages/examples` / future `apps/bootstrap`) that listens TCP+WS, prints multiaddr for clients.
-- [ ] Config schema: `bootstrapPeers: string[]`, `networkId` / `infoHash`, `nodeSeed`.
-- [ ] Docs: local hybrid loop (Node bootstrap + two browser clients later).
-- [ ] Production note: **WSS** (TLS termination) for HTTPS pages — document reverse-proxy pattern; optional helper later.
+- [x] **Bootstrap peer recipe:** small Node entry (`packages/chat` or `packages/examples` / future `apps/bootstrap`) that listens TCP+WS, prints multiaddr for clients.
+- [x] Config schema: `bootstrapPeers: string[]`, `networkId` / `infoHash`, `nodeSeed`.
+- [x] Docs: local hybrid loop (Node bootstrap + two browser clients later).
+- [x] Production note: **WSS** (TLS termination) for HTTPS pages — document reverse-proxy pattern; optional helper later.
 
 ### 6b — Stretch (after chat works on LAN/localhost)
 
@@ -313,7 +319,7 @@ From BACKLOG 6.2, reframed as readiness for chat — still **no React app requir
 - [ ] Hybrid smoke in CI (`test:int:hybrid-browser-stack`).
 - [ ] Bundle metafile guard: browser entry must not include `level`, `@libp2p/tcp`, `fs`, Node `crypto`.
 - [ ] Real-browser smoke (Playwright): `createBrowserNode` or `createChatClient` + auth + registry (+ one message after Phase 4).
-- [ ] Chat interop job: two clients, one room, converge.
+- [x] Chat interop job: two clients, one room, converge (`chat-interop` in `.github/workflows/ci.yaml`).
 
 **Done when:** CI fails if browser graph regresses to Node-only deps; chat message round-trip covered without UI.
 
@@ -361,4 +367,4 @@ Resolved 2026-08-13 — see Decision gates.
 - [x] `@dechat/chat` with `createChatClient` documented and Node-tested
 - [ ] Bootstrap peer recipe works locally
 - [ ] IndexedDB + hybrid (+ preferably Playwright) CI green
-- [ ] Security claims match shipped phases (no E2EE labeling until 5c)
+- [x] Security claims match shipped phases (no E2EE labeling until 5c)

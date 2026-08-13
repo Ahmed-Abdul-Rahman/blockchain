@@ -9,8 +9,9 @@ Ubiquitous language for DeChat — a decentralized P2P networking platform (libp
 | **Node** | A running DeChat P2P participant — one libp2p instance with a persistent Ed25519 identity. |
 | **Peer** | Any remote libp2p participant the node can discover or connect to. |
 | **Verified peer** | A peer that completed the Ed25519 authentication handshake; eligible for `PeerRegistry` and dialing. |
-| **Network ID** (`infoHash`) | Identifier that partitions nodes into the same logical network. Peers on different network IDs do not interoperate. |
+| **Network ID** (`infoHash`) | Identifier that partitions this DeChat mesh from other libp2p or DeChat deployments. Not a room membership credential. Peers on different network IDs do not interoperate. |
 | **Node seed** | Deterministic input used to derive the node's Ed25519 keypair so the same identity can be restored after restart. |
+| **Identity seed** | Chat-facing name for the node seed a client generates, imports, or exports. Same bytes restore the same PeerId. |
 
 ## Discovery & Connections
 
@@ -76,8 +77,9 @@ Ubiquitous language for DeChat — a decentralized P2P networking platform (libp
 | **Room ID** | Opaque identifier of a chat room. _Avoid_: topic (the gossip channel derived from a room ID), channel |
 | **Chat message** | An application envelope stored as content-addressed payload in a room. |
 | **Message projection** | Visible room history obtained by replaying stored events and omitting tombstoned hashes. |
-| **Open room** | A chat room anyone on the same network ID may join. _Avoid_: public room |
-| **Room membership** | The set of rooms a node has joined and therefore replicates. |
+| **Open room** | A chat room with no invite: any verified peer already on this mesh may `joinRoom`. _Avoid_: public room; tying join to infoHash |
+| **Display name** | Unsigned nickname a client may attach to outgoing messages. Not identity; PeerId is. _Avoid_: username |
+| **Room key** | Symmetric AES-256-GCM secret for one chat room and key epoch. Distributed to members over authenticated direct streams; never stored in the replica store. |
 | **Room scope** | Replication layer that confines announce, store, and pull to joined rooms, sitting on top of existing replication strategies. |
 | **Capability room** | Invite- or certificate-gated room membership (planned). _Avoid_: private room (ambiguous with E2EE) |
-| **Encrypted chat** | Application-layer E2EE on top of P2P propagation — not implemented yet. |
+| **Encrypted chat** | Application-layer AES-GCM on message bodies with a per-room key held in the client, not in the replica store. Open-room joiners can obtain the current key. |

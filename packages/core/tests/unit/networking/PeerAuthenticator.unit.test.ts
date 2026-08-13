@@ -57,6 +57,9 @@ describe('PeerAuthenticator', () => {
       unhandle: vi.fn(),
       dialProtocol: vi.fn(),
       hangUp: vi.fn(),
+      peerStore: {
+        get: vi.fn().mockRejectedValue(new Error('not found')),
+      },
     };
 
     mockPexService = {
@@ -173,6 +176,39 @@ describe('PeerAuthenticator', () => {
     expect(mockPexService.initiatePeerExchange).toHaveBeenCalled();
     expect(mockWriteToStream).toHaveBeenCalledWith(mockStream, { isVerified: true });
     expect(mockMetrics.verificationSucceeded).toHaveBeenCalled();
+
+    nowSpy.mockRestore();
+  });
+
+  it('stores Identify listen addrs when the peerstore has them', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    mockNode.peerStore.get.mockResolvedValueOnce({
+      addresses: [{ multiaddr: { toString: () => '/ip4/127.0.0.1/tcp/4001/p2p/identified' } }],
+    });
+    authenticator.start();
+    const handler = mockNode.handle.mock.calls.find((c: any) => c[0] === authProtocol)[1];
+
+    const identity = await ed25519Identity();
+    const mockStream = { close: vi.fn() };
+    const connection = { remotePeer: identity.peerId, remoteAddr: { toString: () => '/ip4/127.0.0.1/tcp/9' } };
+
+    mockReadFromStream.mockResolvedValueOnce({
+      pub: identity.pubB64,
+      sig: Buffer.from('valid-sig').toString('base64url'),
+      nonce: 'identify-nonce',
+      timestamp: 1_000_000,
+    });
+
+    (ed.verifyAsync as any).mockResolvedValueOnce(true);
+
+    await handler({ stream: mockStream, connection });
+
+    expect(mockPexService.addPeers).toHaveBeenCalledWith([
+      {
+        peerId: identity.peerId.toString(),
+        addresses: ['/ip4/127.0.0.1/tcp/4001/p2p/identified'],
+      },
+    ]);
 
     nowSpy.mockRestore();
   });

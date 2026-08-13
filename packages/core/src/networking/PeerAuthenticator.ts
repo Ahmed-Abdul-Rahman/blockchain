@@ -8,6 +8,7 @@ import { AuthMetrics } from '../metrics/interfaces/AuthMetrics';
 import { createFramedStreamCodec, FramedStreamCodec } from '../shared/serialization/framedStreamCodec';
 import { DeChatComponents, DeChatFactory } from '../types';
 import { peerIdFromEd25519PublicKeyBytes } from './peerIdFromEd25519PublicKeyBytes';
+import { peerListenAddrs } from './peerListenAddrs';
 import { AuthSignMessage, AuthSignResponse } from './types';
 
 export class PeerAuthenticator implements Startable {
@@ -107,7 +108,8 @@ export class PeerAuthenticator implements Startable {
       }
 
       logger.info('Authentication handled succesfully with peer: ', remotePeerId);
-      this.pexService.addPeers([{ peerId: remotePeerId, addresses: [connection.remoteAddr.toString()] }]);
+      const addresses = await peerListenAddrs(this.node, connection.remotePeer, [connection.remoteAddr.toString()]);
+      this.pexService.addPeers([{ peerId: remotePeerId, addresses }]);
       this.pexService.initiatePeerExchange();
 
       await this.framedStream.writeToStream(stream, { isVerified } as AuthSignResponse);

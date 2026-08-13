@@ -122,4 +122,29 @@ describe('PeerExchangeService', () => {
 
     expect(mockScorer.penalize).toHaveBeenCalledWith('malicious-peer', 5);
   });
+
+  it('enqueues the gossip origin peer so listeners can dial advertised listen addrs', () => {
+    const origin = {
+      peerId: 'origin-peer',
+      addresses: ['/ip4/127.0.0.1/tcp/4001/p2p/origin-peer'],
+    };
+    const fakeEvent = new CustomEvent('message', {
+      detail: {
+        topic: pexTopic,
+        data: createCborWireSerializer().serialize({
+          from: 'origin-peer',
+          type: 'PEX_GOSSIP',
+          peers: [],
+          ts: Date.now(),
+          originPeerInfo: origin,
+        }),
+      },
+    });
+
+    const listener = mockPubsub.addEventListener.mock.calls.find((c: any) => c[0] === 'message')[1];
+    listener(fakeEvent);
+
+    expect(mockRegistry.upsert).toHaveBeenCalledWith(origin);
+    expect(mockDialQ.enqueue).toHaveBeenCalledWith([origin]);
+  });
 });
