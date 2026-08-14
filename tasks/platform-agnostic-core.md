@@ -1,9 +1,9 @@
 # Task: Platform-Agnostic `@dechat/core` (Node + Browser)
 
-**Status:** Approved — implementing on `feature/platform-agnostic-core`  
+**Status:** **Done (v1)** — merged to `develop` via [PR #46](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/46) (2026-07-19)  
 **Goal:** Run the DeChat P2P engine in **browser JS** as well as Node, without rewriting protocol layers  
 **Non-goal (v1):** Pure browser-only mesh with zero Node/relay peers; Compose WebRTC nodes; replacing libp2p  
-**Related:** [BACKLOG.md](../BACKLOG.md) (Browser / WebRTC called out as Tier-2 compose out-of-scope); canvas [core-browser-portability](file:///Users/ahmedabdulrahman/.cursor/projects/Users-ahmedabdulrahman-Documents-Programs-git-repos-de-chat/canvases/core-browser-portability.canvas.tsx)
+**Related:** [BACKLOG.md](../BACKLOG.md) Task 6.1 (complete) / Task 6.2 (follow-ups); canvas [core-browser-portability](file:///Users/ahmedabdulrahman/.cursor/projects/Users-ahmedabdulrahman-Documents-Programs-git-repos-de-chat/canvases/core-browser-portability.canvas.tsx)
 
 ---
 
@@ -495,7 +495,7 @@ Exact filenames can shift during implementation; the **seam names** should not.
 1. [x] ADR Accepted + CONTEXT.md finalized.  
 2. [x] Update `.cursor/skills/libp2p-core-patterns` package map for `platform/`.  
 3. [x] Flake budget for hybrid smoke; quarantine if needed.  
-4. Explicit backlog items for Compose WebRTC (still separate from this task).  
+4. [x] Explicit backlog items for browser hardening / WebRTC — [BACKLOG Task 6.2](../BACKLOG.md).  
 
 **Done when:** Plan checklist complete; Node CI unchanged; hybrid smoke stable.
 
@@ -519,13 +519,15 @@ Do not combine P1+P3. Keep Node green after every merge.
 
 ## Acceptance criteria (v1)
 
-1. **Node parity:** Existing `@dechat/core` unit tests and `test:int:startup` / `test:int:data-sync` pass without behavioural flags.  
-2. **No polyfill strategy:** Browser build does not bundle `level`, `@libp2p/tcp`, or Node `fs`/`crypto` polyfills for the happy path.  
-3. **Seam exists:** `node.ts` does not import tcp/mdns; platform adapters own those imports.  
-4. **Browser node:** `createBrowserNode` (or equivalent) dials a Node bootstrap, completes `PeerAuthenticator`, appears in `PeerRegistry`.  
-5. **Data path:** At least one content hash is shared Node↔browser via existing replication or anti-entropy strategies.  
-6. **Docs:** ADR-0004 Accepted; README platform section; skills list in this file followed in PRs.  
-7. **Auth-first invariant unchanged:** No peer in registry before auth ([.cursorrules](../.cursorrules) / libp2p-core-patterns).
+1. [x] **Node parity:** Existing `@dechat/core` unit tests and `test:int:startup` / `test:int:data-sync` pass without behavioural flags.  
+2. [x] **No polyfill strategy:** Browser entry does not load LevelDB / TCP / mDNS (conditional exports + platform adapters).  
+3. [x] **Seam exists:** composition root does not hardcode tcp/mdns; platform adapters own those imports.  
+4. [x] **Browser node:** `createBrowserNode` dials a Node bootstrap (WS), completes `PeerAuthenticator`, appears in `PeerRegistry` (hybrid smoke).  
+5. [x] **Data path:** At least one content hash is shared Node↔browser-stack via replication (hybrid smoke).  
+6. [x] **Docs:** ADR-0004 Accepted; README platform section; skills updated.  
+7. [x] **Auth-first invariant unchanged:** No peer in registry before auth.
+
+**Follow-ups** (not v1 blockers) → [BACKLOG.md Task 6.2](../BACKLOG.md).
 
 ---
 

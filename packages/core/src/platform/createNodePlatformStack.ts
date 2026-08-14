@@ -14,8 +14,8 @@ export interface CreateNodePlatformStackOptions {
 
 /**
  * Node adapter for {@link Libp2pPlatformStack}.
- * Preserves historical behaviour: TCP listen, optional mDNS, optional bootstrap.
- * WebSockets transport is added only when a listen addr includes `/ws` (hybrid bootstrap).
+ * TCP listen, optional mDNS, optional bootstrap.
+ * WebSockets transport when a listen addr or bootstrap peer includes `/ws` (hybrid).
  */
 export const createNodePlatformStack = ({ config }: CreateNodePlatformStackOptions): Libp2pPlatformStack => {
   const peerDiscovery: Libp2pPlatformStack['peerDiscovery'] = [];
@@ -28,7 +28,9 @@ export const createNodePlatformStack = ({ config }: CreateNodePlatformStackOptio
     peerDiscovery.push(bootstrap({ list: [...config.network.bootstrapPeers] }));
   }
 
-  const wantsWebSockets = config.network.listenAddrs.some((addr) => addr.includes('/ws'));
+  const wantsWebSockets =
+    config.network.listenAddrs.some((addr) => addr.includes('/ws')) ||
+    config.network.bootstrapPeers.some((addr) => addr.includes('/ws'));
 
   return {
     transports: wantsWebSockets ? [tcp(), webSockets()] : [tcp()],

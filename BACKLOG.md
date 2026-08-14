@@ -12,6 +12,74 @@ The core architecture has successfully transitioned to a robust, Dependency-Inje
 
 ---
 
+## P0 — Address first: Mesh identity vs room membership
+
+> **Do this before further chat/UI work.** It is a correctness bug in how DeChat partitions meshes, not a room-ACL feature.
+
+### Task 0.1: Unify `infoHash` / network ID as mesh partition (not a room join ticket)
+
+* **Severity:** **Critical** (mesh isolation)
+* **Status:** **Open — next**
+* **Related:** [CONTEXT.md](CONTEXT.md) (Network ID, Open room, Verified peer); ADR-0005; `createDeChatNode`; `PeerAuthenticator`
+
+#### Intended design (three different questions)
+
+| Question | Mechanism | Not this |
+|----------|-----------|----------|
+| Is this a **DeChat** peer, or some other libp2p/IPFS node? | DeChat protocol strings (`/deChat/core/auth/1.0.0`, PEX, replication) + Ed25519 auth. Fail handshake → never enter `PeerRegistry`. | `infoHash` is unnecessary for this. |
+| Which **DeChat mesh** is this (prod vs staging, two products, two testnets)? | **Network ID / `infoHash`.** Peers on different IDs must not authenticate, PEX, or replicate with each other. | Not a room password. |
+| May this peer enter chat room `lobby`? | `joinRoom(roomId)` (open rooms: any **verified peer already on this mesh**, no invite). Later: capability rooms. | Not `infoHash`. Knowing the mesh ID is not a ticket into every room. |
+
+`infoHash` exists so that in a vast shared P2P underlay we can tell “this node is on *our* DeChat network” versus another DeChat (or other) network that happens to speak similar stacks. Discovery + onboard + auth already reject non-DeChat peers. Room join is a separate application concern.
+
+#### What the code does today (the bug)
+
+`createNode(infoHash, nodeSeed, …)` / `createDeChatNode` uses `infoHash` **only** to set libp2p Identify `protocolPrefix` via `generateIdProtocolPrefix(infoHash)` (CRC-32 → 7-char base36). It does **not** flow into the rest of the mesh.
+
+Meanwhile these stay **global defaults**, independent of `infoHash`:
+
+| Knob | Default | Effect |
+|------|---------|--------|
+| `config.peerAuthenticator.networkId` | `'deChat-core-net-v1'` | Bound into the auth nonce. Two nodes with *different* `infoHash` still auth if both leave this default. |
+| `pexService.pexTopic` / `pexProtocol` | `/deChat/core/peer-exchange-…` | PEX gossip is not mesh-scoped. |
+| `strategies.replication.topic` / `protocol` | `/deChat/v1/topic/replication-protocol` etc. | Hash ANNOUNCE/REQUEST is not mesh-scoped. |
+| Room GossipSub topics | `/deChat/v1/room/<roomId>` | Same `roomId` on two meshes would share a topic. |
+| Anti-entropy protocol | `/deChat/v1/anti-entropy/1.0.0` | Same. |
+
+Interop workers pass `networkId` as `createNode`’s first argument (so Identify prefixes differ) but typically **do not** set `peerAuthenticator.networkId`. Distinct `--net` flags therefore do **not** fully isolate leftover workers on the same host.
+
+#### Why this is serious
+
+1. **Two DeChat deployments on the same LAN / shared bootstrap** (different `infoHash` by intent) can still complete auth, PEX, and replicate — including **the same room topic** if room IDs collide. Mesh isolation is the whole point of `infoHash`; today it is incomplete.
+2. **Docs / chat readiness** had started to say “anyone on the same `infoHash` may `joinRoom`.” That is the wrong layer. Open room = no invite among **verified peers**. Do not treat mesh ID as a room ACL (that mistake is corrected in CONTEXT; this task is the **code** fix).
+3. **Two names, one idea, not wired:** glossary “Network ID (`infoHash`)” vs config `peerAuthenticator.networkId` vs `createNode`’s first argument. Callers (and interop) reasonably assume one knob; the implementation has two that diverge.
+
+Non-DeChat libp2p peers are already excluded by protocol + auth. That part is fine. The hole is **DeChat-vs-DeChat mesh partition**.
+
+#### Proposed direction (groom when implementing)
+
+1. Treat **one canonical mesh id** (keep calling it Network ID / `infoHash` in the glossary). `createNode(infoHash, …)` must apply it to Identify **and** auth `networkId`, and namespace PEX / replication / room / anti-entropy protocol strings (or equivalent isolation that cannot cross-talk).
+2. Do **not** use that id as `joinRoom` authorization. Open rooms stay: verified peer + explicit `joinRoom(roomId)`.
+3. Tests: two in-process nodes with **different** `infoHash` on the same listen/bootstrap must **fail** auth (or never share PEX/replication/room topics). Two nodes with the **same** `infoHash` still form a mesh. Chat interop must keep using one mesh id and `joinRoom` for rooms.
+4. Align `@dechat/chat` `CreateChatClientOptions.infoHash` with that single knob; README already states mesh vs room.
+
+#### Acceptance criteria
+
+- [ ] A single mesh id from `createNode` / `createChatClient` partitions Identify, auth, PEX, and replication (no cross-mesh gossip of hashes or room announces).
+- [ ] Unit or interop test: different `infoHash` → no verified registry membership and no shared room/replication topic traffic.
+- [ ] `joinRoom` still does not consult `infoHash`; open-room wording stays “verified peer,” not “knows the infoHash.”
+- [ ] Interop `--net` / worker `networkId` actually isolates leftover workers.
+
+#### Affected modules
+
+`packages/core/src/createDeChatNode.ts`, `packages/core/src/config/defaults.ts` (`peerAuthenticator.networkId`, PEX, replication, anti-entropy protocol strings), `packages/core/src/networking/PeerAuthenticator.ts`, `packages/core/src/data-replication/room-scope/roomId.ts` (`roomTopic`), `packages/chat/src/createChatClient.ts`, interop `workerUitls.ts` / compose `NETWORK_ID`.
+
+#### Estimated effort
+
+~2–4 days including tests (namespacing protocol strings + one isolation interop).
+
+---
+
 ## 🏎️ Category 1: Performance & CPU Optimizations
 
 ### Task 1.1: Replace JSON Serialization with Binary Formats — Completed (Phase 1)
@@ -199,7 +267,7 @@ The core architecture has successfully transitioned to a robust, Dependency-Inje
 > **Implementation plan:** [tasks/tier2-compose-interop.md](tasks/tier2-compose-interop.md) — groomed checklist, phased PRs, approval gate.
 
 * **Severity:** Medium–High (realistic P2P conditions; catches bugs invisible on localhost worker threads)
-* **Status:** **Active** — PR A–C merged (#42–#44); PR D in progress (`feat/tier2-compose-nightly-split-brain`)
+* **Status:** **Done (v1)** — PR A–D merged (#42–#45). Soak nightly on `develop`; promote Compose to PR gate only after 7 nights &lt; 5% flake.
 * **Depends on:** Task 5.1 — **done**
 * **Goal:** Run the same DeChat convergence scenarios in **isolated containers** with configurable network conditions (latency, jitter, bandwidth, partitions), following the pattern libp2p adopted after leaving Testground.
 
@@ -346,7 +414,7 @@ Apply via `apply-netem.sh` on container start (libp2p test-plans pattern). Do **
 
 #### Out of scope (Tier 2 v1)
 
-- Browser / WebRTC nodes in compose
+- Browser / WebRTC nodes in compose → see **Task 6.2**
 - 500+ nodes / Kubernetes (revisit only if Compose hits limits — kompose or k3s)
 - Testground migration
 - Cross-version libp2p interop (DeChat-only)
@@ -361,3 +429,74 @@ Apply via `apply-netem.sh` on container start (libp2p test-plans pattern). Do **
 | 5.2d — Nightly CI + split-brain | 2 days | Scheduled workflow |
 
 **Total:** ~8–10 dev-days after Tier 1 complete.
+
+---
+
+## 🌐 Category 6: Browser / Platform Portability
+
+### Task 6.1: Platform-Agnostic `@dechat/core` (Node + Browser) — Completed (v1)
+
+> **Implementation plan:** [tasks/platform-agnostic-core.md](tasks/platform-agnostic-core.md)
+
+* **Severity:** High (unblocks `apps/web` and real client peers)
+* **Status:** **Done (v1)** — [PR #46](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/46) merged to `develop` (2026-07-19)
+* **Goal:** Run the DeChat P2P engine in browser JS as well as Node without rewriting protocol layers.
+
+**Delivered:**
+
+* `Libp2pPlatformStack` seam + Node / Browser adapters (`createNode`, `createBrowserNode`)
+* Portable `@dechat/crypto` (noble) + dual `@dechat/common` logger + conditional package exports
+* `IndexedDbReplicaStore`, ADR-0004, CONTEXT glossary, hybrid WS smoke (`test:int:hybrid-browser-stack`)
+* Compose/interop regression fix for `createNode` options vs `DeChatConfig.strategies` ambiguity
+
+---
+
+### Task 6.2: Browser Platform Hardening (Post–Platform-Agnostic v1)
+
+* **Severity:** Medium (productizes the browser path beyond Node-hosted stack smoke)
+* **Status:** **Backlog** — depends on Task 6.1 (done)
+* **Related:** ADR-0004; Tier 2 Compose out-of-scope for WebRTC (Task 5.2)
+
+#### Work items
+
+1. **Real-browser CI smoke (Playwright or Vitest browser)**  
+   Drive a genuine browser bundle that calls `createBrowserNode`, dials a Node bootstrap `/ws` multiaddr, completes auth, and lands in `PeerRegistry`. Replaces reliance on Node-hosted browser-stack smoke alone.
+
+2. **Wire `apps/web` to `createBrowserNode`**  
+   Product entry: bootstrap multiaddr config, start/stop lifecycle, and a minimal UI path that proves mesh join from a real browser tab.
+
+3. **IndexedDB reload persistence smoke**  
+   `IndexedDbReplicaStore` exists; add a test that puts a content hash, reloads (or re-opens the DB), and asserts the hash survives — closes Phase 4’s “done when” fully.
+
+4. **CI browser-bundle guard**  
+   Fail the browser build (esbuild/Vite metafile) if `level`, `@libp2p/tcp`, or Node `fs`/`crypto` polyfills appear in the happy-path graph.
+
+5. **Circuit-relay + WebRTC (browser↔browser / NAT)**  
+   Stretch from the v1 plan: relay client wiring and optional `@libp2p/webrtc` once on a libp2p major that matches core; Compose WebRTC nodes remain a separate Tier-2 follow-up.
+
+#### Acceptance criteria (when groomed into a plan)
+
+- [ ] Playwright/Vitest browser job green in CI (auth + registry)
+- [ ] `apps/web` can join a local Node bootstrap without Node polyfills
+- [ ] IndexedDB reload smoke green
+- [ ] Bundle metafile guard blocks LevelDB/TCP leakage
+- [ ] (Optional) Documented relay path for two browser peers behind NAT
+
+#### Estimated effort
+
+| Slice | Effort |
+|-------|--------|
+| Real-browser smoke + CI | 2–4 days |
+| `apps/web` wiring | 2–3 days |
+| IndexedDB reload smoke | 1 day |
+| Bundle metafile guard | 0.5–1 day |
+| Circuit-relay / WebRTC spike | 3–7 days (separate ADR if productionized) |
+
+---
+
+## Category 7: Chat application readiness (pre-UI)
+
+* **Status:** In progress — [tasks/chat-application-readiness.md](tasks/chat-application-readiness.md)
+* **Related:** ADR-0005 (room-scope layer); ADR-0001; ADR-0004; Task 6.2
+
+Wire `@dechat/core` (browser exports, auth PeerId binding, room-scope layer) then `@dechat/chat` (`ChatClient`) before any React UI. Open rooms = verified peers may `joinRoom` (no invite); `infoHash` is mesh partition only — see **Task 0.1**. Body E2EE: ADR-0006.

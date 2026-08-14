@@ -5,16 +5,8 @@
  */
 import { logger } from '@dechat/common';
 import { multiaddr } from '@multiformats/multiaddr';
-import { createBrowserNode } from '../../src/browser';
-import { antiEntropyManager } from '../../src/data-convergence/AntiEntropyManager';
-import { antiEntropyNetworkExchangeEngine } from '../../src/data-convergence/AntiEntropyNetworkExchange';
-import { GossipSubPropagation } from '../../src/data-propagation/broadcast/GossipSubPropagation';
-import { DirectStreamPropagation } from '../../src/data-propagation/direct/DirectStreamPropagation';
-import { Sha256ContentHashStrategy } from '../../src/data-replication/content-hash/Sha256ContentHashStrategy';
-import { ReplicationMessageProtocolManager } from '../../src/data-replication/replication-protocol/ReplicationMessageProtocolManager';
-import { topicBasedContentHashReplication } from '../../src/data-replication/TopicBasedContentReplication';
+import { createBrowserNode, portableTopicReplicationStrategies } from '../../browser';
 import { createNode } from '../../src/node';
-import { inMemoryReplicaStore } from '../../src/replica-store/InMemoryReplicaStore';
 import type { DeChatStrategies } from '../../src/types';
 
 const INFO_HASH = 'hybrid-browser-stack-v1';
@@ -22,16 +14,7 @@ const SETTLE_MS = 20_000;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-const fullStrategies = (): DeChatStrategies => ({
-  broadcast: (components) => new GossipSubPropagation(components),
-  direct: (components) => new DirectStreamPropagation(components),
-  contentHasher: () => new Sha256ContentHashStrategy(),
-  replicaStore: inMemoryReplicaStore(),
-  replicationProtocol: (components) => new ReplicationMessageProtocolManager(components),
-  dataReplication: topicBasedContentHashReplication(),
-  networkExchanger: antiEntropyNetworkExchangeEngine(),
-  antiEntropyManager: antiEntropyManager(),
-});
+const fullStrategies = (): DeChatStrategies => portableTopicReplicationStrategies();
 
 const pickWsBootstrapAddr = (addrs: Array<{ toString: () => string }>): string => {
   const ws = addrs.map((a) => a.toString()).find((a) => a.includes('/ws'));

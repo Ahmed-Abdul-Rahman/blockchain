@@ -56,8 +56,7 @@ Rejected enhancement requests are recorded in `.out-of-scope/*.md` (create the d
 | Resource | Path |
 |----------|------|
 | Domain glossary | `CONTEXT.md` (repo root) |
-| ADRs | `docs/adr/` — `0001-topic-based-replication-for-chat-rooms.md`, `0002-tombstone-event-sourcing-for-deletions.md` |
-| ADRs | `docs/adr/` — `0001-topic-based-replication-for-chat-rooms.md`, `0002-tombstone-event-sourcing-for-deletions.md`, `0003-adaptive-anti-entropy-scheduling.md` |
+| ADRs | `docs/adr/` — `0001`–`0006` (topic replication, TOMBSTONE, adaptive anti-entropy, platform stack, room-scope layer, chat E2EE) |
 | Replication protocol spec | `docs/core/data-replication-protocol.md` |
 | Design principles | `docs/core/design-principles.md` |
 | Agent coding rules | `.cursorrules` |
@@ -76,6 +75,8 @@ Rejected enhancement requests are recorded in `.out-of-scope/*.md` (create the d
 | Coverage (core) | `yarn core test:coverage` |
 | Integration tests (P2P interop, full) | `yarn build && yarn test:int` |
 | Integration tests (P2P interop, narrow) | `yarn build && yarn test:int:narrow` (3 nodes, 30s) |
+| Chat unit tests | `yarn workspace @dechat/chat test` |
+| Chat interop (two-node + bootstrap) | `yarn test:int:chat` |
 | Lint | `yarn lint` |
 | Lint fix | `yarn lint:fix` |
 | Run a P2P node | `cd apps/backend && yarn start:dev` |
@@ -87,8 +88,8 @@ Rejected enhancement requests are recorded in `.out-of-scope/*.md` (create the d
 
 | Type | Pattern | Location |
 |------|---------|----------|
-| Unit | `*.unit.test.ts` | `packages/core/tests/unit/**` |
-| Integration | `*.int.ts` | `packages/core/tests/interop/**` |
+| Unit | `*.unit.test.ts` | `packages/core/tests/unit/**`, `packages/chat/tests/unit/**` |
+| Integration | `*.int.ts` / `*.int.test.ts` | `packages/core/tests/interop/**`, `packages/chat/tests/interop/**` |
 
 - Unit tests: fast, mocked at **system boundaries** (libp2p, `@noble/ed25519`, `level`).
 - Integration tests: real libp2p in worker threads; **must** call `terminateWorkers()` or CI hangs.

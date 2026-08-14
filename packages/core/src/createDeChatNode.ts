@@ -10,6 +10,7 @@ import { resolveConfig } from './config/defaults';
 import { DeChatConfig } from './config/types';
 import { PrefixTrie } from './data-convergence/PrefixTrie';
 import { TrieBackedReplicaStore } from './data-convergence/TrieBackedReplicaStore';
+import { isRoomScope } from './data-replication/room-scope/RoomScopeInterface';
 import { dialQueue } from './networking/DialQueue';
 import { peerAuthenticator } from './networking/PeerAuthenticator';
 import { peerDiscoveryManager } from './networking/PeerDiscoveryManager';
@@ -132,6 +133,11 @@ export const createDeChatNode = async (
       );
     if (strategyFactories.dataReplication)
       components.strategies!.dataReplication = strategyFactories.dataReplication(components as DeChatComponents);
+    if (strategyFactories.roomScope)
+      components.strategies!.roomScope = strategyFactories.roomScope(components as DeChatComponents);
+    if (!components.strategies!.roomScope && isRoomScope(components.strategies!.dataReplication)) {
+      components.strategies!.roomScope = components.strategies!.dataReplication;
+    }
     if (strategyFactories.networkExchanger)
       components.strategies!.networkExchanger = strategyFactories.networkExchanger(components as DeChatComponents);
     if (strategyFactories.antiEntropyManager)

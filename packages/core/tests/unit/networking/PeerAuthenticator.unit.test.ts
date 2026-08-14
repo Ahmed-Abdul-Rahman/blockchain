@@ -1,5 +1,8 @@
 /** biome-ignore-all lint/suspicious/noExplicitAny: <its a test file> */
 
+import { bytesToBase64Url } from '@dechat/crypto';
+import { generateKeyPairFromSeed } from '@libp2p/crypto/keys';
+import { peerIdFromPrivateKey } from '@libp2p/peer-id';
 import { createEd25519PeerId } from '@libp2p/peer-id-factory';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DeChatComponents } from '../../../src/types';
@@ -29,6 +32,16 @@ import * as ed from '@noble/ed25519';
 import { PeerAuthenticator, peerAuthenticator } from '../../../src/networking/PeerAuthenticator';
 import { createCborWireSerializer } from '../../../src/shared/serialization';
 
+const randomSeed = (): Uint8Array => crypto.getRandomValues(new Uint8Array(32));
+
+const ed25519Identity = async () => {
+  const privateKey = await generateKeyPairFromSeed('Ed25519', randomSeed());
+  return {
+    peerId: peerIdFromPrivateKey(privateKey),
+    pubB64: bytesToBase64Url(privateKey.publicKey.raw),
+  };
+};
+
 describe('PeerAuthenticator', () => {
   let authenticator: PeerAuthenticator;
   let mockComponents: Partial<DeChatComponents>;
@@ -44,6 +57,9 @@ describe('PeerAuthenticator', () => {
       unhandle: vi.fn(),
       dialProtocol: vi.fn(),
       hangUp: vi.fn(),
+      peerStore: {
+        get: vi.fn().mockRejectedValue(new Error('not found')),
+      },
     };
 
     mockPexService = {
@@ -136,12 +152,12 @@ describe('PeerAuthenticator', () => {
     authenticator.start();
     const handler = mockNode.handle.mock.calls.find((c: any) => c[0] === authProtocol)[1];
 
-    const remotePeerId = await createEd25519PeerId();
+    const identity = await ed25519Identity();
     const mockStream = { close: vi.fn() };
-    const connection = { remotePeer: remotePeerId, remoteAddr: { toString: () => '/ip4/127.0.0.1/tcp/8080' } };
+    const connection = { remotePeer: identity.peerId, remoteAddr: { toString: () => '/ip4/127.0.0.1/tcp/8080' } };
 
     mockReadFromStream.mockResolvedValueOnce({
-      pub: Buffer.from('valid-pub-key').toString('base64url'),
+      pub: identity.pubB64,
       sig: Buffer.from('valid-sig').toString('base64url'),
       nonce: 'unique-nonce-123',
       timestamp: 1_000_000,
@@ -153,7 +169,7 @@ describe('PeerAuthenticator', () => {
 
     expect(mockPexService.addPeers).toHaveBeenCalledWith([
       {
-        peerId: remotePeerId.toString(),
+        peerId: identity.peerId.toString(),
         addresses: ['/ip4/127.0.0.1/tcp/8080'],
       },
     ]);
@@ -164,7 +180,67 @@ describe('PeerAuthenticator', () => {
     nowSpy.mockRestore();
   });
 
-  it('should reject and close stream if signature is invalid', async () => {
+  it('stores Identify listen addrs when the peerstore has them', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    mockNode.peerStore.get.mockResolvedValueOnce({
+      addresses: [{ multiaddr: { toString: () => '/ip4/127.0.0.1/tcp/4001/p2p/identified' } }],
+    });
+    authenticator.start();
+    const handler = mockNode.handle.mock.calls.find((c: any) => c[0] === authProtocol)[1];
+
+    const identity = await ed25519Identity();
+    const mockStream = { close: vi.fn() };
+    const connection = { remotePeer: identity.peerId, remoteAddr: { toString: () => '/ip4/127.0.0.1/tcp/9' } };
+
+    mockReadFromStream.mockResolvedValueOnce({
+      pub: identity.pubB64,
+      sig: Buffer.from('valid-sig').toString('base64url'),
+      nonce: 'identify-nonce',
+      timestamp: 1_000_000,
+    });
+
+    (ed.verifyAsync as any).mockResolvedValueOnce(true);
+
+    await handler({ stream: mockStream, connection });
+
+    expect(mockPexService.addPeers).toHaveBeenCalledWith([
+      {
+        peerId: identity.peerId.toString(),
+        addresses: ['/ip4/127.0.0.1/tcp/4001/p2p/identified'],
+      },
+    ]);
+
+    nowSpy.mockRestore();
+  });
+
+  it('should reject when presented public key does not match remote PeerId', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    authenticator.start();
+    const handler = mockNode.handle.mock.calls.find((c: any) => c[0] === authProtocol)[1];
+
+    const signer = await ed25519Identity();
+    const connectionPeer = await ed25519Identity();
+    const mockStream = { close: vi.fn() };
+    const connection = { remotePeer: connectionPeer.peerId, remoteAddr: { toString: () => '/ip4/127.0.0.1/tcp/8080' } };
+
+    mockReadFromStream.mockResolvedValueOnce({
+      pub: signer.pubB64,
+      sig: Buffer.from('valid-sig').toString('base64url'),
+      nonce: 'mismatch-nonce',
+      timestamp: 1_000_000,
+    });
+
+    await handler({ stream: mockStream, connection });
+
+    expect(mockStream.close).toHaveBeenCalled();
+    expect(mockMetrics.verificationFailed).toHaveBeenCalledWith('peer_id_mismatch');
+    expect(mockPexService.addPeers).not.toHaveBeenCalled();
+    expect(ed.verifyAsync).not.toHaveBeenCalled();
+
+    nowSpy.mockRestore();
+  });
+
+  it('should reject an unparseable public key', async () => {
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
     authenticator.start();
     const handler = mockNode.handle.mock.calls.find((c: any) => c[0] === authProtocol)[1];
@@ -173,7 +249,32 @@ describe('PeerAuthenticator', () => {
     const connection = { remotePeer: await createEd25519PeerId(), remoteAddr: {} };
 
     mockReadFromStream.mockResolvedValueOnce({
-      pub: Buffer.from('valid-pub-key').toString('base64url'),
+      pub: Buffer.from('not-a-32-byte-key').toString('base64url'),
+      sig: Buffer.from('sig').toString('base64url'),
+      nonce: 'bad-pub-nonce',
+      timestamp: 1_000_000,
+    });
+
+    await handler({ stream: mockStream, connection });
+
+    expect(mockStream.close).toHaveBeenCalled();
+    expect(mockMetrics.verificationFailed).toHaveBeenCalledWith('invalid_public_key');
+    expect(mockPexService.addPeers).not.toHaveBeenCalled();
+
+    nowSpy.mockRestore();
+  });
+
+  it('should reject and close stream if signature is invalid', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    authenticator.start();
+    const handler = mockNode.handle.mock.calls.find((c: any) => c[0] === authProtocol)[1];
+
+    const identity = await ed25519Identity();
+    const mockStream = { close: vi.fn() };
+    const connection = { remotePeer: identity.peerId, remoteAddr: {} };
+
+    mockReadFromStream.mockResolvedValueOnce({
+      pub: identity.pubB64,
       sig: Buffer.from('bad-sig').toString('base64url'),
       nonce: 'unique-nonce-456',
       timestamp: 1_000_000,
@@ -215,11 +316,12 @@ describe('PeerAuthenticator', () => {
     authenticator.start();
     const handler = mockNode.handle.mock.calls.find((c: any) => c[0] === authProtocol)[1];
 
+    const identity = await ed25519Identity();
     const mockStream = { close: vi.fn() };
-    const connection = { remotePeer: await createEd25519PeerId(), remoteAddr: { toString: () => '/ip4/0' } };
+    const connection = { remotePeer: identity.peerId, remoteAddr: { toString: () => '/ip4/0' } };
 
     const payload = {
-      pub: Buffer.from('valid-pub-key').toString('base64url'),
+      pub: identity.pubB64,
       sig: Buffer.from('valid-sig').toString('base64url'),
       nonce: 'reused-nonce',
       timestamp: 1_000_000,

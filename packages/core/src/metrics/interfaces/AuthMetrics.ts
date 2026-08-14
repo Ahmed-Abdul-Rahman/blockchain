@@ -3,5 +3,5 @@ export interface AuthMetrics {
 
   verificationSucceeded(): void;
 
-  verificationFailed(reason: 'invalid_signature' | 'unknown_peer'): void;
+  verificationFailed(reason: 'invalid_signature' | 'unknown_peer' | 'peer_id_mismatch' | 'invalid_public_key'): void;
 }

@@ -7,6 +7,8 @@ import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string';
 import { AuthMetrics } from '../metrics/interfaces/AuthMetrics';
 import { createFramedStreamCodec, FramedStreamCodec } from '../shared/serialization/framedStreamCodec';
 import { DeChatComponents, DeChatFactory } from '../types';
+import { peerIdFromEd25519PublicKeyBytes } from './peerIdFromEd25519PublicKeyBytes';
+import { peerListenAddrs } from './peerListenAddrs';
 import { AuthSignMessage, AuthSignResponse } from './types';
 
 export class PeerAuthenticator implements Startable {
@@ -75,10 +77,26 @@ export class PeerAuthenticator implements Startable {
       }
 
       this.nonceCache.set(authResponse.nonce, timestamp);
+      const pub = base64UrlToBytes(authResponse.pub);
+      let presentedPeerId: string;
+      try {
+        presentedPeerId = peerIdFromEd25519PublicKeyBytes(pub).toString();
+      } catch {
+        await stream.close();
+        this.metrics.verificationFailed('invalid_public_key');
+        return;
+      }
+
+      if (presentedPeerId !== remotePeerId) {
+        await stream.close();
+        this.metrics.verificationFailed('peer_id_mismatch');
+        logger.warn('Authentication rejected: presented public key does not match remote PeerId', remotePeerId);
+        return;
+      }
+
       const contextStr = this.generateNonce(myPeerId, remotePeerId, authResponse.timestamp, authResponse.nonce);
       const hashed = sha256(contextStr);
       const message = uint8ArrayFromString(hashed);
-      const pub = base64UrlToBytes(authResponse.pub);
       const sig = base64UrlToBytes(authResponse.sig);
 
       const isVerified = await ed.verifyAsync(sig, message, pub);
@@ -90,7 +108,8 @@ export class PeerAuthenticator implements Startable {
       }
 
       logger.info('Authentication handled succesfully with peer: ', remotePeerId);
-      this.pexService.addPeers([{ peerId: remotePeerId, addresses: [connection.remoteAddr.toString()] }]);
+      const addresses = await peerListenAddrs(this.node, connection.remotePeer, [connection.remoteAddr.toString()]);
+      this.pexService.addPeers([{ peerId: remotePeerId, addresses }]);
       this.pexService.initiatePeerExchange();
 
       await this.framedStream.writeToStream(stream, { isVerified } as AuthSignResponse);
