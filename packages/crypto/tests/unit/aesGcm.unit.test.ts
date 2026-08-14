@@ -12,6 +12,15 @@ describe('aesGcm', () => {
 
     await expect(aesGcmDecrypt(generateAes256Key(), nonce, ciphertext)).rejects.toThrow();
   });
+
+  it('encrypts a sliced Uint8Array view without using the backing buffer wholesale', async () => {
+    const key = generateAes256Key();
+    const padded = new Uint8Array([0, ...utf8ToBytes('secret-body'), 0]);
+    const view = padded.subarray(1, padded.length - 1);
+    const { nonce, ciphertext } = await aesGcmEncrypt(key, view);
+    const plain = await aesGcmDecrypt(key, nonce, ciphertext);
+    expect(new TextDecoder().decode(plain)).toBe('secret-body');
+  });
 });
 
 describe('ed25519Sign', () => {
