@@ -25,6 +25,8 @@ export const createBrowserPlatformStack = ({ config }: CreateBrowserPlatformStac
   }
 
   return {
+    // `filters.all` is the transport default; private/loopback `/ws` is allowed via
+    // `denyDialMultiaddr` in createDeChatNode (js-libp2p's browser gater would deny them).
     transports: [webSockets()],
     streamMuxers: [yamux()],
     connectionEncrypters: [noise()],

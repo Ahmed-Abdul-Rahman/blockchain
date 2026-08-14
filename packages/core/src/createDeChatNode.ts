@@ -100,6 +100,9 @@ export const createDeChatNode = async (
         if (isDenied) logger.debug('Denied inbound connection to the peer:', peerId);
         return isDenied;
       },
+      // Hybrid browsers dial configured bootstrap peers on loopback/LAN `/ws`.
+      // js-libp2p's browser default gater denies private IPs, which would block localhost.
+      denyDialMultiaddr: async () => false,
     },
   })) as Libp2p;
 

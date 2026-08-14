@@ -1,6 +1,6 @@
 # Chat Application Readiness (pre-UI)
 
-**Status:** Accepted — implementing  
+**Status:** Phases 0–7 complete (6b stretch deferred). Ready for UI work.  
 **Goal:** Make `@dechat/core` + a new application package ready so a React chat app can be a thin adapter, not a P2P composition root.  
 **Non-goal this plan:** Building `apps/web` UI / React components (explicitly deferred until phases below land).
 
@@ -315,10 +315,10 @@ Aligned with ADR-0004 hybrid topology + BACKLOG 6.2 stretch.
 
 From BACKLOG 6.2, reframed as readiness for chat — still **no React app required**.
 
-- [ ] IndexedDB reload smoke (put hash → reopen → has).
-- [ ] Hybrid smoke in CI (`test:int:hybrid-browser-stack`).
-- [ ] Bundle metafile guard: browser entry must not include `level`, `@libp2p/tcp`, `fs`, Node `crypto`.
-- [ ] Real-browser smoke (Playwright): `createBrowserNode` or `createChatClient` + auth + registry (+ one message after Phase 4).
+- [x] IndexedDB reload smoke (put hash → reopen → has).
+- [x] Hybrid smoke in CI (`test:int:hybrid-browser-stack` in `browser-gates`).
+- [x] Bundle metafile guard: browser entry must not include `level`, `@libp2p/tcp`, `fs`, Node `crypto` (`yarn test:browser-bundle`).
+- [x] Real-browser smoke (Playwright): `createBrowserNode` dials Node `/ws`, auth, `PeerRegistry` (`yarn test:playwright`).
 - [x] Chat interop job: two clients, one room, converge (`chat-interop` in `.github/workflows/ci.yaml`).
 
 **Done when:** CI fails if browser graph regresses to Node-only deps; chat message round-trip covered without UI.
@@ -345,6 +345,7 @@ From BACKLOG 6.2, reframed as readiness for chat — still **no React app requir
 
 ## Explicitly deferred (do not block readiness plan)
 
+- Phase 6b: circuit-relay, WebRTC, browser↔browser via relay (NAT)
 - React / `apps/web` layout, hooks, design system
 - Typing indicators, read receipts, attachments, media streaming
 - Compaction / GC of tombstoned payloads
@@ -361,10 +362,10 @@ Resolved 2026-08-13 — see Decision gates.
 
 ## Acceptance bar for “ready for UI work”
 
-- [ ] `@dechat/core/browser` exports full portable strategy set
-- [ ] Auth binds key ↔ PeerId
+- [x] `@dechat/core/browser` exports full portable strategy set
+- [x] Auth binds key ↔ PeerId
 - [x] Room-scoped replication + isolation interop green (or explicitly waived for single-room-only UI spike)
 - [x] `@dechat/chat` with `createChatClient` documented and Node-tested
-- [ ] Bootstrap peer recipe works locally
-- [ ] IndexedDB + hybrid (+ preferably Playwright) CI green
-- [x] Security claims match shipped phases (no E2EE labeling until 5c)
+- [x] Bootstrap peer recipe works locally
+- [x] IndexedDB + hybrid + Playwright CI green
+- [x] Security claims match shipped phases (body E2EE: ADR-0006)

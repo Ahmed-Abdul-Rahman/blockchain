@@ -134,3 +134,8 @@ dist
 packages/core/tests/interop/reports/*.json
 
 build/
+
+# Playwright
+playwright-report/
+test-results/
+blob-report/

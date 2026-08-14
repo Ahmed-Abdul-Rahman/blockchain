@@ -454,7 +454,7 @@ Apply via `apply-netem.sh` on container start (libp2p test-plans pattern). Do **
 ### Task 6.2: Browser Platform Hardening (Post–Platform-Agnostic v1)
 
 * **Severity:** Medium (productizes the browser path beyond Node-hosted stack smoke)
-* **Status:** **Backlog** — depends on Task 6.1 (done)
+* **Status:** **Partial** — IndexedDB reload, bundle guard, hybrid CI, and Playwright Chromium smoke landed with chat readiness Phase 7. Remaining: `apps/web` wiring and circuit-relay / WebRTC.
 * **Related:** ADR-0004; Tier 2 Compose out-of-scope for WebRTC (Task 5.2)
 
 #### Work items
@@ -476,10 +476,10 @@ Apply via `apply-netem.sh` on container start (libp2p test-plans pattern). Do **
 
 #### Acceptance criteria (when groomed into a plan)
 
-- [ ] Playwright/Vitest browser job green in CI (auth + registry)
+- [x] Playwright/Vitest browser job green in CI (auth + registry)
 - [ ] `apps/web` can join a local Node bootstrap without Node polyfills
-- [ ] IndexedDB reload smoke green
-- [ ] Bundle metafile guard blocks LevelDB/TCP leakage
+- [x] IndexedDB reload smoke green
+- [x] Bundle metafile guard blocks LevelDB/TCP leakage
 - [ ] (Optional) Documented relay path for two browser peers behind NAT
 
 #### Estimated effort
@@ -496,7 +496,7 @@ Apply via `apply-netem.sh` on container start (libp2p test-plans pattern). Do **
 
 ## Category 7: Chat application readiness (pre-UI)
 
-* **Status:** In progress — [tasks/chat-application-readiness.md](tasks/chat-application-readiness.md)
+* **Status:** Phases 0–7 done (6b stretch deferred) — [tasks/chat-application-readiness.md](tasks/chat-application-readiness.md)
 * **Related:** ADR-0005 (room-scope layer); ADR-0001; ADR-0004; Task 6.2
 
 Wire `@dechat/core` (browser exports, auth PeerId binding, room-scope layer) then `@dechat/chat` (`ChatClient`) before any React UI. Open rooms = verified peers may `joinRoom` (no invite); `infoHash` is mesh partition only — see **Task 0.1**. Body E2EE: ADR-0006.

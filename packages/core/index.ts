@@ -9,9 +9,9 @@ export {
 } from './src/data-convergence/AntiEntropyNetworkExchange';
 export { PrefixTrie, TrieNode } from './src/data-convergence/PrefixTrie';
 export { TrieBackedReplicaStore } from './src/data-convergence/TrieBackedReplicaStore';
-export { BroadcastPropagationInterface } from './src/data-propagation/broadcast/BroadcastPropagationInterface';
+export type { BroadcastPropagationInterface } from './src/data-propagation/broadcast/BroadcastPropagationInterface';
 export { GossipSubPropagation, gossipSubPropagation } from './src/data-propagation/broadcast/GossipSubPropagation';
-export { DirectPropagationInterface } from './src/data-propagation/direct/DirectPropagationInterface';
+export type { DirectPropagationInterface } from './src/data-propagation/direct/DirectPropagationInterface';
 export {
   DirectStreamPropagation,
   directStreamPropagation,
@@ -21,8 +21,8 @@ export {
   contentHashStrategy,
   Sha256ContentHashStrategy,
 } from './src/data-replication/content-hash/Sha256ContentHashStrategy';
-export { ContentHashStrategyInterface } from './src/data-replication/content-hash/types';
-export { DataReplicationInterface } from './src/data-replication/DataReplicationInterface';
+export type { ContentHashStrategyInterface } from './src/data-replication/content-hash/types';
+export type { DataReplicationInterface } from './src/data-replication/DataReplicationInterface';
 export {
   KReplicaContentReplication as KReplicaContentHashReplication,
   kReplicaContentHashReplication,
@@ -31,7 +31,7 @@ export {
   ReplicationMessageProtocolManager,
   replicationMessageProtocolManager,
 } from './src/data-replication/replication-protocol/ReplicationMessageProtocolManager';
-export { ReplicationProtocolInterface } from './src/data-replication/replication-protocol/ReplicationProtocolInterface';
+export type { ReplicationProtocolInterface } from './src/data-replication/replication-protocol/ReplicationProtocolInterface';
 export { TransportSelector } from './src/data-replication/replication-protocol/TransportSelector';
 export {
   RoomScopedReplication,
@@ -62,7 +62,8 @@ export { createNodePlatformStack } from './src/platform/createNodePlatformStack'
 export type { Libp2pPlatformStack, PlatformProfile } from './src/platform/types';
 export { IndexedDbReplicaStore, indexedDbReplicaStore } from './src/replica-store/IndexedDbReplicaStore';
 export { InMemoryReplicaStore, inMemoryReplicaStore } from './src/replica-store/InMemoryReplicaStore';
-export { ReplicaStoreInterface, replicaStore } from './src/replica-store/ReplicaStoreInterface';
+export type { ReplicaStoreInterface } from './src/replica-store/ReplicaStoreInterface';
+export { replicaStore } from './src/replica-store/ReplicaStoreInterface';
 
 export type { DataSerializer, FramedStreamCodec, WireCodec, WireFormatName } from './src/shared/serialization';
 export {
