@@ -12,6 +12,7 @@ COPY scripts ./scripts
 COPY packages/common/package.json ./packages/common/
 COPY packages/crypto/package.json ./packages/crypto/
 COPY packages/core/package.json ./packages/core/
+COPY packages/chat/package.json ./packages/chat/
 
 # Placeholder workspace packages so yarn install resolves the monorepo graph.
 COPY packages/blockchain/package.json ./packages/blockchain/

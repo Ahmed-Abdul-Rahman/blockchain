@@ -85,7 +85,7 @@ Rejected enhancement requests are recorded in `.out-of-scope/*.md` (create the d
 | Run a P2P node | `cd apps/backend && yarn start:dev` |
 | Multi-node sim | `yarn core sim` |
 
-**Integration tests require `yarn build` first** — they run compiled JS from `dist/tests/interop/`. Hybrid smoke (`tsx`) and Playwright do not.
+**Integration tests require `yarn build` first** — they run compiled JS from `dist/tests/interop/`. Hybrid smoke (`tsx --conditions=development`) and Playwright (`node --conditions=development`) do not.
 
 ## Testing conventions
 

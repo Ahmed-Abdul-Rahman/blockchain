@@ -12,6 +12,7 @@ on:
       - 'packages/core/tests/interop/childThread/workerUitls.ts'
       - 'packages/core/tests/interop/types.ts'
       - 'packages/core/package.json'
+      - 'packages/chat/package.json'
       - '.github/workflows/compose-interop.yml'
       - '.github/workflows/compose-interop-nightly.yml'
       - '.dockerignore'
