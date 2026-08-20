@@ -39,6 +39,7 @@ describe('PeerExchangeService', () => {
 
     mockDialQ = {
       enqueue: vi.fn(),
+      getRemotePeerConnections: vi.fn().mockReturnValue([]),
     };
 
     mockScorer = {
@@ -77,22 +78,63 @@ describe('PeerExchangeService', () => {
     expect(mockNode.handle).toHaveBeenCalledWith(pexProtocol, expect.any(Function));
   });
 
-  it('should enqueue peers for dialing if they are new (Bloom Filter) and have addresses', () => {
+  it('enqueues a peer with addresses and skips a second enqueue during cooldown', () => {
     const peersWithAddrs = [{ peerId: 'peer-A', addresses: ['/ip4/127.0.0.1/tcp/4001/p2p/peer-A'] }];
     pexService.enqueueDial(peersWithAddrs);
     expect(mockDialQ.enqueue).toHaveBeenCalledWith(peersWithAddrs);
 
     mockDialQ.enqueue.mockClear();
+    pexService.enqueueDial(peersWithAddrs);
+    expect(mockDialQ.enqueue).toHaveBeenCalledWith([]);
+  });
 
-    // Bloom filter blocks re-dial of the same peer
+  it('re-enqueues an unconnected peer after the dial cooldown so gossip can retry failed dials', () => {
+    const peersWithAddrs = [{ peerId: 'peer-A', addresses: ['/ip4/127.0.0.1/tcp/4001/p2p/peer-A'] }];
+    pexService.enqueueDial(peersWithAddrs);
+    mockDialQ.enqueue.mockClear();
+
+    vi.advanceTimersByTime(DECHAT_DEFAULTS.pexService.dialEnqueueCooldownMs - 1);
     pexService.enqueueDial(peersWithAddrs);
     expect(mockDialQ.enqueue).toHaveBeenCalledWith([]);
 
     mockDialQ.enqueue.mockClear();
+    vi.advanceTimersByTime(1);
+    pexService.enqueueDial(peersWithAddrs);
 
-    // Peers without addresses are never enqueued
+    expect(mockDialQ.enqueue).toHaveBeenCalledWith(peersWithAddrs);
+  });
+
+  it('does not enqueue this node', () => {
+    pexService.enqueueDial([{ peerId: 'self-peer-id', addresses: ['/ip4/127.0.0.1/tcp/4001/p2p/self-peer-id'] }]);
+    expect(mockDialQ.enqueue).toHaveBeenCalledWith([]);
+  });
+
+  it('does not enqueue a peer that already has an open connection', () => {
+    mockDialQ.getRemotePeerConnections.mockReturnValue([{ status: 'open' }]);
+    pexService.enqueueDial([{ peerId: 'peer-A', addresses: ['/ip4/127.0.0.1/tcp/4001/p2p/peer-A'] }]);
+    expect(mockDialQ.enqueue).toHaveBeenCalledWith([]);
+  });
+
+  it('does not re-enqueue after cooldown when the peer now has an open connection', () => {
+    const peersWithAddrs = [{ peerId: 'peer-A', addresses: ['/ip4/127.0.0.1/tcp/4001/p2p/peer-A'] }];
+    pexService.enqueueDial(peersWithAddrs);
+    mockDialQ.enqueue.mockClear();
+    mockDialQ.getRemotePeerConnections.mockReturnValue([{ status: 'open' }]);
+
+    vi.advanceTimersByTime(DECHAT_DEFAULTS.pexService.dialEnqueueCooldownMs);
+    pexService.enqueueDial(peersWithAddrs);
+
+    expect(mockDialQ.enqueue).toHaveBeenCalledWith([]);
+  });
+
+  it('does not treat empty-address peers as seen, so a later advertisement with addrs can enqueue', () => {
     pexService.enqueueDial([{ peerId: 'peer-B', addresses: [] }]);
     expect(mockDialQ.enqueue).toHaveBeenCalledWith([]);
+
+    mockDialQ.enqueue.mockClear();
+    const withAddrs = [{ peerId: 'peer-B', addresses: ['/ip4/127.0.0.1/tcp/4002/p2p/peer-B'] }];
+    pexService.enqueueDial(withAddrs);
+    expect(mockDialQ.enqueue).toHaveBeenCalledWith(withAddrs);
   });
 
   it('should trigger gossip loop and publish known peers', async () => {
