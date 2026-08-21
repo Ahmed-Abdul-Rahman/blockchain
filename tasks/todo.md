@@ -11,7 +11,7 @@
 ## Chat application readiness (pre-UI)
 
 **Spec:** [tasks/chat-application-readiness.md](chat-application-readiness.md)  
-**Status:** Implementing (decisions accepted 2026-08-13)  
+**Status:** Phase 0–7 done (6b stretch deferred). Ready for UI work.  
 **Intent:** Land core prerequisites + `@dechat/chat` deep module **before** any React UI.
 
 ### Locked decisions
@@ -34,7 +34,7 @@
 | 4 | `@dechat/chat` + two-node ChatClient interop | Done |
 | 5 | Identity + open-room membership + body E2EE (5a–5c) | Done |
 | 6 | Bootstrap recipe + chat-interop CI | Done |
-| 7 | Persistence & remaining CI gates | Later |
+| 7 | Persistence & remaining CI gates | Done |
 
 ### Phase 5 scope (locked decisions)
 
@@ -54,6 +54,11 @@
 - Room keys in ChatClient memory; distributed to verified peers on `/deChat/v1/protocol/room-key`.
 - `leaveRoom` discards keys; `rotateRoomKey` bumps epoch. Replica store must not contain plaintext.
 
+### Phase 7 (done)
+
+- IndexedDB reload smoke, hybrid Node↔browser-stack CI, esbuild metafile guard, Playwright Chromium auth/registry smoke.
+- Phase 6b (circuit-relay / WebRTC / browser↔browser via relay) stays **stretch** — not in this bar.
+
 ---
 
 ## Closed
@@ -63,7 +68,7 @@
 **Spec:** [tasks/platform-agnostic-core.md](platform-agnostic-core.md)  
 **Status:** Closed — [PR #46](https://github.com/Ahmed-Abdul-Rahman/de-chat/pull/46) merged to `develop` on 2026-07-19.
 
-Follow-ups tracked as [BACKLOG Task 6.2](../BACKLOG.md) (real-browser smoke, IndexedDB reload, circuit-relay / WebRTC, CI bundle guard).
+Follow-ups: [BACKLOG Task 6.2](../BACKLOG.md) remaining items are `apps/web` wiring and circuit-relay / WebRTC.
 
 ### Tier 2 Compose Interop — closed (v1)
 

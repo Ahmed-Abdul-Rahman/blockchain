@@ -60,7 +60,9 @@ yarn workspace @dechat/chat bootstrap
 
 2. Point two Node `createChatClient`s at the **TCP** multiaddr (`bootstrapPeers`). Same `infoHash`. `joinRoom`, send, `getHistory`.
 
-3. A future browser client uses the **WS** multiaddr. Pages served over **HTTPS** cannot use `ws://` — terminate TLS with Caddy/nginx and advertise `/dns4/…/tcp/443/wss/p2p/…`. This process listens plain `/ws` only.
+3. A browser client uses the **WS** multiaddr (`createChatClient` from `@dechat/chat/browser`). Pages served over **HTTPS** cannot use `ws://` — terminate TLS with Caddy/nginx and advertise `/dns4/…/tcp/443/wss/p2p/…`. This process listens plain `/ws` only.
+
+Browser↔browser and NAT traversal (circuit-relay / WebRTC) are **not** in v1 — that is Phase 6b stretch. Local/LAN hybrid (Node bootstrap + WS clients) is the supported topology.
 
 ## Tests
 
@@ -68,5 +70,8 @@ yarn workspace @dechat/chat bootstrap
 |---------|----------------|
 | `yarn workspace @dechat/chat test` | Unit tests (identity, E2EE, projection, bootstrap addrs, ChatClient) |
 | `yarn test:int:chat` | Two-node room convergence + bootstrap + two clients |
+| `yarn test:int:hybrid-browser-stack` | Node TCP+WS bootstrap ↔ `createBrowserNode` (Node-hosted browser stack) |
+| `yarn test:browser-bundle` | esbuild metafile: browser entries must not pull LevelDB/TCP/`node:fs` |
+| `yarn test:playwright` | Chromium: `createBrowserNode` dials `/ws`, auth, `PeerRegistry` (`yarn playwright install chromium` once) |
 
-CI runs these in a dedicated `chat-interop` job (units, then interop), separate from core startup/data-sync interop.
+CI: `chat-interop` (units + ChatClient interop) and `browser-gates` (hybrid + Playwright), separate from core startup/data-sync interop. The bundle guard runs in `unit-tests`.

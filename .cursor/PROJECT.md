@@ -77,12 +77,15 @@ Rejected enhancement requests are recorded in `.out-of-scope/*.md` (create the d
 | Integration tests (P2P interop, narrow) | `yarn build && yarn test:int:narrow` (3 nodes, 30s) |
 | Chat unit tests | `yarn workspace @dechat/chat test` |
 | Chat interop (two-node + bootstrap) | `yarn test:int:chat` |
+| Hybrid Node↔browser-stack smoke | `yarn test:int:hybrid-browser-stack` |
+| Browser bundle metafile guard | `yarn test:browser-bundle` |
+| Playwright Chromium auth/registry | `yarn test:playwright` (install once: `yarn playwright install chromium`) |
 | Lint | `yarn lint` |
 | Lint fix | `yarn lint:fix` |
 | Run a P2P node | `cd apps/backend && yarn start:dev` |
 | Multi-node sim | `yarn core sim` |
 
-**Integration tests require `yarn build` first** — they run compiled JS from `dist/tests/interop/`.
+**Integration tests require `yarn build` first** — they run compiled JS from `dist/tests/interop/`. Hybrid smoke (`tsx --conditions=development`) and Playwright (`node --conditions=development`) do not.
 
 ## Testing conventions
 
@@ -90,6 +93,7 @@ Rejected enhancement requests are recorded in `.out-of-scope/*.md` (create the d
 |------|---------|----------|
 | Unit | `*.unit.test.ts` | `packages/core/tests/unit/**`, `packages/chat/tests/unit/**` |
 | Integration | `*.int.ts` / `*.int.test.ts` | `packages/core/tests/interop/**`, `packages/chat/tests/interop/**` |
+| Playwright | `*.pw.ts` | `packages/core/tests/playwright/**` |
 
 - Unit tests: fast, mocked at **system boundaries** (libp2p, `@noble/ed25519`, `level`).
 - Integration tests: real libp2p in worker threads; **must** call `terminateWorkers()` or CI hangs.

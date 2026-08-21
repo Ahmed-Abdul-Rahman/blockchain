@@ -42,6 +42,7 @@
     "test:int:adaptive-scale": "NODE_ENV=perf LOG_LEVEL=INFO node --trace-warnings dist/tests/interop/interOpTestRunner.adaptiveScale.int.js",
     "test:int:narrow": "NODE_ENV=perf LOG_LEVEL=INFO node --trace-warnings dist/tests/interop/interOpTestRunner.startup.int.js --nodes 3 --duration 30",
     "test:int:hybrid-browser-stack": "NODE_ENV=perf LOG_LEVEL=INFO ../../node_modules/.bin/tsx --conditions=development tests/interop/hybridBrowserStack.int.ts",
+    "test:playwright": "node --conditions=development ../../node_modules/@playwright/test/cli.js test -c playwright.config.ts",
     "test:compose:late-joiner": "bash tests/compose-interop/scripts/run-scenario.sh",
     "test:compose:late-joiner:wan": "NETEM_PROFILE=wan bash tests/compose-interop/scripts/run-scenario.sh",
     "test:compose:late-joiner:lossy": "NETEM_PROFILE=lossy bash tests/compose-interop/scripts/run-scenario.sh",
@@ -83,6 +84,7 @@
     "type-fest": "^5.6.0"
   },
   "devDependencies": {
+    "fake-indexeddb": "^6.2.5",
     "typescript": "^5.5.0"
   }
 }
