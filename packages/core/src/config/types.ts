@@ -60,10 +60,12 @@ export interface DeChatConfig {
      *  this value should always be a minute greater than the @property gossipIntervalMs*/
     peerScoreDecayIntervalMs: number;
 
-    /** * Bloom filter for seen peers should be reset periodically to allow re-dialing
-     * of peers that might have churned or changed addresses.
+    /**
+     * Minimum time between DialQueue enqueues for the same unconnected peer.
+     * Storm control for gossip/GET_PEERS retries after a failed dial or disconnect;
+     * must be far shorter than process lifetime (on the order of gossipIntervalMs).
      */
-    seenPeersBloomFilterTTLMs: number;
+    dialEnqueueCooldownMs: number;
   };
   peerRegistry: {
     /** Maximum peers that can be stored */

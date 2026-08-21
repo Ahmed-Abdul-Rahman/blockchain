@@ -1,7 +1,6 @@
 import { GossipSub } from '@chainsafe/libp2p-gossipsub';
 import { logger } from '@dechat/common';
 import { Libp2p, Message, PeerId, Startable, Stream } from '@libp2p/interface';
-import bloomFilters from 'bloom-filters';
 import { delay, random } from 'es-toolkit';
 import { LRUCache } from 'lru-cache';
 import { PeerExchangeServiceMetrics } from '../metrics/interfaces/PeerExchangeServiceMetrics';
@@ -27,8 +26,12 @@ export class PeerExchangeService implements Startable {
   /** Used to avoid frequent gossiping with the same peer */
   private lastGossipByPeer: LRUCache<string, number>;
 
-  /** Used to avoid frequent dialing to the same peer*/
-  private peersSeen: bloomFilters.ScalableBloomFilter;
+  /**
+   * Timestamp of the last DialQueue enqueue per peer. Size-bounded; expiry is
+   * computed against `dialEnqueueCooldownMs` so a cooldown check does not
+   * extend the window.
+   */
+  private lastDialEnqueueByPeer: LRUCache<string, number>;
 
   /** Flag to initiate or stop peer exchange */
   private isPeerExchangeStarted: boolean = false;
@@ -38,8 +41,6 @@ export class PeerExchangeService implements Startable {
 
   /** Interval Id of the peer scorer decay interval */
   private peerScoreDecayInterval: NodeJS.Timeout | null = null;
-
-  private bloomFilterResetInterval: NodeJS.Timeout | null = null;
 
   readonly metrics: PeerExchangeServiceMetrics;
 
@@ -57,10 +58,12 @@ export class PeerExchangeService implements Startable {
     this.serializer = components.serializer;
     this.framedStream = createFramedStreamCodec(components.serializer);
 
-    this.peersSeen = new bloomFilters.ScalableBloomFilter(1000, 0.01);
     this.lastGossipByPeer = new LRUCache<string, number>({
       max: 10000,
       ttl: 10 * 60 * 1000, // 10 minutes
+    });
+    this.lastDialEnqueueByPeer = new LRUCache<string, number>({
+      max: 10_000,
     });
 
     this.node.handle(this.config.pexProtocol, ({ stream, connection }) =>
@@ -72,8 +75,6 @@ export class PeerExchangeService implements Startable {
     this.pubsub.subscribe(this.config.pexTopic);
     this.gossipListener = (event: CustomEvent<Message>) => this.onGossip(event);
     this.pubsub.addEventListener('message', this.gossipListener);
-
-    this.startBloomFilterRotation();
   }
 
   start(): void | Promise<void> {
@@ -89,12 +90,13 @@ export class PeerExchangeService implements Startable {
   }
 
   /**
-   * Add peers to the dial queue which are new or have not been dailed for sometime
-   * @param peers
+   * Push dialable peers into DialQueue. PEX is the candidate feeder; DialQueue
+   * throttles the actual dials. Peers without addresses are skipped and are not
+   * recorded in the enqueue cooldown, so a later advertisement with addrs can enqueue.
    */
   enqueueDial(peers: PeerInfoLite[]): void {
     this.dialQ.enqueue(
-      peers.filter(({ peerId, addresses }) => this.shouldDial(peerId) && (addresses?.length ?? 0) > 0),
+      peers.filter(({ peerId, addresses }) => (addresses?.length ?? 0) > 0 && this.shouldDial(peerId)),
     );
   }
 
@@ -109,28 +111,34 @@ export class PeerExchangeService implements Startable {
   }
 
   /**
-   * returns true if this peer is new or have'nt been contacted for sometime otherwise
-   * @param peerId
-   * @returns
+   * Whether PEX should push this peer into DialQueue on this pass.
+   *
+   * This is storm control for the PEX → DialQueue seam, not a lifetime ban:
+   * gossip and GET_PEERS advertise the same IDs repeatedly, and DialQueue
+   * discards failed attempts. Returning true again after cooldown is what lets
+   * a rejoined node retry peers it already learned about.
+   *
+   * Returns false when:
+   * - `peerId` is this node
+   * - an open connection to `peerId` already exists
+   * - we enqueued `peerId` within `dialEnqueueCooldownMs`
+   *
+   * Returns true otherwise, including after a failed first dial or a disconnect
+   * once the cooldown has elapsed. Callers must only invoke this for peers that
+   * already have addresses.
+   *
+   * @param peerId Remote peer id string
+   * @returns true if DialQueue should receive this peer now
    */
   shouldDial(peerId: string): boolean {
-    if (this.peersSeen.has(peerId)) {
-      // already seen → skip dialing
+    if (peerId === this.node.peerId.toString()) return false;
+    if (this.dialQ.getRemotePeerConnections(peerId).length > 0) return false;
+    const lastEnqueuedAt = this.lastDialEnqueueByPeer.get(peerId);
+    if (lastEnqueuedAt != null && Date.now() - lastEnqueuedAt < this.config.dialEnqueueCooldownMs) {
       return false;
     }
-    this.peersSeen.add(peerId);
+    this.lastDialEnqueueByPeer.set(peerId, Date.now());
     return true;
-  }
-
-  /**
-   * Periodically resets the Bloom filter to prevent it from becoming stale.
-   * This allows the node to re-dial peers it hasn't seen in a long time.
-   */
-  private startBloomFilterRotation(): void {
-    this.bloomFilterResetInterval = setInterval(() => {
-      logger.info('Rotating seen peers Bloom filter to allow re-dialing');
-      this.peersSeen = new bloomFilters.ScalableBloomFilter(1000, 0.01);
-    }, this.config.seenPeersBloomFilterTTLMs);
   }
 
   /**
@@ -343,11 +351,6 @@ export class PeerExchangeService implements Startable {
     if (this.peerScoreDecayInterval) {
       clearInterval(this.peerScoreDecayInterval);
       this.peerScoreDecayInterval = null;
-    }
-
-    if (this.bloomFilterResetInterval) {
-      clearInterval(this.bloomFilterResetInterval);
-      this.bloomFilterResetInterval = null;
     }
   }
 }

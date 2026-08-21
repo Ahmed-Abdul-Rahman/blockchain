@@ -27,7 +27,7 @@ export const DECHAT_DEFAULTS: DeChatConfig = {
     gossipIntervalMs: 30_000,
     pexRequestCooldownMs: 15_000,
     peerScoreDecayIntervalMs: 120_000,
-    seenPeersBloomFilterTTLMs: 24 * 60 * 60_000, // 24 hrs
+    dialEnqueueCooldownMs: 30_000,
   },
   peerRegistry: {
     maxSize: 50_000,
